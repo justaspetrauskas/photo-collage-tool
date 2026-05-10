@@ -127,6 +127,7 @@ export function useCollageEditor() {
   const [replaceAnimationTick, setReplaceAnimationTick] = useState<number>(0);
   const [swapAnimation, setSwapAnimation] = useState<SwapAnimation | null>(null);
   const [replacePointer, setReplacePointer] = useState<{ x: number; y: number } | null>(null);
+  const [swapTargetInvalid, setSwapTargetInvalid] = useState<boolean>(false);
   const [moveOutsideCanvas, setMoveOutsideCanvas] = useState<boolean>(false);
   const [moveCollisionImageIds, setMoveCollisionImageIds] = useState<string[]>([]);
   const [resizeCurrentDimensions, setResizeCurrentDimensions] = useState<{ width: number; height: number } | null>(null);
@@ -195,10 +196,11 @@ export function useCollageEditor() {
       resizeFeedback,
       swapAnimation,
       replacePointer,
+      swapTargetInvalid,
       placementPreview: canvasPlacementPreview,
       animationTimeMs: replaceAnimationTick,
     });
-  }, [selectedPage, itemById, imageById, gridModeEnabled, selectedImageId, hoveredImageId, drawerSelectedImageId, imageZoomLevels, imagePanOffsets, interactionMode, dragActive, moveOutsideCanvas, moveCollisionImageIds, resizeCurrentDimensions, resizeFeedback, swapAnimation, replacePointer, canvasPlacementPreview, replaceAnimationTick]);
+  }, [selectedPage, itemById, imageById, gridModeEnabled, selectedImageId, hoveredImageId, drawerSelectedImageId, imageZoomLevels, imagePanOffsets, interactionMode, dragActive, moveOutsideCanvas, moveCollisionImageIds, resizeCurrentDimensions, resizeFeedback, swapAnimation, replacePointer, swapTargetInvalid, canvasPlacementPreview, replaceAnimationTick]);
 
 function rectanglesTouchOrOverlap(
   a: { x: number; y: number; width: number; height: number },
@@ -1014,6 +1016,18 @@ function rectanglesTouchOrOverlap(
         ? findClosestSwapTarget(point, dragStateRef.current.sourceImageId)
         : null;
       setHoveredImageId(target?.imageId ?? null);
+      if (target && selectedPage) {
+        const sourceIndex = selectedPage.items.findIndex((item) => item.imageId === dragStateRef.current!.sourceImageId);
+        const targetIndex = selectedPage.items.findIndex((item) => item.imageId === target.imageId);
+        if (sourceIndex !== -1 && targetIndex !== -1) {
+          const otherItems = selectedPage.items.filter((_, i) => i !== sourceIndex && i !== targetIndex);
+          setSwapTargetInvalid(!canSwapImages(selectedPage.items[sourceIndex], selectedPage.items[targetIndex], otherItems));
+        } else {
+          setSwapTargetInvalid(false);
+        }
+      } else {
+        setSwapTargetInvalid(false);
+      }
       return;
     }
 
@@ -1355,6 +1369,7 @@ function rectanglesTouchOrOverlap(
     dragStateRef.current = null;
     setDragActive(false);
     setReplacePointer(null);
+    setSwapTargetInvalid(false);
     setMoveOutsideCanvas(false);
     setMoveCollisionImageIds([]);
     setResizeCurrentDimensions(null);
@@ -1679,6 +1694,7 @@ function rectanglesTouchOrOverlap(
     setResizeFeedback(null);
     setSwapAnimation(null);
     setReplacePointer(null);
+    setSwapTargetInvalid(false);
     dragStateRef.current = null;
     setMoveCollisionImageIds([]);
   }
@@ -1808,6 +1824,7 @@ function rectanglesTouchOrOverlap(
     setResizeFeedback(null);
     setSwapAnimation(null);
     setReplacePointer(null);
+    setSwapTargetInvalid(false);
     dragStateRef.current = null;
     setMoveOutsideCanvas(false);
     setMoveCollisionImageIds([]);
