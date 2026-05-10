@@ -3,6 +3,7 @@ export type PaginationMode = 'auto' | 'assisted';
 export interface ImageItem {
   id: string;
   fileName: string;
+  sourceBlob: Blob;
   src: string;
   bitmap: HTMLImageElement;
   naturalWidth: number;
@@ -69,8 +70,45 @@ export interface PreviewTransform {
 }
 
 export interface LoadedImage {
+  blob: Blob;
   src: string;
   image: HTMLImageElement;
   naturalWidth: number;
   naturalHeight: number;
+}
+
+export interface PersistedImageItem {
+  id: string;
+  fileName: string;
+  sourceBlob: Blob;
+  naturalWidth: number;
+  naturalHeight: number;
+  maxWidthCm: number;
+  maxHeightCm: number;
+  frameEnabled: boolean;
+  frameThicknessPx: number;
+  renderWidthPx: number;
+  renderHeightPx: number;
+  offsetX: number;
+  offsetY: number;
+  cropMaxOffsetX: number;
+  cropMaxOffsetY: number;
+}
+
+export interface PersistedEditorSnapshot {
+  version: 1;
+  savedAt: number;
+  settings: {
+    maxImageCm: number;
+    minImageCm: number;
+    frameMm: number;
+    gridModeEnabled: boolean;
+    paginationMode: PaginationMode;
+    assistedPageCount: number;
+    selectedPageIndex: number;
+  };
+  pages: PageLayout[];
+  overflowImageIds: string[];
+  oversizedImageIds: string[];
+  images: PersistedImageItem[];
 }

@@ -14,8 +14,12 @@ export function CollageEditor() {
       <CollageControls
         maxImageCm={editor.maxImageCm}
         setMaxImageCm={editor.setMaxImageCm}
+        minImageCm={editor.minImageCm}
+        setMinImageCm={editor.setMinImageCm}
         frameMm={editor.frameMm}
         setFrameMm={editor.setFrameMm}
+        gridModeEnabled={editor.gridModeEnabled}
+        setGridModeEnabled={editor.setGridModeEnabled}
         paginationMode={editor.paginationMode}
         setPaginationMode={editor.setPaginationMode}
         pagesCount={editor.pages.length}
@@ -26,6 +30,10 @@ export function CollageEditor() {
         onExportPages={editor.exportPagesAsPng}
         onCreateNextPage={editor.onCreateNextPage}
       />
+
+      <p className="m-0 text-xs text-muted">
+        Minimum image size is enforced during packing. If everything cannot fit above this size, extra pages are created.
+      </p>
 
       {editor.error ? <p className="m-0 text-sm text-danger">{editor.error}</p> : null}
       {editor.oversizedImageIds.length ? (

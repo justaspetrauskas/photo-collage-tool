@@ -1,6 +1,32 @@
 import { clampOffsets } from './layoutEngine';
 import type { ImageItem, PageLayout, PreviewTransform } from './types';
 
+interface PreviewOptions {
+  gridEnabled?: boolean;
+  gridSpacingPx?: number;
+}
+
+function isCellOccupied(
+  cellX: number,
+  cellY: number,
+  cellSize: number,
+  page: PageLayout,
+): boolean {
+  const cellRight = cellX + cellSize;
+  const cellBottom = cellY + cellSize;
+
+  for (const item of page.items) {
+    const itemRight = item.x + item.width;
+    const itemBottom = item.y + item.height;
+    const overlaps = cellX < itemRight && cellRight > item.x && cellY < itemBottom && cellBottom > item.y;
+    if (overlaps) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 function drawPage(
   ctx: CanvasRenderingContext2D,
   page: PageLayout,
@@ -56,6 +82,7 @@ export function drawPagePreview(
   page: PageLayout,
   itemById: Map<string, ImageItem>,
   imageById: Map<string, HTMLImageElement>,
+  options: PreviewOptions = {},
 ): PreviewTransform | null {
   const dpr = window.devicePixelRatio || 1;
   const logicalSize = Math.min(window.innerWidth * 0.9, 900);
@@ -86,6 +113,40 @@ export function drawPagePreview(
   ctx.translate(offsetX, offsetY);
   ctx.scale(scale, scale);
   drawPage(ctx, page, itemById, imageById);
+
+  if (options.gridEnabled) {
+    const spacing = Math.max(1, Math.round(options.gridSpacingPx ?? 100));
+    ctx.save();
+    ctx.lineWidth = 1 / scale;
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.2)';
+
+    for (let y = 0; y < page.heightPx; y += spacing) {
+      for (let x = 0; x < page.widthPx; x += spacing) {
+        const cellWidth = Math.min(spacing, page.widthPx - x);
+        const cellHeight = Math.min(spacing, page.heightPx - y);
+        const occupied = isCellOccupied(x, y, spacing, page);
+
+        ctx.fillStyle = occupied ? 'rgba(207, 91, 44, 0.2)' : 'rgba(60, 60, 60, 0.035)';
+        ctx.fillRect(x, y, cellWidth, cellHeight);
+      }
+    }
+
+    for (let x = 0; x <= page.widthPx; x += spacing) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, page.heightPx);
+      ctx.stroke();
+    }
+
+    for (let y = 0; y <= page.heightPx; y += spacing) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(page.widthPx, y);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   ctx.restore();
 
   return {

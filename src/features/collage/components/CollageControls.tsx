@@ -7,8 +7,12 @@ import type { ChangeEvent } from 'react';
 interface CollageControlsProps {
   maxImageCm: number;
   setMaxImageCm: (value: number) => void;
+  minImageCm: number;
+  setMinImageCm: (value: number) => void;
   frameMm: number;
   setFrameMm: (value: number) => void;
+  gridModeEnabled: boolean;
+  setGridModeEnabled: (value: boolean) => void;
   paginationMode: PaginationMode;
   setPaginationMode: (value: PaginationMode) => void;
   pagesCount: number;
@@ -23,8 +27,12 @@ interface CollageControlsProps {
 export function CollageControls({
   maxImageCm,
   setMaxImageCm,
+  minImageCm,
+  setMinImageCm,
   frameMm,
   setFrameMm,
+  gridModeEnabled,
+  setGridModeEnabled,
   paginationMode,
   setPaginationMode,
   pagesCount,
@@ -53,6 +61,18 @@ export function CollageControls({
         />
       </Field>
 
+      <Field label="Min Image Size (cm)">
+        <input
+          className="field-input"
+          type="number"
+          min="0.5"
+          max="20"
+          step="0.1"
+          value={minImageCm}
+          onChange={(event) => setMinImageCm(Number(event.target.value))}
+        />
+      </Field>
+
       <Field label="Frame Thickness (mm)">
         <input
           className="field-input"
@@ -64,6 +84,16 @@ export function CollageControls({
           onChange={(event) => setFrameMm(Number(event.target.value))}
         />
       </Field>
+
+      <label className="mt-1 flex items-center gap-2 rounded-xl border border-line bg-white px-3 py-2 text-sm font-medium">
+        <input
+          className="h-4 w-4 rounded border-line text-accent focus:ring-accent/30"
+          type="checkbox"
+          checked={gridModeEnabled}
+          onChange={(event) => setGridModeEnabled(event.target.checked)}
+        />
+        Occupancy grid overlay (preview only)
+      </label>
 
       <Field label="Pagination Mode">
         <select

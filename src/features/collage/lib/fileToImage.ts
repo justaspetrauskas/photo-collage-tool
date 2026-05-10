@@ -1,12 +1,13 @@
 import type { LoadedImage } from '../model/types';
 
-export function fileToImage(file: File): Promise<LoadedImage> {
+function blobToLoadedImage(blob: Blob, onErrorLabel: string): Promise<LoadedImage> {
   return new Promise((resolve, reject) => {
-    const src = URL.createObjectURL(file);
+    const src = URL.createObjectURL(blob);
     const image = new Image();
 
     image.onload = () => {
       resolve({
+        blob,
         src,
         image,
         naturalWidth: image.naturalWidth,
@@ -14,7 +15,15 @@ export function fileToImage(file: File): Promise<LoadedImage> {
       });
     };
 
-    image.onerror = () => reject(new Error(`Failed to load image ${file.name}`));
+    image.onerror = () => reject(new Error(onErrorLabel));
     image.src = src;
   });
+}
+
+export function fileToImage(file: File): Promise<LoadedImage> {
+  return blobToLoadedImage(file, `Failed to load image ${file.name}`);
+}
+
+export function blobToImage(blob: Blob): Promise<LoadedImage> {
+  return blobToLoadedImage(blob, 'Failed to load saved image from local storage');
 }

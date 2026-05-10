@@ -1,10 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, MouseEvent } from 'react';
-import { CANVAS_SIZE_PX, DEFAULT_FRAME_MM, DEFAULT_MAX_IMAGE_CM, mmToPx } from '../model/constants';
+import {
+  CANVAS_SIZE_PX,
+  DEFAULT_FRAME_MM,
+  DEFAULT_GRID_SPACING_CM,
+  DEFAULT_MAX_IMAGE_CM,
+  DEFAULT_MIN_IMAGE_CM,
+  cmToPx,
+  mmToPx,
+} from '../model/constants';
 import { buildPaginatedLayout, clampOffsets } from '../model/layoutEngine';
 import { drawPagePreview, renderPageToExportCanvas } from '../model/renderEngine';
-import type { ImageItem, PaginationMode, PositionedImage, PreviewTransform } from '../model/types';
-import { fileToImage } from '../lib/fileToImage';
+import type { ImageItem, PaginationMode, PersistedEditorSnapshot, PositionedImage, PreviewTransform } from '../model/types';
+import { blobToImage, fileToImage } from '../lib/fileToImage';
+import { loadSnapshot, saveSnapshot } from '../lib/persistence';
 
 interface DragState {
   imageId: string;
@@ -24,17 +33,21 @@ export function useCollageEditor() {
   const [images, setImages] = useState<ImageItem[]>([]);
   const [pages, setPages] = useState<Array<{ id: string; widthPx: number; heightPx: number; items: PositionedImage[] }>>([]);
   const [maxImageCm, setMaxImageCm] = useState<number>(DEFAULT_MAX_IMAGE_CM);
+  const [minImageCm, setMinImageCm] = useState<number>(DEFAULT_MIN_IMAGE_CM);
   const [frameMm, setFrameMm] = useState<number>(DEFAULT_FRAME_MM);
+  const [gridModeEnabled, setGridModeEnabled] = useState<boolean>(false);
   const [paginationMode, setPaginationMode] = useState<PaginationMode>('auto');
   const [assistedPageCount, setAssistedPageCount] = useState<number>(1);
   const [selectedPageIndex, setSelectedPageIndex] = useState<number>(0);
   const [overflowImageIds, setOverflowImageIds] = useState<string[]>([]);
   const [oversizedImageIds, setOversizedImageIds] = useState<string[]>([]);
   const [error, setError] = useState<string>('');
+  const [isHydrated, setIsHydrated] = useState<boolean>(false);
 
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const previewTransformRef = useRef<PreviewTransform | null>(null);
   const dragRef = useRef<DragState | null>(null);
+  const knownImageSrcsRef = useRef<Set<string>>(new Set());
 
   const itemById = useMemo(() => new Map(images.map((img) => [img.id, img])), [images]);
   const imageById = useMemo(() => new Map(images.map((img) => [img.id, img.bitmap])), [images]);
@@ -46,16 +59,144 @@ export function useCollageEditor() {
       return;
     }
 
-    previewTransformRef.current = drawPagePreview(canvas, selectedPage, itemById, imageById);
-  }, [selectedPage, itemById, imageById]);
+    previewTransformRef.current = drawPagePreview(canvas, selectedPage, itemById, imageById, {
+      gridEnabled: gridModeEnabled,
+      gridSpacingPx: cmToPx(DEFAULT_GRID_SPACING_CM),
+    });
+  }, [selectedPage, itemById, imageById, gridModeEnabled]);
+
+  useEffect(() => {
+    const currentSrcs = new Set(images.map((image) => image.src));
+    for (const previousSrc of knownImageSrcsRef.current) {
+      if (!currentSrcs.has(previousSrc)) {
+        URL.revokeObjectURL(previousSrc);
+      }
+    }
+    knownImageSrcsRef.current = currentSrcs;
+  }, [images]);
 
   useEffect(() => {
     return () => {
-      for (const image of images) {
-        URL.revokeObjectURL(image.src);
+      for (const src of knownImageSrcsRef.current) {
+        URL.revokeObjectURL(src);
       }
     };
-  }, [images]);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function hydrateFromIndexedDb() {
+      try {
+        const snapshot = await loadSnapshot();
+        if (!snapshot || cancelled) {
+          return;
+        }
+
+        const hydratedImages = await Promise.all(
+          snapshot.images.map(async (savedImage) => {
+            const restored = await blobToImage(savedImage.sourceBlob);
+            return {
+              ...savedImage,
+              src: restored.src,
+              bitmap: restored.image,
+              sourceBlob: restored.blob,
+            } satisfies ImageItem;
+          }),
+        );
+
+        if (cancelled) {
+          for (const image of hydratedImages) {
+            URL.revokeObjectURL(image.src);
+          }
+          return;
+        }
+
+        setImages(hydratedImages);
+        setPages(snapshot.pages);
+        setOverflowImageIds(snapshot.overflowImageIds);
+        setOversizedImageIds(snapshot.oversizedImageIds);
+        setMaxImageCm(snapshot.settings.maxImageCm);
+        setMinImageCm(snapshot.settings.minImageCm);
+        setFrameMm(snapshot.settings.frameMm);
+        setGridModeEnabled(snapshot.settings.gridModeEnabled);
+        setPaginationMode(snapshot.settings.paginationMode);
+        setAssistedPageCount(snapshot.settings.assistedPageCount);
+        setSelectedPageIndex(snapshot.settings.selectedPageIndex);
+      } catch {
+        setError('Could not restore saved project state from local storage.');
+      } finally {
+        if (!cancelled) {
+          setIsHydrated(true);
+        }
+      }
+    }
+
+    void hydrateFromIndexedDb();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isHydrated) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      const snapshot: PersistedEditorSnapshot = {
+        version: 1,
+        savedAt: Date.now(),
+        settings: {
+          maxImageCm,
+          minImageCm,
+          frameMm,
+          gridModeEnabled,
+          paginationMode,
+          assistedPageCount,
+          selectedPageIndex,
+        },
+        pages,
+        overflowImageIds,
+        oversizedImageIds,
+        images: images.map((image) => ({
+          id: image.id,
+          fileName: image.fileName,
+          sourceBlob: image.sourceBlob,
+          naturalWidth: image.naturalWidth,
+          naturalHeight: image.naturalHeight,
+          maxWidthCm: image.maxWidthCm,
+          maxHeightCm: image.maxHeightCm,
+          frameEnabled: image.frameEnabled,
+          frameThicknessPx: image.frameThicknessPx,
+          renderWidthPx: image.renderWidthPx,
+          renderHeightPx: image.renderHeightPx,
+          offsetX: image.offsetX,
+          offsetY: image.offsetY,
+          cropMaxOffsetX: image.cropMaxOffsetX,
+          cropMaxOffsetY: image.cropMaxOffsetY,
+        })),
+      };
+
+      void saveSnapshot(snapshot);
+    }, 500);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [
+    isHydrated,
+    maxImageCm,
+    minImageCm,
+    frameMm,
+    gridModeEnabled,
+    paginationMode,
+    assistedPageCount,
+    selectedPageIndex,
+    pages,
+    overflowImageIds,
+    oversizedImageIds,
+    images,
+  ]);
 
   async function onUploadFiles(event: ChangeEvent<HTMLInputElement>): Promise<void> {
     const files = Array.from(event.target.files ?? []);
@@ -68,6 +209,7 @@ export function useCollageEditor() {
       const next: ImageItem[] = loaded.map((entry, index) => ({
         id: randomId(`${Date.now()}-${index}`),
         fileName: files[index].name,
+        sourceBlob: entry.blob,
         src: entry.src,
         bitmap: entry.image,
         naturalWidth: entry.naturalWidth,
@@ -120,6 +262,8 @@ export function useCollageEditor() {
       canvasWidthPx: CANVAS_SIZE_PX,
       canvasHeightPx: CANVAS_SIZE_PX,
       maxPages: paginationMode === 'auto' ? Number.POSITIVE_INFINITY : overrideAssistedCount,
+      minContentWidthPx: cmToPx(minImageCm),
+      minContentHeightPx: cmToPx(minImageCm),
     });
 
     const metricsById = result.imageMetrics;
@@ -285,8 +429,12 @@ export function useCollageEditor() {
     pages,
     maxImageCm,
     setMaxImageCm,
+    minImageCm,
+    setMinImageCm,
     frameMm,
     setFrameMm,
+    gridModeEnabled,
+    setGridModeEnabled,
     paginationMode,
     setPaginationMode,
     selectedPageIndex,

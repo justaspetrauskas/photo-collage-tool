@@ -7,6 +7,8 @@ interface LayoutOptions {
   canvasHeightPx: number;
   allowUpscale?: boolean;
   maxPages?: number;
+  minContentWidthPx?: number;
+  minContentHeightPx?: number;
 }
 
 interface BaseRect {
@@ -72,6 +74,8 @@ export function buildPaginatedLayout(images: ImageItem[], options: LayoutOptions
     canvasHeightPx,
     allowUpscale = false,
     maxPages = Number.POSITIVE_INFINITY,
+    minContentWidthPx = 0,
+    minContentHeightPx = 0,
   } = options;
 
   const baseRects: BaseRect[] = images
@@ -102,8 +106,10 @@ export function buildPaginatedLayout(images: ImageItem[], options: LayoutOptions
   function projectRects(rects: BaseRect[], scale: number): ProjectedRect[] {
     return rects
       .map((rect) => {
-        const contentWidthPx = Math.max(1, Math.round(rect.baseContentWidthPx * scale));
-        const contentHeightPx = Math.max(1, Math.round(rect.baseContentHeightPx * scale));
+        const minWidthFloorPx = Math.min(rect.baseContentWidthPx, minContentWidthPx);
+        const minHeightFloorPx = Math.min(rect.baseContentHeightPx, minContentHeightPx);
+        const contentWidthPx = Math.max(minWidthFloorPx, Math.round(rect.baseContentWidthPx * scale));
+        const contentHeightPx = Math.max(minHeightFloorPx, Math.round(rect.baseContentHeightPx * scale));
         const packedWidth = contentWidthPx + rect.frameThicknessPx * 2;
         const packedHeight = contentHeightPx + rect.frameThicknessPx * 2;
         const crop = getCropMetrics(
