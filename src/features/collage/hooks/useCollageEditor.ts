@@ -59,6 +59,12 @@ function pageHasOverlap(page: { items: Array<{ x: number; y: number; width: numb
   return false;
 }
 
+type ResizeFeedback = {
+  baseRect: { x: number; y: number; width: number; height: number };
+  currentRect: { x: number; y: number; width: number; height: number };
+  intent: 'expand' | 'shrink' | 'steady';
+};
+
 function randomId(prefix = 'img'): string {
   return `${prefix}-${crypto.randomUUID()}`;
 }
@@ -104,6 +110,7 @@ export function useCollageEditor() {
   const [moveOutsideCanvas, setMoveOutsideCanvas] = useState<boolean>(false);
   const [moveCollisionImageIds, setMoveCollisionImageIds] = useState<string[]>([]);
   const [resizeCurrentDimensions, setResizeCurrentDimensions] = useState<{ width: number; height: number } | null>(null);
+  const [resizeFeedback, setResizeFeedback] = useState<ResizeFeedback | null>(null);
   const [enhancingImageIds, setEnhancingImageIds] = useState<Set<string>>(new Set());
   const [canvasPlacementPreview, setCanvasPlacementPreview] = useState<CanvasPlacementPreview | null>(null);
   const [manualPlacementDragImageId, setManualPlacementDragImageId] = useState<string | null>(null);
@@ -153,10 +160,11 @@ export function useCollageEditor() {
       moveOutsideCanvas,
       moveCollisionImageIds,
       resizeCurrentDimensions,
+      resizeFeedback,
       placementPreview: canvasPlacementPreview,
       animationTimeMs: replaceAnimationTick,
     });
-  }, [selectedPage, itemById, imageById, gridModeEnabled, selectedImageId, hoveredImageId, drawerSelectedImageId, imageZoomLevels, imagePanOffsets, interactionMode, dragActive, moveOutsideCanvas, moveCollisionImageIds, resizeCurrentDimensions, canvasPlacementPreview, replaceAnimationTick]);
+  }, [selectedPage, itemById, imageById, gridModeEnabled, selectedImageId, hoveredImageId, drawerSelectedImageId, imageZoomLevels, imagePanOffsets, interactionMode, dragActive, moveOutsideCanvas, moveCollisionImageIds, resizeCurrentDimensions, resizeFeedback, canvasPlacementPreview, replaceAnimationTick]);
 
 function rectanglesTouchOrOverlap(
   a: { x: number; y: number; width: number; height: number },
@@ -867,6 +875,11 @@ function rectanglesTouchOrOverlap(
       baseHeight: hit.height,
     };
     setDragActive(true);
+    setResizeFeedback({
+      baseRect: { x: hit.x, y: hit.y, width: hit.width, height: hit.height },
+      currentRect: { x: hit.x, y: hit.y, width: hit.width, height: hit.height },
+      intent: 'steady',
+    });
   }
 
   function onCanvasMouseMove(event: MouseEvent<HTMLCanvasElement>): void {
@@ -984,6 +997,7 @@ function rectanglesTouchOrOverlap(
       const deltaXCm = deltaX / cmToPx(1);
       const deltaYCm = deltaY / cmToPx(1);
       const dominantDeltaCm = Math.abs(deltaXCm) >= Math.abs(deltaYCm) ? deltaXCm : deltaYCm;
+      const resizeIntent = dominantDeltaCm > 0.01 ? 'expand' : dominantDeltaCm < -0.01 ? 'shrink' : 'steady';
 
       const requestedMaxWidthCm = drag.baseMaxWidthCm + dominantDeltaCm;
       const requestedMaxHeightCm = drag.baseMaxHeightCm + dominantDeltaCm;
@@ -1093,12 +1107,27 @@ function rectanglesTouchOrOverlap(
       }
 
       if (!resolved) {
+        setResizeFeedback({
+          baseRect: { x: drag.baseX, y: drag.baseY, width: drag.baseWidth, height: drag.baseHeight },
+          currentRect: { x: drag.baseX, y: drag.baseY, width: drag.baseWidth, height: drag.baseHeight },
+          intent: resizeIntent,
+        });
         setResizeLimitNotice('Cannot resize further: neighboring images are pinned by the canvas border.');
         return;
       }
 
       // Update current dimensions for label display (content only)
       setResizeCurrentDimensions({ width: resolved.content.widthPx, height: resolved.content.heightPx });
+      setResizeFeedback({
+        baseRect: { x: drag.baseX, y: drag.baseY, width: drag.baseWidth, height: drag.baseHeight },
+        currentRect: {
+          x: nextX,
+          y: nextY,
+          width: resolved.nextItems[itemIndex].width,
+          height: resolved.nextItems[itemIndex].height,
+        },
+        intent: resizeIntent,
+      });
 
       setPages((currentPages) => currentPages.map((currentPage, index) => {
         if (index !== pageIndex) {
@@ -1166,6 +1195,7 @@ function rectanglesTouchOrOverlap(
     setMoveOutsideCanvas(false);
     setMoveCollisionImageIds([]);
     setResizeCurrentDimensions(null);
+    setResizeFeedback(null);
   }
 
   function onCanvasMouseLeave(): void {
@@ -1472,6 +1502,7 @@ function rectanglesTouchOrOverlap(
     setResizeLimitNotice('');
     setError('');
     setResizeCurrentDimensions(null);
+    setResizeFeedback(null);
     dragStateRef.current = null;
     setMoveCollisionImageIds([]);
   }
@@ -1598,6 +1629,7 @@ function rectanglesTouchOrOverlap(
     setResizeLimitNotice('');
     setError('');
     setResizeCurrentDimensions(null);
+    setResizeFeedback(null);
     dragStateRef.current = null;
     setMoveOutsideCanvas(false);
     setMoveCollisionImageIds([]);

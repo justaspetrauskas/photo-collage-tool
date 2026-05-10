@@ -14,9 +14,18 @@ interface PreviewOptions {
   moveOutsideCanvas?: boolean;
   moveCollisionImageIds?: string[];
   resizeCurrentDimensions?: { width: number; height: number } | null;
+  resizeFeedback?: {
+    baseRect: { x: number; y: number; width: number; height: number };
+    currentRect: { x: number; y: number; width: number; height: number };
+    intent: 'expand' | 'shrink' | 'steady';
+  } | null;
   placementPreview?: { x: number; y: number; width: number; height: number; valid: boolean } | null;
   animationTimeMs?: number;
 }
+
+const RESIZE_ACCENT_STROKE = 'rgba(252, 197, 21, 0.92)';
+const RESIZE_ACCENT_FILL = 'rgba(252, 197, 21, 0.12)';
+const RESIZE_ACCENT_FILL_STRONG = 'rgba(252, 197, 21, 0.22)';
 
 function drawPlacementPreview(
   ctx: CanvasRenderingContext2D,
@@ -127,6 +136,7 @@ function drawSelectionFeedback(
   interactionMode: InteractionMode,
   dragActive: boolean,
   scale: number,
+  resizeFeedback?: PreviewOptions['resizeFeedback'],
 ): void {
   const selected = page.items.find((item) => item.imageId === selectedImageId);
   if (!selected) {
@@ -134,8 +144,8 @@ function drawSelectionFeedback(
   }
 
   // Theme amber accent: #fcc515 (252, 197, 21)
-  const interactionColor = 'rgba(252, 197, 21, 0.92)';
-  const interactionFill = 'rgba(252, 197, 21, 0.12)';
+  const interactionColor = RESIZE_ACCENT_STROKE;
+  const interactionFill = RESIZE_ACCENT_FILL;
   const thickness = dragActive ? 3 : 2;
 
   ctx.save();
@@ -162,6 +172,8 @@ function drawSelectionFeedback(
   } else if (interactionMode === 'resize') {
     const handleSize = 9;
     const half = handleSize / 2;
+    const handleX = selected.x + selected.width;
+    const handleY = selected.y + selected.height;
     const corners = [
       [selected.x, selected.y],
       [selected.x + selected.width, selected.y],
@@ -170,15 +182,89 @@ function drawSelectionFeedback(
     ];
 
     ctx.setLineDash([]);
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+    ctx.fillStyle = dragActive ? 'rgba(252, 197, 21, 0.32)' : 'rgba(252, 197, 21, 0.18)';
     ctx.strokeStyle = interactionColor;
     ctx.lineWidth = 1.3 / scale;
     for (const [cx, cy] of corners) {
       ctx.fillRect(cx - half, cy - half, handleSize, handleSize);
       ctx.strokeRect(cx - half, cy - half, handleSize, handleSize);
     }
+
+    const iconStroke = resizeFeedback?.intent === 'shrink' ? 'rgba(255, 248, 220, 0.98)' : interactionColor;
+    const arrowSpan = 10 / scale;
+    const arrowBaseX = handleX - 7 / scale;
+    const arrowBaseY = handleY - 7 / scale;
+
+    ctx.strokeStyle = iconStroke;
+    ctx.lineWidth = 1.8 / scale;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    if (resizeFeedback?.intent === 'shrink') {
+      ctx.beginPath();
+      ctx.moveTo(arrowBaseX, arrowBaseY - arrowSpan * 0.5);
+      ctx.lineTo(arrowBaseX - arrowSpan * 0.7, arrowBaseY - arrowSpan * 0.5);
+      ctx.lineTo(arrowBaseX - arrowSpan * 0.42, arrowBaseY - arrowSpan * 0.78);
+      ctx.moveTo(arrowBaseX - arrowSpan * 0.5, arrowBaseY);
+      ctx.lineTo(arrowBaseX - arrowSpan * 0.5, arrowBaseY - arrowSpan * 0.7);
+      ctx.lineTo(arrowBaseX - arrowSpan * 0.22, arrowBaseY - arrowSpan * 0.42);
+      ctx.stroke();
+    } else {
+      ctx.beginPath();
+      ctx.moveTo(arrowBaseX - arrowSpan * 0.78, arrowBaseY - arrowSpan * 0.5);
+      ctx.lineTo(arrowBaseX - arrowSpan * 0.08, arrowBaseY - arrowSpan * 0.5);
+      ctx.lineTo(arrowBaseX - arrowSpan * 0.34, arrowBaseY - arrowSpan * 0.76);
+      ctx.moveTo(arrowBaseX - arrowSpan * 0.5, arrowBaseY - arrowSpan * 0.78);
+      ctx.lineTo(arrowBaseX - arrowSpan * 0.5, arrowBaseY - arrowSpan * 0.08);
+      ctx.lineTo(arrowBaseX - arrowSpan * 0.76, arrowBaseY - arrowSpan * 0.34);
+      ctx.stroke();
+    }
   }
 
+  ctx.restore();
+}
+
+function drawResizeFeedback(
+  ctx: CanvasRenderingContext2D,
+  feedback: NonNullable<PreviewOptions['resizeFeedback']>,
+  scale: number,
+): void {
+  const { baseRect, currentRect, intent } = feedback;
+  const referenceRect = intent === 'shrink' ? baseRect : currentRect;
+  const rightStart = Math.min(baseRect.x + baseRect.width, currentRect.x + currentRect.width);
+  const rightEnd = Math.max(baseRect.x + baseRect.width, currentRect.x + currentRect.width);
+  const bottomStart = Math.min(baseRect.y + baseRect.height, currentRect.y + currentRect.height);
+  const bottomEnd = Math.max(baseRect.y + baseRect.height, currentRect.y + currentRect.height);
+
+  ctx.save();
+  ctx.fillStyle = RESIZE_ACCENT_FILL_STRONG;
+  ctx.strokeStyle = RESIZE_ACCENT_STROKE;
+  ctx.lineWidth = 1.8 / scale;
+
+  if (rightEnd - rightStart > 0.5) {
+    ctx.fillRect(rightStart, referenceRect.y, rightEnd - rightStart, referenceRect.height);
+  }
+
+  if (bottomEnd - bottomStart > 0.5) {
+    ctx.fillRect(referenceRect.x, bottomStart, referenceRect.width, bottomEnd - bottomStart);
+  }
+
+  ctx.setLineDash([7 / scale, 5 / scale]);
+  ctx.strokeRect(baseRect.x, baseRect.y, baseRect.width, baseRect.height);
+
+  const label = intent === 'shrink' ? 'Shrinks from bottom-right' : 'Expands to right and bottom';
+  const labelPaddingX = 7 / scale;
+  const labelHeight = 18 / scale;
+  const labelX = currentRect.x + 8 / scale;
+  const labelY = Math.max(6 / scale, currentRect.y - 24 / scale);
+
+  ctx.setLineDash([]);
+  ctx.font = `600 ${11 / scale}px ui-sans-serif, system-ui, sans-serif`;
+  const labelWidth = ctx.measureText(label).width + labelPaddingX * 2;
+  ctx.fillStyle = 'rgba(20, 26, 40, 0.86)';
+  ctx.fillRect(labelX, labelY, labelWidth, labelHeight);
+  ctx.fillStyle = '#fff7db';
+  ctx.fillText(label, labelX + labelPaddingX, labelY + labelHeight / 2 + 0.4 / scale);
   ctx.restore();
 }
 
@@ -500,7 +586,12 @@ export function drawPagePreview(
       options.interactionMode ?? 'crop',
       options.dragActive ?? false,
       scale,
+      options.resizeFeedback,
     );
+
+    if (options.resizeFeedback && options.interactionMode === 'resize') {
+      drawResizeFeedback(ctx, options.resizeFeedback, scale);
+    }
 
     if (options.moveOutsideCanvas && options.interactionMode === 'move') {
       drawMoveOutsideFeedback(ctx, page, options.selectedImageId, scale);
