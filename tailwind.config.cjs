@@ -26,18 +26,18 @@ module.exports = {
         danger: 'rgb(var(--color-danger) / <alpha-value>)',
       },
       fontFamily: {
-        sans: ['Manrope', 'ui-sans-serif', 'system-ui', 'sans-serif'],
-        display: ['Archivo Black', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        display: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
       },
       borderRadius: {
         panel: '1.1rem',
       },
       boxShadow: {
-        panel: '0 14px 34px rgba(62, 44, 24, 0.08)',
+        panel: '0 22px 48px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(148, 163, 184, 0.14)',
       },
       backgroundImage: {
         atmosphere:
-          'radial-gradient(circle at 20% 15%, rgba(255, 244, 229, 0.95) 0%, rgba(255, 244, 229, 0) 42%), radial-gradient(circle at 80% 0%, rgba(255, 217, 181, 0.85) 0%, rgba(255, 217, 181, 0) 35%)',
+          'radial-gradient(circle at 12% 8%, rgba(124,58,237,0.42) 0%, rgba(124,58,237,0) 48%), radial-gradient(circle at 88% 2%, rgba(34,211,238,0.35) 0%, rgba(34,211,238,0) 46%), radial-gradient(circle at 52% 96%, rgba(59,130,246,0.28) 0%, rgba(59,130,246,0) 42%)',
       },
       keyframes: {
         'fade-up': {

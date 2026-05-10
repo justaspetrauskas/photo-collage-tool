@@ -8,6 +8,50 @@ interface PreviewOptions {
   hoveredImageId?: string | null;
   interactionMode?: InteractionMode;
   dragActive?: boolean;
+  moveOutsideCanvas?: boolean;
+  resizeCurrentDimensions?: { width: number; height: number } | null;
+  animationTimeMs?: number;
+}
+
+function drawReplaceTargetFeedback(
+  ctx: CanvasRenderingContext2D,
+  page: PageLayout,
+  targetImageId: string,
+  scale: number,
+  animationTimeMs: number,
+): void {
+  const target = page.items.find((item) => item.imageId === targetImageId);
+  if (!target) {
+    return;
+  }
+
+  const pulse = 0.55 + 0.45 * Math.sin(animationTimeMs / 130);
+  const inset = 3 / scale;
+
+  ctx.save();
+  ctx.lineWidth = (2 + pulse) / scale;
+  ctx.strokeStyle = `rgba(10, 122, 62, ${0.65 + pulse * 0.25})`;
+  ctx.fillStyle = `rgba(34, 139, 84, ${0.12 + pulse * 0.1})`;
+  ctx.setLineDash([10 / scale, 7 / scale]);
+  ctx.lineDashOffset = -(animationTimeMs / 18) / scale;
+
+  ctx.fillRect(target.x + inset, target.y + inset, target.width - inset * 2, target.height - inset * 2);
+  ctx.strokeRect(target.x + inset, target.y + inset, target.width - inset * 2, target.height - inset * 2);
+
+  const labelPaddingX = 6 / scale;
+  const labelHeight = 18 / scale;
+  const labelWidth = 122 / scale;
+  const labelX = target.x + 6 / scale;
+  const labelY = target.y + 6 / scale;
+
+  ctx.fillStyle = 'rgba(10, 122, 62, 0.9)';
+  ctx.setLineDash([]);
+  ctx.fillRect(labelX, labelY, labelWidth, labelHeight);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = `${11 / scale}px ui-sans-serif, system-ui, sans-serif`;
+  ctx.textBaseline = 'middle';
+  ctx.fillText('Replace target', labelX + labelPaddingX, labelY + labelHeight / 2);
+  ctx.restore();
 }
 
 function drawHoverFeedback(
@@ -42,8 +86,22 @@ function drawSelectionFeedback(
     return;
   }
 
-  const interactionColor = interactionMode === 'crop' ? 'rgba(13, 110, 184, 0.92)' : 'rgba(207, 91, 44, 0.92)';
-  const interactionFill = interactionMode === 'crop' ? 'rgba(13, 110, 184, 0.12)' : 'rgba(207, 91, 44, 0.12)';
+  const interactionColor =
+    interactionMode === 'crop'
+      ? 'rgba(13, 110, 184, 0.92)'
+      : interactionMode === 'resize'
+        ? 'rgba(207, 91, 44, 0.92)'
+        : interactionMode === 'move'
+          ? 'rgba(168, 85, 247, 0.92)'
+          : 'rgba(34, 139, 84, 0.92)';
+  const interactionFill =
+    interactionMode === 'crop'
+      ? 'rgba(13, 110, 184, 0.12)'
+      : interactionMode === 'resize'
+        ? 'rgba(207, 91, 44, 0.12)'
+        : interactionMode === 'move'
+          ? 'rgba(168, 85, 247, 0.12)'
+          : 'rgba(34, 139, 84, 0.12)';
   const thickness = dragActive ? 3 : 2;
 
   ctx.save();
@@ -67,7 +125,7 @@ function drawSelectionFeedback(
     ctx.moveTo(innerX, innerY + innerH / 2);
     ctx.lineTo(innerX + innerW, innerY + innerH / 2);
     ctx.stroke();
-  } else {
+  } else if (interactionMode === 'resize') {
     const handleSize = 9;
     const half = handleSize / 2;
     const corners = [
@@ -86,6 +144,97 @@ function drawSelectionFeedback(
       ctx.strokeRect(cx - half, cy - half, handleSize, handleSize);
     }
   }
+
+  ctx.restore();
+}
+
+function drawMoveOutsideFeedback(
+  ctx: CanvasRenderingContext2D,
+  page: PageLayout,
+  selectedImageId: string,
+  scale: number,
+): void {
+  const selected = page.items.find((item) => item.imageId === selectedImageId);
+  if (!selected) {
+    return;
+  }
+
+  ctx.save();
+  ctx.lineWidth = 4 / scale;
+  ctx.strokeStyle = 'rgba(220, 38, 38, 0.9)';
+  ctx.fillStyle = 'rgba(220, 38, 38, 0.15)';
+  ctx.fillRect(selected.x, selected.y, selected.width, selected.height);
+  ctx.setLineDash([8 / scale, 5 / scale]);
+  ctx.strokeRect(selected.x, selected.y, selected.width, selected.height);
+
+  // Draw X symbol over the image
+  const centerX = selected.x + selected.width / 2;
+  const centerY = selected.y + selected.height / 2;
+  const size = Math.min(selected.width, selected.height) * 0.3;
+
+  ctx.lineWidth = 3 / scale;
+  ctx.strokeStyle = 'rgba(220, 38, 38, 0.85)';
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.moveTo(centerX - size, centerY - size);
+  ctx.lineTo(centerX + size, centerY + size);
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(centerX + size, centerY - size);
+  ctx.lineTo(centerX - size, centerY + size);
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+function drawResizeLabel(
+  ctx: CanvasRenderingContext2D,
+  page: PageLayout,
+  selectedImageId: string,
+  dimensions: { width: number; height: number },
+  scale: number,
+): void {
+  const selected = page.items.find((item) => item.imageId === selectedImageId);
+  if (!selected) {
+    return;
+  }
+
+    // Convert pixels to cm (300 DPI: 1 cm ≈ 118.11 px)
+    const pxPerCm = (300 / 2.54); // 300 DPI / 2.54 cm per inch
+    const widthCm = dimensions.width / pxPerCm;
+    const heightCm = dimensions.height / pxPerCm;
+  const label = `${widthCm.toFixed(2)} × ${heightCm.toFixed(2)} cm`;
+
+  // Position label above the image
+  const labelX = selected.x + selected.width / 2;
+  const labelY = selected.y - 20 / scale;
+  const labelPaddingX = 8 / scale;
+  const labelPaddingY = 4 / scale;
+
+  ctx.save();
+  ctx.font = `bold ${13 / scale}px ui-sans-serif, system-ui, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'bottom';
+
+  // Measure text
+  const metrics = ctx.measureText(label);
+  const textWidth = metrics.width;
+  const boxWidth = textWidth + labelPaddingX * 2;
+  const boxHeight = 16 / scale;
+
+  // Draw background box
+  ctx.fillStyle = 'rgba(168, 85, 247, 0.95)';
+  ctx.fillRect(labelX - boxWidth / 2, labelY - boxHeight, boxWidth, boxHeight);
+
+  // Draw border
+  ctx.strokeStyle = 'rgba(168, 85, 247, 1)';
+  ctx.lineWidth = 1.5 / scale;
+  ctx.strokeRect(labelX - boxWidth / 2, labelY - boxHeight, boxWidth, boxHeight);
+
+  // Draw text
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(label, labelX, labelY - labelPaddingY);
 
   ctx.restore();
 }
@@ -152,7 +301,7 @@ export function drawPagePreview(
   canvas.width = Math.round(logicalSize * dpr);
   canvas.height = Math.round(logicalSize * dpr);
   canvas.style.width = `${Math.round(logicalSize)}px`;
-  canvas.style.height = `${Math.round(logicalSize)}px`;
+  canvas.style.height = 'auto';
 
   const ctx = canvas.getContext('2d');
   if (!ctx) {
@@ -217,6 +366,22 @@ export function drawPagePreview(
     ctx.restore();
   }
 
+  if (
+    options.interactionMode === 'replace' &&
+    options.dragActive &&
+    options.hoveredImageId &&
+    options.selectedImageId &&
+    options.hoveredImageId !== options.selectedImageId
+  ) {
+    drawReplaceTargetFeedback(
+      ctx,
+      page,
+      options.hoveredImageId,
+      scale,
+      options.animationTimeMs ?? Date.now(),
+    );
+  }
+
   if (options.hoveredImageId && options.hoveredImageId !== options.selectedImageId) {
     drawHoverFeedback(ctx, page, options.hoveredImageId, scale);
   }
@@ -230,6 +395,14 @@ export function drawPagePreview(
       options.dragActive ?? false,
       scale,
     );
+
+    if (options.moveOutsideCanvas && options.interactionMode === 'move') {
+      drawMoveOutsideFeedback(ctx, page, options.selectedImageId, scale);
+    }
+
+    if (options.resizeCurrentDimensions && options.interactionMode === 'resize') {
+      drawResizeLabel(ctx, page, options.selectedImageId, options.resizeCurrentDimensions, scale);
+    }
   }
 
   ctx.restore();

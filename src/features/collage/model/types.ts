@@ -1,5 +1,5 @@
 export type PaginationMode = 'auto' | 'assisted';
-export type InteractionMode = 'crop' | 'resize';
+export type InteractionMode = 'crop' | 'resize' | 'replace' | 'move';
 
 export interface ImageItem {
   id: string;

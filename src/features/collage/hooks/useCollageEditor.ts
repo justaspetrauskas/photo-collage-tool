@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, MouseEvent } from 'react';
 import {
-  CANVAS_CM,
   CANVAS_SIZE_PX,
   DEFAULT_FRAME_MM,
   DEFAULT_GRID_SPACING_CM,
@@ -39,6 +38,65 @@ interface ResizeDragState {
   startY: number;
   baseMaxWidthCm: number;
   baseMaxHeightCm: number;
+  baseX: number;
+  baseY: number;
+  baseWidth: number;
+  baseHeight: number;
+}
+
+interface ReplaceDragState {
+  sourceImageId: string;
+}
+
+interface MoveDragState {
+  imageId: string;
+  startX: number;
+  startY: number;
+  baseX: number;
+  baseY: number;
+}
+
+function overlaps(
+  a: { x: number; y: number; width: number; height: number },
+  b: { x: number; y: number; width: number; height: number },
+): boolean {
+  return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+}
+
+function computeContentBox(
+  naturalWidth: number,
+  naturalHeight: number,
+  maxWidthCm: number,
+  maxHeightCm: number,
+): { widthPx: number; heightPx: number } {
+  const maxWidthPx = cmToPx(maxWidthCm);
+  const maxHeightPx = cmToPx(maxHeightCm);
+  const widthRatio = maxWidthPx / naturalWidth;
+  const heightRatio = maxHeightPx / naturalHeight;
+  const fitScale = Math.min(widthRatio, heightRatio);
+
+  return {
+    widthPx: Math.round(naturalWidth * fitScale),
+    heightPx: Math.round(naturalHeight * fitScale),
+  };
+}
+
+function computeCropMetrics(
+  naturalWidth: number,
+  naturalHeight: number,
+  frameWidth: number,
+  frameHeight: number,
+): { drawnImageWidthPx: number; drawnImageHeightPx: number; maxOffsetX: number; maxOffsetY: number } {
+  const coverScale = Math.max(frameWidth / naturalWidth, frameHeight / naturalHeight);
+  const drawnImageWidthPx = Math.round(naturalWidth * coverScale);
+  const drawnImageHeightPx = Math.round(naturalHeight * coverScale);
+
+  return {
+    drawnImageWidthPx,
+    drawnImageHeightPx,
+    maxOffsetX: Math.max(0, drawnImageWidthPx - frameWidth),
+    maxOffsetY: Math.max(0, drawnImageHeightPx - frameHeight),
+  };
 }
 
 function rectanglesOverlap(
@@ -46,6 +104,100 @@ function rectanglesOverlap(
   b: { x: number; y: number; width: number; height: number },
 ): boolean {
   return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+}
+
+function isInsideCanvas(rect: { x: number; y: number; width: number; height: number }): boolean {
+  return rect.x >= 0 && rect.y >= 0 && rect.x + rect.width <= CANVAS_SIZE_PX && rect.y + rect.height <= CANVAS_SIZE_PX;
+}
+
+function resolvePushLayout(
+  items: PositionedImage[],
+  anchorIndex: number,
+  anchorRect: { x: number; y: number; width: number; height: number },
+  preferredAxis: 'x' | 'y',
+): PositionedImage[] | null {
+  const nextItems = items.map((item, index) => {
+    if (index !== anchorIndex) {
+      return { ...item };
+    }
+
+    return {
+      ...item,
+      x: anchorRect.x,
+      y: anchorRect.y,
+      width: anchorRect.width,
+      height: anchorRect.height,
+    };
+  });
+
+  const queue: number[] = [anchorIndex];
+  const queued = new Set<number>([anchorIndex]);
+  let guard = 0;
+
+  while (queue.length) {
+    const currentIndex = queue.shift()!;
+    queued.delete(currentIndex);
+    const current = nextItems[currentIndex];
+
+    for (let otherIndex = 0; otherIndex < nextItems.length; otherIndex += 1) {
+      if (otherIndex === currentIndex) {
+        continue;
+      }
+
+      const other = nextItems[otherIndex];
+      if (!overlaps(current, other)) {
+        continue;
+      }
+
+      const pushRight = current.x + current.width - other.x;
+      const pushDown = current.y + current.height - other.y;
+
+      const rightCandidate = {
+        ...other,
+        x: other.x + pushRight,
+      };
+      const downCandidate = {
+        ...other,
+        y: other.y + pushDown,
+      };
+
+      const rightFits = isInsideCanvas(rightCandidate);
+      const downFits = isInsideCanvas(downCandidate);
+
+      if (!rightFits && !downFits) {
+        return null;
+      }
+
+      const useRight = preferredAxis === 'x'
+        ? rightFits || !downFits
+        : rightFits && !downFits;
+      nextItems[otherIndex] = useRight ? rightCandidate : downCandidate;
+
+      if (!queued.has(otherIndex)) {
+        queue.push(otherIndex);
+        queued.add(otherIndex);
+      }
+    }
+
+    guard += 1;
+    if (guard > 2000) {
+      return null;
+    }
+  }
+
+  for (let i = 0; i < nextItems.length; i += 1) {
+    if (!isInsideCanvas(nextItems[i])) {
+      return null;
+    }
+
+    for (let j = i + 1; j < nextItems.length; j += 1) {
+      if (overlaps(nextItems[i], nextItems[j])) {
+        return null;
+      }
+    }
+  }
+
+  return nextItems;
 }
 
 function pageHasOverlap(page: { items: Array<{ x: number; y: number; width: number; height: number }> }): boolean {
@@ -81,19 +233,40 @@ export function useCollageEditor() {
   const [selectedPageIndex, setSelectedPageIndex] = useState<number>(0);
   const [overflowImageIds, setOverflowImageIds] = useState<string[]>([]);
   const [oversizedImageIds, setOversizedImageIds] = useState<string[]>([]);
+  const [resizeLimitNotice, setResizeLimitNotice] = useState<string>('');
   const [error, setError] = useState<string>('');
   const [isHydrated, setIsHydrated] = useState<boolean>(false);
+  const [replaceAnimationTick, setReplaceAnimationTick] = useState<number>(0);
+  const [moveOutsideCanvas, setMoveOutsideCanvas] = useState<boolean>(false);
+  const [resizeCurrentDimensions, setResizeCurrentDimensions] = useState<{ width: number; height: number } | null>(null);
 
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const previewTransformRef = useRef<PreviewTransform | null>(null);
   const cropDragRef = useRef<CropDragState | null>(null);
   const resizeDragRef = useRef<ResizeDragState | null>(null);
+  const replaceDragRef = useRef<ReplaceDragState | null>(null);
+  const moveDragRef = useRef<MoveDragState | null>(null);
   const knownImageSrcsRef = useRef<Set<string>>(new Set());
 
   const itemById = useMemo(() => new Map(images.map((img) => [img.id, img])), [images]);
   const imageById = useMemo(() => new Map(images.map((img) => [img.id, img.bitmap])), [images]);
   const selectedPage = pages[selectedPageIndex] ?? null;
   const selectedImage = selectedImageId ? itemById.get(selectedImageId) ?? null : null;
+
+  useEffect(() => {
+    if (!(dragActive && interactionMode === 'replace')) {
+      return;
+    }
+
+    let frameId = 0;
+    const animate = () => {
+      setReplaceAnimationTick((tick) => (tick + 1) % 10000);
+      frameId = window.requestAnimationFrame(animate);
+    };
+
+    frameId = window.requestAnimationFrame(animate);
+    return () => window.cancelAnimationFrame(frameId);
+  }, [dragActive, interactionMode]);
 
   useEffect(() => {
     const canvas = previewCanvasRef.current;
@@ -108,8 +281,11 @@ export function useCollageEditor() {
       hoveredImageId,
       interactionMode,
       dragActive,
+      moveOutsideCanvas,
+      resizeCurrentDimensions,
+      animationTimeMs: replaceAnimationTick,
     });
-  }, [selectedPage, itemById, imageById, gridModeEnabled, selectedImageId, hoveredImageId, interactionMode, dragActive]);
+  }, [selectedPage, itemById, imageById, gridModeEnabled, selectedImageId, hoveredImageId, interactionMode, dragActive, moveOutsideCanvas, resizeCurrentDimensions, replaceAnimationTick]);
 
   useEffect(() => {
     const currentSrcs = new Set(images.map((image) => image.src));
@@ -329,6 +505,68 @@ export function useCollageEditor() {
     setImages((current) => current.map((image) => (image.id === id ? { ...image, ...patch } : image)));
   }
 
+  function swapImagesOnSelectedPage(sourceImageId: string, targetImageId: string): void {
+    if (sourceImageId === targetImageId || !selectedPage) {
+      return;
+    }
+
+    const sourceIndex = selectedPage.items.findIndex((item) => item.imageId === sourceImageId);
+    const targetIndex = selectedPage.items.findIndex((item) => item.imageId === targetImageId);
+    if (sourceIndex === -1 || targetIndex === -1) {
+      return;
+    }
+
+    const sourceSlot = selectedPage.items[sourceIndex];
+    const targetSlot = selectedPage.items[targetIndex];
+
+    const sourceCandidate = {
+      ...sourceSlot,
+      x: targetSlot.x,
+      y: targetSlot.y,
+    };
+    const targetCandidate = {
+      ...targetSlot,
+      x: sourceSlot.x,
+      y: sourceSlot.y,
+    };
+
+    const otherItems = selectedPage.items.filter((_, index) => index !== sourceIndex && index !== targetIndex);
+    const overlapsOthers = otherItems.some((item) => overlaps(sourceCandidate, item) || overlaps(targetCandidate, item));
+    const overlapsEachOther = overlaps(sourceCandidate, targetCandidate);
+
+    if (overlapsOthers || overlapsEachOther) {
+      setError('Cannot replace these two images because their constrained sizes would overlap nearby images.');
+      return;
+    }
+
+    setPages((currentPages) => currentPages.map((page, pageIndex) => {
+      if (pageIndex !== selectedPageIndex) {
+        return page;
+      }
+
+      const nextItems = [...page.items];
+      nextItems[sourceIndex] = {
+        ...nextItems[sourceIndex],
+        x: targetSlot.x,
+        y: targetSlot.y,
+      };
+      nextItems[targetIndex] = {
+        ...nextItems[targetIndex],
+        x: sourceSlot.x,
+        y: sourceSlot.y,
+      };
+
+      return {
+        ...page,
+        items: nextItems,
+      };
+    }));
+
+    setError('');
+    setSelectedImageId(sourceImageId);
+    setHoveredImageId(targetImageId);
+  }
+
   function resolveMaxPages(overrideAssistedCount?: number): number {
     if (paginationMode === 'auto') {
       return Number.POSITIVE_INFINITY;
@@ -351,6 +589,7 @@ export function useCollageEditor() {
     const result = buildPaginatedLayout(sourceImages, {
       canvasWidthPx: CANVAS_SIZE_PX,
       canvasHeightPx: CANVAS_SIZE_PX,
+      allowUpscale: true,
       maxPages: paginationMode === 'auto' ? Number.POSITIVE_INFINITY : overrideAssistedCount,
       minContentWidthPx: cmToPx(minImageCm),
       minContentHeightPx: cmToPx(minImageCm),
@@ -484,6 +723,35 @@ export function useCollageEditor() {
         maxOffsetY: hit.maxOffsetY,
       };
       resizeDragRef.current = null;
+      replaceDragRef.current = null;
+      moveDragRef.current = null;
+      return;
+    }
+
+    if (interactionMode === 'replace') {
+      replaceDragRef.current = {
+        sourceImageId: hit.imageId,
+      };
+      cropDragRef.current = null;
+      resizeDragRef.current = null;
+      moveDragRef.current = null;
+      setDragActive(true);
+      return;
+    }
+
+    if (interactionMode === 'move') {
+      moveDragRef.current = {
+        imageId: hit.imageId,
+        startX: point.x,
+        startY: point.y,
+        baseX: hit.x,
+        baseY: hit.y,
+      };
+      cropDragRef.current = null;
+      resizeDragRef.current = null;
+      replaceDragRef.current = null;
+      setDragActive(true);
+      setMoveOutsideCanvas(false);
       return;
     }
 
@@ -493,8 +761,14 @@ export function useCollageEditor() {
       startY: point.y,
       baseMaxWidthCm: item.maxWidthCm,
       baseMaxHeightCm: item.maxHeightCm,
+      baseX: hit.x,
+      baseY: hit.y,
+      baseWidth: hit.width,
+      baseHeight: hit.height,
     };
     cropDragRef.current = null;
+    replaceDragRef.current = null;
+    moveDragRef.current = null;
     setDragActive(true);
   }
 
@@ -531,28 +805,253 @@ export function useCollageEditor() {
       return;
     }
 
+    if (interactionMode === 'replace' && replaceDragRef.current) {
+      setHoveredImageId(hit?.imageId ?? null);
+      return;
+    }
+
+    if (interactionMode === 'move' && moveDragRef.current) {
+      const drag = moveDragRef.current;
+      const deltaX = point.x - drag.startX;
+      const deltaY = point.y - drag.startY;
+      const nextX = drag.baseX + deltaX;
+      const nextY = drag.baseY + deltaY;
+
+      const pageIndex = pages.findIndex((page) => page.items.some((item) => item.imageId === drag.imageId));
+      if (pageIndex === -1) {
+        return;
+      }
+
+      const page = pages[pageIndex];
+      const itemIndex = page.items.findIndex((item) => item.imageId === drag.imageId);
+      if (itemIndex === -1) {
+        return;
+      }
+
+      const item = page.items[itemIndex];
+      const isOutsideCanvas =
+        nextX < 0 || nextY < 0 || nextX + item.width > CANVAS_SIZE_PX || nextY + item.height > CANVAS_SIZE_PX;
+
+      setMoveOutsideCanvas(isOutsideCanvas);
+
+      if (!isOutsideCanvas) {
+        setPages((currentPages) =>
+          currentPages.map((currentPage, index) => {
+            if (index !== pageIndex) {
+              return currentPage;
+            }
+
+            const nextItems = [...currentPage.items];
+            nextItems[itemIndex] = {
+              ...nextItems[itemIndex],
+              x: nextX,
+              y: nextY,
+            };
+
+            return {
+              ...currentPage,
+              items: nextItems,
+            };
+          }),
+        );
+      }
+      return;
+    }
+
     if (interactionMode === 'resize' && resizeDragRef.current) {
       const drag = resizeDragRef.current;
-      const deltaPx = Math.max(point.x - drag.startX, point.y - drag.startY);
-      const deltaCm = deltaPx / cmToPx(1);
+      const deltaX = point.x - drag.startX;
+      const deltaY = point.y - drag.startY;
+      const preferredPushAxis: 'x' | 'y' = Math.abs(deltaX) >= Math.abs(deltaY) ? 'x' : 'y';
 
-      const nextMaxWidthCm = Math.max(minImageCm, Math.min(CANVAS_CM, drag.baseMaxWidthCm + deltaCm));
-      const nextMaxHeightCm = Math.max(minImageCm, Math.min(CANVAS_CM, drag.baseMaxHeightCm + deltaCm));
+      // Convert deltas from pixels to cm and lock scaling to preserve aspect ratio.
+      const deltaXCm = deltaX / cmToPx(1);
+      const deltaYCm = deltaY / cmToPx(1);
+      const dominantDeltaCm = Math.abs(deltaXCm) >= Math.abs(deltaYCm) ? deltaXCm : deltaYCm;
 
-      const nextImages = images.map((image) => (image.id === drag.imageId ? {
-        ...image,
-        maxWidthCm: Number(nextMaxWidthCm.toFixed(2)),
-        maxHeightCm: Number(nextMaxHeightCm.toFixed(2)),
-      } : image));
+      const requestedMaxWidthCm = drag.baseMaxWidthCm + dominantDeltaCm;
+      const requestedMaxHeightCm = drag.baseMaxHeightCm + dominantDeltaCm;
 
-      regenerateLayout(resolveMaxPages(), true, nextImages);
+      const clampedRequestedMaxWidthCm = Math.max(minImageCm, requestedMaxWidthCm);
+      const clampedRequestedMaxHeightCm = Math.max(minImageCm, requestedMaxHeightCm);
+      setResizeLimitNotice('');
+
+      const targetImage = itemById.get(drag.imageId);
+      if (!targetImage) {
+        return;
+      }
+
+      const pageIndex = pages.findIndex((page) => page.items.some((item) => item.imageId === drag.imageId));
+      if (pageIndex === -1) {
+        return;
+      }
+
+      const page = pages[pageIndex];
+      const itemIndex = page.items.findIndex((item) => item.imageId === drag.imageId);
+      if (itemIndex === -1) {
+        return;
+      }
+
+      // Top-left corner is always fixed (origin point)
+      const nextX = drag.baseX;
+      const nextY = drag.baseY;
+
+      const tryApplyResize = (candidateMaxWidthCm: number, candidateMaxHeightCm: number) => {
+        const nextContent = computeContentBox(
+          targetImage.naturalWidth,
+          targetImage.naturalHeight,
+          candidateMaxWidthCm,
+          candidateMaxHeightCm,
+        );
+        const nextFrameThicknessPx = targetImage.frameEnabled ? targetImage.frameThicknessPx : 0;
+        const candidate = {
+          x: nextX,
+          y: nextY,
+          width: nextContent.widthPx + nextFrameThicknessPx * 2,
+          height: nextContent.heightPx + nextFrameThicknessPx * 2,
+        };
+
+        const pushedItems = resolvePushLayout(page.items, itemIndex, candidate, preferredPushAxis);
+        if (!pushedItems) {
+          return null;
+        }
+
+        const nextCrop = computeCropMetrics(
+          targetImage.naturalWidth,
+          targetImage.naturalHeight,
+          nextContent.widthPx,
+          nextContent.heightPx,
+        );
+
+        const patchedItems = [...pushedItems];
+        patchedItems[itemIndex] = {
+          ...patchedItems[itemIndex],
+          x: nextX,
+          y: nextY,
+          width: candidate.width,
+          height: candidate.height,
+          contentWidthPx: nextContent.widthPx,
+          contentHeightPx: nextContent.heightPx,
+          frameThicknessPx: nextFrameThicknessPx,
+          drawnImageWidthPx: nextCrop.drawnImageWidthPx,
+          drawnImageHeightPx: nextCrop.drawnImageHeightPx,
+          maxOffsetX: nextCrop.maxOffsetX,
+          maxOffsetY: nextCrop.maxOffsetY,
+        };
+
+        return {
+          nextItems: patchedItems,
+          content: nextContent,
+          crop: nextCrop,
+          maxWidthCm: candidateMaxWidthCm,
+          maxHeightCm: candidateMaxHeightCm,
+        };
+      };
+
+      let resolved = tryApplyResize(clampedRequestedMaxWidthCm, clampedRequestedMaxHeightCm);
+      let scaledDownByBorder = false;
+
+      if (!resolved && (clampedRequestedMaxWidthCm > drag.baseMaxWidthCm || clampedRequestedMaxHeightCm > drag.baseMaxHeightCm)) {
+        let low = 0;
+        let high = 1;
+        let best: ReturnType<typeof tryApplyResize> = null;
+
+        for (let i = 0; i < 14; i += 1) {
+          const mid = (low + high) / 2;
+          const midWidthCm = drag.baseMaxWidthCm + (clampedRequestedMaxWidthCm - drag.baseMaxWidthCm) * mid;
+          const midHeightCm = drag.baseMaxHeightCm + (clampedRequestedMaxHeightCm - drag.baseMaxHeightCm) * mid;
+          const candidate = tryApplyResize(midWidthCm, midHeightCm);
+
+          if (candidate) {
+            best = candidate;
+            low = mid;
+          } else {
+            high = mid;
+          }
+        }
+
+        if (best) {
+          resolved = best;
+          scaledDownByBorder = true;
+        }
+      }
+
+      if (!resolved) {
+        setResizeLimitNotice('Cannot resize further: neighboring images are pinned by the canvas border.');
+        return;
+      }
+
+      // Update current dimensions for label display (content only)
+      setResizeCurrentDimensions({ width: resolved.content.widthPx, height: resolved.content.heightPx });
+
+      setPages((currentPages) => currentPages.map((currentPage, index) => {
+        if (index !== pageIndex) {
+          return currentPage;
+        }
+
+        return {
+          ...currentPage,
+          items: resolved.nextItems,
+        };
+      }));
+
+      setImages((current) => current.map((image) => {
+        if (image.id !== drag.imageId) {
+          return image;
+        }
+
+        const clampedOffsets = clampOffsets(image.offsetX, image.offsetY, resolved.crop.maxOffsetX, resolved.crop.maxOffsetY);
+        return {
+          ...image,
+          maxWidthCm: Number(resolved.maxWidthCm.toFixed(2)),
+          maxHeightCm: Number(resolved.maxHeightCm.toFixed(2)),
+          renderWidthPx: resolved.content.widthPx,
+          renderHeightPx: resolved.content.heightPx,
+          cropMaxOffsetX: resolved.crop.maxOffsetX,
+          cropMaxOffsetY: resolved.crop.maxOffsetY,
+          offsetX: clampedOffsets.offsetX,
+          offsetY: clampedOffsets.offsetY,
+        };
+      }));
+
+      if (requestedMaxWidthCm < minImageCm || requestedMaxHeightCm < minImageCm) {
+        setResizeLimitNotice('Minimum image size reached.');
+      } else if (scaledDownByBorder) {
+        setResizeLimitNotice('Resize limited by canvas border after pushing neighboring images.');
+      } else {
+        setResizeLimitNotice('');
+      }
     }
   }
 
-  function onCanvasMouseUp(): void {
+  function onCanvasMouseUp(event?: MouseEvent<HTMLCanvasElement>): void {
+    if (interactionMode === 'replace' && replaceDragRef.current && event) {
+      const point = pagePointFromMouse(event);
+      const hit = point ? findHitItem(point) : null;
+      if (hit && hit.imageId !== replaceDragRef.current.sourceImageId) {
+        swapImagesOnSelectedPage(replaceDragRef.current.sourceImageId, hit.imageId);
+      }
+    }
+
+    if (interactionMode === 'move' && moveDragRef.current && moveOutsideCanvas) {
+      const imageIdToRemove = moveDragRef.current.imageId;
+      setPages((currentPages) =>
+        currentPages.map((page) => ({
+          ...page,
+          items: page.items.filter((item) => item.imageId !== imageIdToRemove),
+        })),
+      );
+      setSelectedImageId(null);
+      setHoveredImageId(null);
+    }
+
     cropDragRef.current = null;
     resizeDragRef.current = null;
+    replaceDragRef.current = null;
+    moveDragRef.current = null;
     setDragActive(false);
+    setMoveOutsideCanvas(false);
+    setResizeCurrentDimensions(null);
   }
 
   function onCanvasMouseLeave(): void {
@@ -570,8 +1069,8 @@ export function useCollageEditor() {
       return;
     }
 
-    const nextMaxWidthCm = Math.max(minImageCm, Math.min(CANVAS_CM, current.maxWidthCm * scaleFactor));
-    const nextMaxHeightCm = Math.max(minImageCm, Math.min(CANVAS_CM, current.maxHeightCm * scaleFactor));
+    const nextMaxWidthCm = Math.max(minImageCm, current.maxWidthCm * scaleFactor);
+    const nextMaxHeightCm = Math.max(minImageCm, current.maxHeightCm * scaleFactor);
 
     const nextImages = images.map((image) => (image.id === selectedImageId ? {
       ...image,
@@ -622,9 +1121,13 @@ export function useCollageEditor() {
     setSelectedPageIndex(0);
     setOverflowImageIds([]);
     setOversizedImageIds([]);
+    setResizeLimitNotice('');
     setError('');
+    setResizeCurrentDimensions(null);
     cropDragRef.current = null;
     resizeDragRef.current = null;
+    replaceDragRef.current = null;
+    moveDragRef.current = null;
   }
 
   function startFromScratch(): void {
@@ -652,9 +1155,14 @@ export function useCollageEditor() {
     setSelectedPageIndex(0);
     setOverflowImageIds([]);
     setOversizedImageIds([]);
+    setResizeLimitNotice('');
     setError('');
+    setResizeCurrentDimensions(null);
     cropDragRef.current = null;
     resizeDragRef.current = null;
+    replaceDragRef.current = null;
+    moveDragRef.current = null;
+    setMoveOutsideCanvas(false);
     void clearSnapshot();
   }
 
@@ -679,10 +1187,13 @@ export function useCollageEditor() {
     selectedImageId,
     hoveredImageId,
     dragActive,
+    moveOutsideCanvas,
     selectedPageIndex,
     setSelectedPageIndex,
     overflowImageIds,
     oversizedImageIds,
+    resizeLimitNotice,
+    resizeCurrentDimensions,
     error,
     previewCanvasRef,
     onUploadFiles,

@@ -52,7 +52,13 @@ export function CollageControls({
   onClearEverything,
 }: CollageControlsProps) {
   return (
-    <Panel className="animate-fade-up [animation-delay:80ms] grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">
+    <Panel className="animate-fade-up [animation-delay:80ms] space-y-3">
+      <div>
+        <p className="m-0 text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-cyan-300">Tool Panel</p>
+        <h2 className="m-0 mt-1 text-lg font-semibold text-ink">Scene Controls</h2>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
       <Field label="Upload Photos">
         <input className="field-input" type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={onUploadFiles} />
       </Field>
@@ -93,7 +99,7 @@ export function CollageControls({
         />
       </Field>
 
-      <label className="mt-1 flex items-center gap-2 rounded-xl border border-line bg-white px-3 py-2 text-sm font-medium">
+      <label className="mt-1 flex items-center gap-2 rounded-xl bg-[#0d1629]/82 px-3 py-2 text-sm font-medium text-ink/90">
         <input
           className="h-4 w-4 rounded border-line text-accent focus:ring-accent/30"
           type="checkbox"
@@ -103,7 +109,7 @@ export function CollageControls({
         Occupancy guidelines overlay (preview only)
       </label>
 
-      <label className="mt-1 flex items-center gap-2 rounded-xl border border-line bg-white px-3 py-2 text-sm font-medium">
+      <label className="mt-1 flex items-center gap-2 rounded-xl bg-[#0d1629]/82 px-3 py-2 text-sm font-medium text-ink/90">
         <input
           className="h-4 w-4 rounded border-line text-accent focus:ring-accent/30"
           type="checkbox"
@@ -112,8 +118,9 @@ export function CollageControls({
         />
         Auto compact pages (backfill earlier pages)
       </label>
+      </div>
 
-      <Field label="Pagination Mode">
+      <Field label="Pagination Mode" className="pt-1">
         <select
           className="field-input"
           value={paginationMode}
@@ -124,11 +131,13 @@ export function CollageControls({
         </select>
       </Field>
 
-      <Button onClick={onApplyGlobalSettings}>Apply Global Constraints</Button>
-      <Button onClick={onGenerateLayout}>Generate Layout</Button>
-      <Button onClick={onExportPages} disabled={!pagesCount}>Export PNG Pages</Button>
-      <Button variant="soft" onClick={onStartFromScratch}>Start From Scratch</Button>
-      <Button variant="soft" onClick={onClearEverything}>Clear Everything</Button>
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
+        <Button onClick={onApplyGlobalSettings}>Apply Global Constraints</Button>
+        <Button onClick={onGenerateLayout}>Generate Layout</Button>
+        <Button onClick={onExportPages} disabled={!pagesCount}>Export PNG Pages</Button>
+        <Button variant="soft" onClick={onStartFromScratch}>Start From Scratch</Button>
+        <Button variant="soft" onClick={onClearEverything}>Clear Everything</Button>
+      </div>
 
       {paginationMode === 'assisted' && overflowCount > 0 ? (
         <Button onClick={onCreateNextPage}>Create Next Page ({overflowCount} remaining)</Button>

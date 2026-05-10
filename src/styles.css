@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=Manrope:wght@400;500;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -6,16 +6,16 @@
 
 @layer base {
   :root {
-    --color-bg: 242 239 232;
-    --color-paper: 255 254 251;
-    --color-ink: 31 27 22;
-    --color-muted: 106 97 86;
-    --color-accent: 207 91 44;
-    --color-accent-soft: 244 199 159;
-    --color-accent-deep: 96 44 22;
-    --color-line: 214 204 192;
-    --color-warn: 133 81 0;
-    --color-danger: 166 33 33;
+    --color-bg: 5 6 10;
+    --color-paper: 11 15 23;
+    --color-ink: 233 241 255;
+    --color-muted: 138 153 183;
+    --color-accent: 60 211 255;
+    --color-accent-soft: 51 65 96;
+    --color-accent-deep: 198 119 255;
+    --color-line: 44 57 88;
+    --color-warn: 255 186 82;
+    --color-danger: 255 104 130;
   }
 
   * {
@@ -23,7 +23,40 @@
   }
 
   body {
-    @apply m-0 bg-bg bg-atmosphere bg-no-repeat font-sans text-ink antialiased;
+    @apply m-0 min-h-screen bg-bg font-sans text-ink antialiased;
+    background-image:
+      radial-gradient(1200px 550px at 8% -5%, rgba(124, 58, 237, 0.35), rgba(124, 58, 237, 0) 65%),
+      radial-gradient(960px 500px at 95% 0%, rgba(14, 165, 233, 0.35), rgba(14, 165, 233, 0) 62%),
+      radial-gradient(820px 500px at 52% 100%, rgba(59, 130, 246, 0.26), rgba(59, 130, 246, 0) 70%),
+      linear-gradient(140deg, #05060a 0%, #070a13 40%, #06070d 100%);
+    background-attachment: fixed;
+    overflow-x: hidden;
+  }
+
+  body::before,
+  body::after {
+    content: '';
+    position: fixed;
+    inset: -30vh -25vw;
+    pointer-events: none;
+    z-index: -1;
+  }
+
+  body::before {
+    background:
+      radial-gradient(closest-side, rgba(91, 33, 182, 0.28), rgba(91, 33, 182, 0) 68%) 18% 14% / 48% 40% no-repeat,
+      radial-gradient(closest-side, rgba(6, 182, 212, 0.24), rgba(6, 182, 212, 0) 70%) 84% 26% / 52% 46% no-repeat,
+      radial-gradient(closest-side, rgba(79, 70, 229, 0.2), rgba(79, 70, 229, 0) 72%) 50% 78% / 64% 52% no-repeat;
+    filter: blur(38px) saturate(120%);
+    animation: mesh-drift 28s linear infinite;
+    opacity: 0.9;
+  }
+
+  body::after {
+    background-image: radial-gradient(rgba(255, 255, 255, 0.08) 0.5px, transparent 0.5px);
+    background-size: 2px 2px;
+    opacity: 0.11;
+    animation: grain-shift 5s steps(10) infinite;
   }
 
   input,
@@ -35,22 +68,52 @@
 
 @layer components {
   .panel {
-    @apply rounded-panel border border-line bg-paper p-4 shadow-panel;
+    @apply rounded-[1.25rem] bg-paper/90 p-4 shadow-panel backdrop-blur-md;
   }
 
   .field {
-    @apply grid gap-1.5 text-sm font-medium text-ink;
+    @apply grid gap-1.5 text-sm font-medium text-ink/90;
   }
 
   .field-input {
-    @apply w-full rounded-xl border border-line bg-white px-2.5 py-2 text-sm outline-none ring-0 transition focus:border-accent/70 focus:shadow-[0_0_0_3px_rgba(207,91,44,0.15)];
+    @apply w-full rounded-xl bg-[#0f1728]/95 px-2.5 py-2 text-sm text-ink outline-none ring-0 transition focus:shadow-[0_0_0_3px_rgba(56,189,248,0.2)];
   }
 
   .btn-primary {
-    @apply rounded-xl bg-accent px-3 py-2 text-sm font-bold text-white transition hover:-translate-y-0.5 hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-45;
+    @apply rounded-xl bg-[linear-gradient(120deg,rgba(56,189,248,0.28),rgba(168,85,247,0.35))] px-3 py-2 text-sm font-semibold text-white transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_10px_22px_rgba(56,189,248,0.25)] disabled:cursor-not-allowed disabled:opacity-45;
   }
 
   .btn-soft {
-    @apply rounded-xl bg-accent-soft px-3 py-2 text-sm font-bold text-accent-deep transition hover:-translate-y-0.5 hover:brightness-105;
+    @apply rounded-xl bg-accent-soft/70 px-3 py-2 text-sm font-semibold text-ink/90 transition duration-200 hover:-translate-y-0.5 hover:bg-accent-soft/90;
+  }
+}
+
+@keyframes mesh-drift {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(3%, -2%, 0) scale(1.04);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes grain-shift {
+  0% {
+    transform: translate(0, 0);
+  }
+  25% {
+    transform: translate(-1%, 1%);
+  }
+  50% {
+    transform: translate(1%, -1%);
+  }
+  75% {
+    transform: translate(-1%, -1%);
+  }
+  100% {
+    transform: translate(0, 0);
   }
 }
