@@ -104,6 +104,7 @@ export interface PersistedEditorSnapshot {
     minImageCm: number;
     frameMm: number;
     gridModeEnabled: boolean;
+    autoCompactPages: boolean;
     paginationMode: PaginationMode;
     interactionMode: InteractionMode;
     assistedPageCount: number;

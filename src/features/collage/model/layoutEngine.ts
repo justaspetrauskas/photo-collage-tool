@@ -9,6 +9,7 @@ interface LayoutOptions {
   maxPages?: number;
   minContentWidthPx?: number;
   minContentHeightPx?: number;
+  enableCompaction?: boolean;
 }
 
 interface BaseRect {
@@ -157,6 +158,7 @@ export function buildPaginatedLayout(images: ImageItem[], options: LayoutOptions
     maxPages = Number.POSITIVE_INFINITY,
     minContentWidthPx = 0,
     minContentHeightPx = 0,
+    enableCompaction = true,
   } = options;
 
   const baseRects: BaseRect[] = images
@@ -298,7 +300,7 @@ export function buildPaginatedLayout(images: ImageItem[], options: LayoutOptions
     .filter((rect) => rect.baseContentWidthPx + rect.frameThicknessPx * 2 > canvasWidthPx || rect.baseContentHeightPx + rect.frameThicknessPx * 2 > canvasHeightPx)
     .map((rect) => rect.id);
 
-  const compactedPages = compactPages(pages);
+  const compactedPages = enableCompaction ? compactPages(pages) : pages;
 
   return {
     pages: compactedPages,

@@ -52,6 +52,7 @@ export function useCollageEditor() {
   const [minImageCm, setMinImageCm] = useState<number>(DEFAULT_MIN_IMAGE_CM);
   const [frameMm, setFrameMm] = useState<number>(DEFAULT_FRAME_MM);
   const [gridModeEnabled, setGridModeEnabled] = useState<boolean>(false);
+  const [autoCompactPages, setAutoCompactPages] = useState<boolean>(true);
   const [paginationMode, setPaginationMode] = useState<PaginationMode>('auto');
   const [interactionMode, setInteractionMode] = useState<InteractionMode>('crop');
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
@@ -144,6 +145,7 @@ export function useCollageEditor() {
         setMinImageCm(snapshot.settings.minImageCm);
         setFrameMm(snapshot.settings.frameMm);
         setGridModeEnabled(snapshot.settings.gridModeEnabled);
+        setAutoCompactPages(snapshot.settings.autoCompactPages ?? true);
         setPaginationMode(snapshot.settings.paginationMode);
         setInteractionMode(snapshot.settings.interactionMode ?? 'crop');
         setAssistedPageCount(snapshot.settings.assistedPageCount);
@@ -178,6 +180,7 @@ export function useCollageEditor() {
           minImageCm,
           frameMm,
           gridModeEnabled,
+          autoCompactPages,
           paginationMode,
           interactionMode,
           assistedPageCount,
@@ -215,6 +218,7 @@ export function useCollageEditor() {
     minImageCm,
     frameMm,
     gridModeEnabled,
+    autoCompactPages,
     paginationMode,
     interactionMode,
     assistedPageCount,
@@ -302,6 +306,7 @@ export function useCollageEditor() {
       maxPages: paginationMode === 'auto' ? Number.POSITIVE_INFINITY : overrideAssistedCount,
       minContentWidthPx: cmToPx(minImageCm),
       minContentHeightPx: cmToPx(minImageCm),
+      enableCompaction: autoCompactPages,
     });
 
     const metricsById = result.imageMetrics;
@@ -545,6 +550,8 @@ export function useCollageEditor() {
     setFrameMm,
     gridModeEnabled,
     setGridModeEnabled,
+    autoCompactPages,
+    setAutoCompactPages,
     paginationMode,
     setPaginationMode,
     interactionMode,
