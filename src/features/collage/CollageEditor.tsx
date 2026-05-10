@@ -3,17 +3,47 @@ import { ImageDrawer } from './components/ImageDrawer';
 import { CollagePreview } from './components/CollagePreview';
 import { useCollageEditor } from './hooks/useCollageEditor';
 import { Button } from '../../shared/ui/Button';
+import { useEffect, useState } from 'react';
 
 export function CollageEditor() {
   const editor = useCollageEditor();
+  const [toastError, setToastError] = useState<string | null>(null);
 
   const selectedPage = editor.pages[editor.selectedPageIndex];
   const selectedImageOnPage = selectedPage?.items.find((item) => item.imageId === editor.selectedImageId);
   const hasSelection = Boolean(editor.selectedImageId);
 
+  useEffect(() => {
+    if (!editor.error) {
+      return;
+    }
+
+    setToastError(editor.error);
+    const timeoutId = window.setTimeout(() => {
+      setToastError((current) => (current === editor.error ? null : current));
+    }, 3500);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [editor.error]);
+
   return (
     <div className="relative w-screen pb-10 flex flex-col h-screen">
       <CollageHeader />
+
+      {toastError ? (
+        <div className="pointer-events-none fixed left-1/2 top-4 z-[70] -translate-x-1/2">
+          <div className="pointer-events-auto flex max-w-[min(92vw,680px)] items-start gap-3 rounded-lg border border-danger/45 bg-[#2a0f12]/95 px-4 py-3 text-sm text-[#ffd9de] shadow-[0_14px_36px_rgba(0,0,0,0.42)] backdrop-blur-sm">
+            <p className="m-0 leading-5">{toastError}</p>
+            <button
+              type="button"
+              className="rounded-md border border-danger/35 px-2 py-0.5 text-xs text-[#ffd9de] hover:bg-white/10"
+              onClick={() => setToastError(null)}
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       <div className="flex flex-1 overflow-hidden">
         {/* Main Content Area — canvas only */}
@@ -21,7 +51,6 @@ export function CollageEditor() {
           <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-16 bg-gradient-to-l from-[#000000]/20 via-transparent to-transparent z-20" />
           <div className="mx-auto w-full max-w-[1440px] px-6 pt-4 sm:px-8">
             <main>
-              {editor.error ? <p className="mb-2 mt-0 text-sm text-danger">{editor.error}</p> : null}
               {editor.oversizedImageIds.length ? (
                 <p className="mb-2 mt-0 text-sm text-warn">
                   {editor.oversizedImageIds.length} image(s) are oversized and cannot fit the canvas with current constraints.

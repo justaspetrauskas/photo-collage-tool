@@ -30,6 +30,7 @@ interface PreviewOptions {
       }
     >;
   } | null;
+  replacePointer?: { x: number; y: number } | null;
   placementPreview?: { x: number; y: number; width: number; height: number; valid: boolean } | null;
   animationTimeMs?: number;
 }
@@ -91,6 +92,80 @@ function drawReplaceTargetFeedback(
   ctx.font = `${11 / scale}px ui-sans-serif, system-ui, sans-serif`;
   ctx.textBaseline = 'middle';
   ctx.fillText('Replace target', labelX + labelPaddingX, labelY + labelHeight / 2);
+  ctx.restore();
+}
+
+function drawReplaceConnectionFeedback(
+  ctx: CanvasRenderingContext2D,
+  page: PageLayout,
+  sourceImageId: string,
+  targetImageId: string,
+  scale: number,
+  animationTimeMs: number,
+): void {
+  const source = page.items.find((item) => item.imageId === sourceImageId);
+  const target = page.items.find((item) => item.imageId === targetImageId);
+  if (!source || !target) {
+    return;
+  }
+
+  const sourceX = source.x + source.width / 2;
+  const sourceY = source.y + source.height / 2;
+  const targetX = target.x + target.width / 2;
+  const targetY = target.y + target.height / 2;
+
+  const pulse = 0.6 + 0.4 * Math.sin(animationTimeMs / 120);
+
+  ctx.save();
+  ctx.setLineDash([8 / scale, 6 / scale]);
+  ctx.lineDashOffset = -(animationTimeMs / 20) / scale;
+  ctx.lineWidth = (2 + pulse * 1.1) / scale;
+  ctx.strokeStyle = `rgba(252, 197, 21, ${0.55 + pulse * 0.3})`;
+  ctx.beginPath();
+  ctx.moveTo(sourceX, sourceY);
+  ctx.lineTo(targetX, targetY);
+  ctx.stroke();
+
+  const angle = Math.atan2(targetY - sourceY, targetX - sourceX);
+  const arrowSize = 8 / scale;
+  ctx.setLineDash([]);
+  ctx.fillStyle = 'rgba(252, 197, 21, 0.92)';
+  ctx.beginPath();
+  ctx.moveTo(targetX, targetY);
+  ctx.lineTo(
+    targetX - arrowSize * Math.cos(angle - Math.PI / 6),
+    targetY - arrowSize * Math.sin(angle - Math.PI / 6),
+  );
+  ctx.lineTo(
+    targetX - arrowSize * Math.cos(angle + Math.PI / 6),
+    targetY - arrowSize * Math.sin(angle + Math.PI / 6),
+  );
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawReplacePointerTooltip(
+  ctx: CanvasRenderingContext2D,
+  pointer: { x: number; y: number },
+  scale: number,
+): void {
+  const label = 'Swap with this photo';
+  const padX = 7 / scale;
+  const height = 18 / scale;
+  const x = pointer.x + 12 / scale;
+  const y = pointer.y - 12 / scale;
+
+  ctx.save();
+  ctx.font = `600 ${11 / scale}px ui-sans-serif, system-ui, sans-serif`;
+  const width = ctx.measureText(label).width + padX * 2;
+
+  ctx.fillStyle = 'rgba(20, 26, 40, 0.9)';
+  ctx.fillRect(x, y - height, width, height);
+
+  ctx.fillStyle = '#fff7db';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label, x + padX, y - height / 2);
   ctx.restore();
 }
 
@@ -602,6 +677,15 @@ export function drawPagePreview(
     options.selectedImageId &&
     options.hoveredImageId !== options.selectedImageId
   ) {
+    drawReplaceConnectionFeedback(
+      ctx,
+      page,
+      options.selectedImageId,
+      options.hoveredImageId,
+      scale,
+      options.animationTimeMs ?? Date.now(),
+    );
+
     drawReplaceTargetFeedback(
       ctx,
       page,
@@ -609,6 +693,10 @@ export function drawPagePreview(
       scale,
       options.animationTimeMs ?? Date.now(),
     );
+
+    if (options.replacePointer) {
+      drawReplacePointerTooltip(ctx, options.replacePointer, scale);
+    }
   }
 
   if (options.hoveredImageId && options.hoveredImageId !== options.selectedImageId) {
