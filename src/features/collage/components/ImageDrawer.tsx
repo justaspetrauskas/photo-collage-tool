@@ -20,6 +20,8 @@ interface ImageDrawerProps {
   onEnhanceImage: (id: string, preset: EnhancePreset) => Promise<void>;
   onEnhanceAll: (preset: EnhancePreset) => Promise<void>;
   enhancingImageIds: Set<string>;
+  onBeginManualPlacementDrag: (id: string) => void;
+  onEndManualPlacementDrag: () => void;
   onUploadFiles: (event: ChangeEvent<HTMLInputElement>) => Promise<void>;
   onUploadFileList: (files: File[]) => Promise<void>;
   sceneControls: CollageControlsProps;
@@ -35,9 +37,11 @@ interface ImageDrawerCardProps {
   onDelete: () => void;
   onRemoveFromCanvas: () => void;
   onEnhance: (preset: EnhancePreset) => void;
+  onBeginManualPlacementDrag: (id: string) => void;
+  onEndManualPlacementDrag: () => void;
 }
 
-function ImageDrawerCard({ image, isUsed, isSelected, isEnhancing, onSelect, onUpdateImage, onDelete, onRemoveFromCanvas, onEnhance }: ImageDrawerCardProps) {
+function ImageDrawerCard({ image, isUsed, isSelected, isEnhancing, onSelect, onUpdateImage, onDelete, onRemoveFromCanvas, onEnhance, onBeginManualPlacementDrag, onEndManualPlacementDrag }: ImageDrawerCardProps) {
   const [enhancePreset, setEnhancePreset] = useState<EnhancePreset>('lighting');
   const [showBefore, setShowBefore] = useState(false);
   const { imageZoomLevels, setImageZoom, imagePanOffsets, setImagePan } = useEditorUIStore();
@@ -70,7 +74,19 @@ function ImageDrawerCard({ image, isUsed, isSelected, isEnhancing, onSelect, onU
       onClick={onSelect}
     >
       {/* Zoomable/Pannable thumbnail — only the image content zooms, not the card */}
-      <div ref={imgContainerRef} className="relative overflow-hidden bg-[#000000]/40 aspect-square select-none">
+      <div
+        ref={imgContainerRef}
+        className="relative overflow-hidden bg-[#000000]/40 aspect-square select-none"
+        draggable
+        onDragStart={(e) => {
+          e.stopPropagation();
+          onBeginManualPlacementDrag(image.id);
+          e.dataTransfer.effectAllowed = 'move';
+          e.dataTransfer.setData('application/x-collage-image-id', image.id);
+          e.dataTransfer.setData('text/plain', image.id);
+        }}
+        onDragEnd={(e) => { e.stopPropagation(); onEndManualPlacementDrag(); }}
+      >
         <img
           {...bind()}
           src={previewSrc}
@@ -116,6 +132,22 @@ function ImageDrawerCard({ image, isUsed, isSelected, isEnhancing, onSelect, onU
           <p className="text-xs font-semibold text-white truncate">{image.fileName}</p>
           <p className="text-xs text-muted">{image.naturalWidth} × {image.naturalHeight}</p>
         </div>
+        <button
+          type="button"
+          draggable
+          className="w-full rounded-md border border-line/30 bg-[#0f1626]/75 px-2 py-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-amber-200 hover:border-amber-300/40 hover:bg-amber-500/10 transition"
+          onClick={(e) => e.stopPropagation()}
+          onDragStart={(e) => {
+            e.stopPropagation();
+            onBeginManualPlacementDrag(image.id);
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('application/x-collage-image-id', image.id);
+            e.dataTransfer.setData('text/plain', image.id);
+          }}
+          onDragEnd={(e) => { e.stopPropagation(); onEndManualPlacementDrag(); }}
+        >
+          Drag To Canvas
+        </button>
 
         {/* Zoom Slider */}
         <div className="text-xs">
@@ -213,7 +245,7 @@ function ImageDrawerCard({ image, isUsed, isSelected, isEnhancing, onSelect, onU
   );
 }
 
-export function ImageDrawer({ images, pages, onUpdateImage, onDeleteImage, onRemoveFromCanvas, onEnhanceImage, onEnhanceAll, enhancingImageIds, onUploadFiles, onUploadFileList, sceneControls }: ImageDrawerProps) {
+export function ImageDrawer({ images, pages, onUpdateImage, onDeleteImage, onRemoveFromCanvas, onEnhanceImage, onEnhanceAll, enhancingImageIds, onBeginManualPlacementDrag, onEndManualPlacementDrag, onUploadFiles, onUploadFileList, sceneControls }: ImageDrawerProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [sceneCollapsed, setSceneCollapsed] = useState(false);
   const [globalPreset, setGlobalPreset] = useState<EnhancePreset>('consistent');
@@ -334,6 +366,8 @@ export function ImageDrawer({ images, pages, onUpdateImage, onDeleteImage, onRem
                     onDelete={() => onDeleteImage(image.id)}
                     onRemoveFromCanvas={() => onRemoveFromCanvas(image.id)}
                     onEnhance={(preset) => void onEnhanceImage(image.id, preset)}
+                    onBeginManualPlacementDrag={onBeginManualPlacementDrag}
+                    onEndManualPlacementDrag={onEndManualPlacementDrag}
                   />
                 ))
               )}

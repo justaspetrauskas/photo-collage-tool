@@ -95,6 +95,7 @@ export interface PersistedImageItem {
   offsetY: number;
   cropMaxOffsetX: number;
   cropMaxOffsetY: number;
+  enhancedSrcBlob?: Blob;
 }
 
 export interface PersistedEditorSnapshot {

@@ -1,6 +1,6 @@
 import { enhanceImageWithAI, type EnhanceOptions } from '../lib/openaiImageEdit';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { ChangeEvent, MouseEvent } from 'react';
+import type { ChangeEvent, DragEvent, MouseEvent } from 'react';
 import {
   CANVAS_SIZE_PX,
   DEFAULT_FRAME_MM,
@@ -62,6 +62,15 @@ function randomId(prefix = 'img'): string {
   return `${prefix}-${crypto.randomUUID()}`;
 }
 
+interface CanvasPlacementPreview {
+  imageId: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  valid: boolean;
+}
+
 export function useCollageEditor() {
   const { drawerSelectedImageId, imageZoomLevels, imagePanOffsets } = useEditorUIStore();
   const [images, setImages] = useState<ImageItem[]>([]);
@@ -88,6 +97,9 @@ export function useCollageEditor() {
   const [moveCollisionImageIds, setMoveCollisionImageIds] = useState<string[]>([]);
   const [resizeCurrentDimensions, setResizeCurrentDimensions] = useState<{ width: number; height: number } | null>(null);
   const [enhancingImageIds, setEnhancingImageIds] = useState<Set<string>>(new Set());
+  const [canvasPlacementPreview, setCanvasPlacementPreview] = useState<CanvasPlacementPreview | null>(null);
+  const [manualPlacementDragImageId, setManualPlacementDragImageId] = useState<string | null>(null);
+  const [showSelectionControls, setShowSelectionControls] = useState<boolean>(false);
 
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const previewTransformRef = useRef<PreviewTransform | null>(null);
@@ -133,9 +145,10 @@ export function useCollageEditor() {
       moveOutsideCanvas,
       moveCollisionImageIds,
       resizeCurrentDimensions,
+      placementPreview: canvasPlacementPreview,
       animationTimeMs: replaceAnimationTick,
     });
-  }, [selectedPage, itemById, imageById, gridModeEnabled, selectedImageId, hoveredImageId, drawerSelectedImageId, imageZoomLevels, imagePanOffsets, interactionMode, dragActive, moveOutsideCanvas, moveCollisionImageIds, resizeCurrentDimensions, replaceAnimationTick]);
+  }, [selectedPage, itemById, imageById, gridModeEnabled, selectedImageId, hoveredImageId, drawerSelectedImageId, imageZoomLevels, imagePanOffsets, interactionMode, dragActive, moveOutsideCanvas, moveCollisionImageIds, resizeCurrentDimensions, canvasPlacementPreview, replaceAnimationTick]);
 
 function rectanglesTouchOrOverlap(
   a: { x: number; y: number; width: number; height: number },
@@ -184,13 +197,30 @@ function rectanglesTouchOrOverlap(
         const hydratedImages = await Promise.all(
           snapshot.images.map(async (savedImage) => {
             const restored = await blobToImage(savedImage.sourceBlob);
-            return {
+            const baseItem: ImageItem = {
               ...savedImage,
               originalSrc: restored.src,
               src: restored.src,
               bitmap: restored.image,
               sourceBlob: restored.blob,
-            } satisfies ImageItem;
+            };
+
+            // If enhanced version was saved, restore it
+            if (savedImage.enhancedSrcBlob) {
+              try {
+                const enhanced = await blobToImage(savedImage.enhancedSrcBlob);
+                return {
+                  ...baseItem,
+                  src: enhanced.src,
+                  bitmap: enhanced.image,
+                };
+              } catch {
+                // If enhanced blob fails to load, fall back to original
+                return baseItem;
+              }
+            }
+
+            return baseItem;
           }),
         );
 
@@ -214,6 +244,9 @@ function rectanglesTouchOrOverlap(
         setInteractionMode(snapshot.settings.interactionMode ?? 'crop');
         setAssistedPageCount(snapshot.settings.assistedPageCount);
         setSelectedPageIndex(snapshot.settings.selectedPageIndex);
+        // Explicitly clear selected image state on hydration to avoid stale selections
+        setSelectedImageId(null);
+        setShowSelectionControls(false);
       } catch {
         setError('Could not restore saved project state from local storage.');
       } finally {
@@ -235,7 +268,43 @@ function rectanglesTouchOrOverlap(
       return;
     }
 
-    const timeoutId = window.setTimeout(() => {
+    const timeoutId = window.setTimeout(async () => {
+      const persistedImages = await Promise.all(
+        images.map(async (image) => {
+          const persisted = {
+            id: image.id,
+            fileName: image.fileName,
+            sourceBlob: image.sourceBlob,
+            naturalWidth: image.naturalWidth,
+            naturalHeight: image.naturalHeight,
+            maxWidthCm: image.maxWidthCm,
+            maxHeightCm: image.maxHeightCm,
+            frameEnabled: image.frameEnabled,
+            frameThicknessPx: image.frameThicknessPx,
+            renderWidthPx: image.renderWidthPx,
+            renderHeightPx: image.renderHeightPx,
+            offsetX: image.offsetX,
+            offsetY: image.offsetY,
+            cropMaxOffsetX: image.cropMaxOffsetX,
+            cropMaxOffsetY: image.cropMaxOffsetY,
+          } as Record<string, unknown>;
+
+          // If image has been enhanced, convert the data URL to blob and store it
+          if (image.src !== image.originalSrc && image.src.startsWith('data:')) {
+            try {
+              const response = await fetch(image.src);
+              const enhancedBlob = await response.blob();
+              persisted.enhancedSrcBlob = enhancedBlob;
+            } catch {
+              // If conversion fails, we'll lose the enhancement on next load
+              // but the app will remain functional
+            }
+          }
+
+          return persisted;
+        }),
+      );
+
       const snapshot: PersistedEditorSnapshot = {
         version: 1,
         savedAt: Date.now(),
@@ -253,23 +322,7 @@ function rectanglesTouchOrOverlap(
         pages,
         overflowImageIds,
         oversizedImageIds,
-        images: images.map((image) => ({
-          id: image.id,
-          fileName: image.fileName,
-          sourceBlob: image.sourceBlob,
-          naturalWidth: image.naturalWidth,
-          naturalHeight: image.naturalHeight,
-          maxWidthCm: image.maxWidthCm,
-          maxHeightCm: image.maxHeightCm,
-          frameEnabled: image.frameEnabled,
-          frameThicknessPx: image.frameThicknessPx,
-          renderWidthPx: image.renderWidthPx,
-          renderHeightPx: image.renderHeightPx,
-          offsetX: image.offsetX,
-          offsetY: image.offsetY,
-          cropMaxOffsetX: image.cropMaxOffsetX,
-          cropMaxOffsetY: image.cropMaxOffsetY,
-        })),
+        images: persistedImages as any,
       };
 
       void saveSnapshot(snapshot);
@@ -340,6 +393,18 @@ function rectanglesTouchOrOverlap(
       }));
 
       setImages((current) => [...current, ...next]);
+      setPages((currentPages) =>
+        currentPages.length
+          ? currentPages
+          : [
+              {
+                id: randomId('page'),
+                widthPx: CANVAS_SIZE_PX,
+                heightPx: CANVAS_SIZE_PX,
+                items: [],
+              },
+            ],
+      );
       setError('');
     } catch {
       setError('Some images failed to load. Please retry with valid JPG, PNG, or WebP files.');
@@ -499,7 +564,7 @@ function rectanglesTouchOrOverlap(
     regenerateLayout(nextCount);
   }
 
-  function pagePointFromMouse(event: MouseEvent<HTMLCanvasElement>): { x: number; y: number } | null {
+  function pagePointFromClient(clientX: number, clientY: number): { x: number; y: number } | null {
     const canvas = previewCanvasRef.current;
     const transform = previewTransformRef.current;
     if (!canvas || !transform || !selectedPage) {
@@ -507,8 +572,8 @@ function rectanglesTouchOrOverlap(
     }
 
     const rect = canvas.getBoundingClientRect();
-    const x = (event.clientX - rect.left) * transform.dpr;
-    const y = (event.clientY - rect.top) * transform.dpr;
+    const x = (clientX - rect.left) * transform.dpr;
+    const y = (clientY - rect.top) * transform.dpr;
 
     const pageX = (x - transform.offsetX) / transform.scale;
     const pageY = (y - transform.offsetY) / transform.scale;
@@ -518,6 +583,53 @@ function rectanglesTouchOrOverlap(
     }
 
     return { x: pageX, y: pageY };
+  }
+
+  function pagePointFromMouse(event: MouseEvent<HTMLCanvasElement>): { x: number; y: number } | null {
+    return pagePointFromClient(event.clientX, event.clientY);
+  }
+
+  function resolveManualPlacementSize(image: ImageItem): {
+    width: number;
+    height: number;
+    contentWidthPx: number;
+    contentHeightPx: number;
+    frameThicknessPx: number;
+    drawnImageWidthPx: number;
+    drawnImageHeightPx: number;
+    maxOffsetX: number;
+    maxOffsetY: number;
+  } {
+    const base = computeContentBox(
+      image.naturalWidth,
+      image.naturalHeight,
+      image.maxWidthCm,
+      image.maxHeightCm,
+    );
+
+    const minPx = cmToPx(minImageCm);
+    const scaleUp = Math.max(minPx / base.widthPx, minPx / base.heightPx, 1);
+    const contentWidthPx = Math.round(base.widthPx * scaleUp);
+    const contentHeightPx = Math.round(base.heightPx * scaleUp);
+    const frameThicknessPx = image.frameEnabled ? image.frameThicknessPx : 0;
+    const crop = computeCropMetrics(
+      image.naturalWidth,
+      image.naturalHeight,
+      contentWidthPx,
+      contentHeightPx,
+    );
+
+    return {
+      width: contentWidthPx + frameThicknessPx * 2,
+      height: contentHeightPx + frameThicknessPx * 2,
+      contentWidthPx,
+      contentHeightPx,
+      frameThicknessPx,
+      drawnImageWidthPx: crop.drawnImageWidthPx,
+      drawnImageHeightPx: crop.drawnImageHeightPx,
+      maxOffsetX: crop.maxOffsetX,
+      maxOffsetY: crop.maxOffsetY,
+    };
   }
 
   function findHitItem(pagePoint: { x: number; y: number }): PositionedImage | null {
@@ -549,6 +661,7 @@ function rectanglesTouchOrOverlap(
       setSelectedImageId(null);
       setHoveredImageId(null);
       setDragActive(false);
+      setShowSelectionControls(false);
       return;
     }
 
@@ -557,11 +670,13 @@ function rectanglesTouchOrOverlap(
       setSelectedImageId(null);
       setHoveredImageId(null);
       setDragActive(false);
+      setShowSelectionControls(false);
       return;
     }
 
     setSelectedImageId(hit.imageId);
     setHoveredImageId(hit.imageId);
+    setShowSelectionControls(true);
 
     const item = itemById.get(hit.imageId);
     if (!item) {
@@ -926,6 +1041,126 @@ function rectanglesTouchOrOverlap(
     setHoveredImageId(null);
   }
 
+  function onCanvasDragOver(event: DragEvent<HTMLCanvasElement>): void {
+    event.preventDefault();
+    const imageId = manualPlacementDragImageId ?? event.dataTransfer.getData('application/x-collage-image-id');
+    if (!imageId || !selectedPage) {
+      setCanvasPlacementPreview(null);
+      return;
+    }
+
+    const image = itemById.get(imageId);
+    const point = pagePointFromClient(event.clientX, event.clientY);
+    if (!image || !point) {
+      setCanvasPlacementPreview(null);
+      return;
+    }
+
+    const size = resolveManualPlacementSize(image);
+    const canFit = size.width <= selectedPage.widthPx && size.height <= selectedPage.heightPx;
+    const x = Math.max(0, Math.min(selectedPage.widthPx - size.width, point.x - size.width / 2));
+    const y = Math.max(0, Math.min(selectedPage.heightPx - size.height, point.y - size.height / 2));
+
+    setCanvasPlacementPreview({
+      imageId,
+      x,
+      y,
+      width: size.width,
+      height: size.height,
+      valid: canFit,
+    });
+  }
+
+  function onCanvasDrop(event: DragEvent<HTMLCanvasElement>): void {
+    event.preventDefault();
+    const imageId = manualPlacementDragImageId ?? event.dataTransfer.getData('application/x-collage-image-id');
+    const image = itemById.get(imageId);
+    const point = pagePointFromClient(event.clientX, event.clientY);
+    if (!image || !selectedPage || !point) {
+      setCanvasPlacementPreview(null);
+      return;
+    }
+
+    const size = resolveManualPlacementSize(image);
+    if (size.width > selectedPage.widthPx || size.height > selectedPage.heightPx) {
+      setError('Image does not fit on canvas with current size constraints.');
+      setCanvasPlacementPreview(null);
+      return;
+    }
+
+    const x = Math.max(0, Math.min(selectedPage.widthPx - size.width, point.x - size.width / 2));
+    const y = Math.max(0, Math.min(selectedPage.heightPx - size.height, point.y - size.height / 2));
+
+    setPages((currentPages) =>
+      currentPages.map((page, pageIndex) => {
+        const withoutImage = page.items.filter((item) => item.imageId !== imageId);
+        if (pageIndex !== selectedPageIndex) {
+          return {
+            ...page,
+            items: withoutImage,
+          };
+        }
+
+        return {
+          ...page,
+          items: [
+            ...withoutImage,
+            {
+              imageId,
+              x,
+              y,
+              width: size.width,
+              height: size.height,
+              contentWidthPx: size.contentWidthPx,
+              contentHeightPx: size.contentHeightPx,
+              frameThicknessPx: size.frameThicknessPx,
+              drawnImageWidthPx: size.drawnImageWidthPx,
+              drawnImageHeightPx: size.drawnImageHeightPx,
+              maxOffsetX: size.maxOffsetX,
+              maxOffsetY: size.maxOffsetY,
+            },
+          ],
+        };
+      }),
+    );
+
+    const clamped = clampOffsets(image.offsetX, image.offsetY, size.maxOffsetX, size.maxOffsetY);
+    setImages((current) =>
+      current.map((entry) =>
+        entry.id === imageId
+          ? {
+              ...entry,
+              renderWidthPx: size.contentWidthPx,
+              renderHeightPx: size.contentHeightPx,
+              cropMaxOffsetX: size.maxOffsetX,
+              cropMaxOffsetY: size.maxOffsetY,
+              offsetX: clamped.offsetX,
+              offsetY: clamped.offsetY,
+            }
+          : entry,
+      ),
+    );
+
+    setSelectedImageId(imageId);
+    setHoveredImageId(imageId);
+    setError('');
+    setManualPlacementDragImageId(null);
+    setCanvasPlacementPreview(null);
+  }
+
+  function onCanvasDragLeave(): void {
+    setCanvasPlacementPreview(null);
+  }
+
+  function onBeginManualPlacementDrag(imageId: string): void {
+    setManualPlacementDragImageId(imageId);
+  }
+
+  function onEndManualPlacementDrag(): void {
+    setManualPlacementDragImageId(null);
+    setCanvasPlacementPreview(null);
+  }
+
   function expandSelectedImage(scaleFactor: number): void {
     if (!selectedImageId) {
       return;
@@ -983,6 +1218,7 @@ function rectanglesTouchOrOverlap(
     );
     setPages([]);
     setSelectedImageId(null);
+    setShowSelectionControls(false);
     setDragActive(false);
     setAssistedPageCount(1);
     setSelectedPageIndex(0);
@@ -1077,6 +1313,7 @@ function rectanglesTouchOrOverlap(
     setPaginationMode('auto');
     setInteractionMode('crop');
     setSelectedImageId(null);
+    setShowSelectionControls(false);
     setDragActive(false);
     setAssistedPageCount(1);
     setSelectedPageIndex(0);
@@ -1120,6 +1357,7 @@ function rectanglesTouchOrOverlap(
     resizeLimitNotice,
     resizeCurrentDimensions,
     error,
+    showSelectionControls,
     previewCanvasRef,
     onUploadFiles,
     uploadFileList,
@@ -1139,7 +1377,13 @@ function rectanglesTouchOrOverlap(
     onCanvasMouseMove,
     onCanvasMouseUp,
     onCanvasMouseLeave,
+    onCanvasDragOver,
+    onCanvasDrop,
+    onCanvasDragLeave,
+    onBeginManualPlacementDrag,
+    onEndManualPlacementDrag,
     expandSelectedImage,
     resetSelectedCrop,
+    setShowSelectionControls,
   };
 }

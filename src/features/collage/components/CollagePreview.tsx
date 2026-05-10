@@ -2,7 +2,8 @@ import { Button } from '../../../shared/ui/Button';
 import { Panel } from '../../../shared/ui/Panel';
 import { CANVAS_CM, CANVAS_SIZE_PX, cmToPx } from '../model/constants';
 import type { InteractionMode, PageLayout } from '../model/types';
-import type { MouseEventHandler, RefObject } from 'react';
+import type { DragEventHandler, MouseEventHandler, RefObject } from 'react';
+import { useEffect } from 'react';
 import { useEditorUIStore } from '../store/editorUIStore';
 
 interface CollagePreviewProps {
@@ -12,6 +13,8 @@ interface CollagePreviewProps {
   selectedImageName: string | null;
   selectedImageWidth: number | null;
   selectedImageHeight: number | null;
+  showSelectionControls: boolean;
+  onCloseSelectionControls: () => void;
   resizeLimitNotice: string;
   interactionMode: InteractionMode;
   dragActive: boolean;
@@ -26,6 +29,9 @@ interface CollagePreviewProps {
   onMouseMove: MouseEventHandler<HTMLCanvasElement>;
   onMouseUp: MouseEventHandler<HTMLCanvasElement>;
   onMouseLeave: MouseEventHandler<HTMLCanvasElement>;
+  onDragOver: DragEventHandler<HTMLCanvasElement>;
+  onDrop: DragEventHandler<HTMLCanvasElement>;
+  onDragLeave: DragEventHandler<HTMLCanvasElement>;
 }
 
 export function CollagePreview({
@@ -35,6 +41,8 @@ export function CollagePreview({
   selectedImageName,
   selectedImageWidth,
   selectedImageHeight,
+  showSelectionControls,
+  onCloseSelectionControls,
   resizeLimitNotice,
   interactionMode,
   dragActive,
@@ -49,9 +57,57 @@ export function CollagePreview({
   onMouseMove,
   onMouseUp,
   onMouseLeave,
+  onDragOver,
+  onDrop,
+  onDragLeave,
 }: CollagePreviewProps) {
   const hasSelection = Boolean(selectedImageId);
   const hasHover = Boolean(hoveredImageId);
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (!hasSelection) {
+        return;
+      }
+
+      const tag = (event.target as HTMLElement | null)?.tagName?.toLowerCase();
+      const isEditable =
+        tag === 'input' ||
+        tag === 'textarea' ||
+        tag === 'select' ||
+        (event.target as HTMLElement | null)?.isContentEditable;
+      if (isEditable) {
+        return;
+      }
+
+      const key = event.key.toLowerCase();
+      if (key === 'escape') {
+        onCloseSelectionControls();
+        event.preventDefault();
+      } else if (key === 'c') {
+        onSetInteractionMode('crop');
+      } else if (key === 'r') {
+        onSetInteractionMode('resize');
+      } else if (key === 'm') {
+        onSetInteractionMode('move');
+      } else if (key === 'p') {
+        onSetInteractionMode('replace');
+      } else if (key === '=') {
+        onExpandSelectedImage(1.1);
+      } else if (key === '-') {
+        onExpandSelectedImage(0.9);
+      } else if (key === '0') {
+        onResetSelectedCrop();
+      } else {
+        return;
+      }
+
+      event.preventDefault();
+    }
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [hasSelection, onCloseSelectionControls, onExpandSelectedImage, onResetSelectedCrop, onSetInteractionMode]);
   const helperText = !hasSelection
     ? 'Click any image on the canvas to select it first.'
     : interactionMode === 'crop'
@@ -136,48 +192,12 @@ export function CollagePreview({
             {dragActive ? <span className="ml-2 rounded bg-accent/15 px-2 py-0.5 text-[10px] font-bold text-accent">Dragging</span> : null}
           </p>
         ) : null}
-        <div className="mt-3 flex flex-wrap gap-2">
-          <Button
-            variant={hasSelection && interactionMode === 'crop' ? 'primary' : 'soft'}
-            onClick={() => onSetInteractionMode('crop')}
-            disabled={!hasSelection}
-          >
-            Crop Drag
-          </Button>
-          <Button
-            variant={hasSelection && interactionMode === 'resize' ? 'primary' : 'soft'}
-            onClick={() => onSetInteractionMode('resize')}
-            disabled={!hasSelection}
-          >
-            Resize Drag
-          </Button>
-          <Button
-            variant={hasSelection && interactionMode === 'move' ? 'primary' : 'soft'}
-            onClick={() => onSetInteractionMode('move')}
-            disabled={!hasSelection}
-          >
-            Move Drag
-          </Button>
-          <Button
-            variant={hasSelection && interactionMode === 'replace' ? 'primary' : 'soft'}
-            onClick={() => onSetInteractionMode('replace')}
-            disabled={!hasSelection}
-          >
-            Replace Drag
-          </Button>
-          <Button variant="soft" onClick={() => onExpandSelectedImage(1.1)} disabled={!hasSelection}>
-            Expand 10%
-          </Button>
-          <Button variant="soft" onClick={() => onExpandSelectedImage(0.9)} disabled={!hasSelection}>
-            Shrink 10%
-          </Button>
-          <Button variant="soft" onClick={onResetSelectedCrop} disabled={!hasSelection}>
-            Reset Crop
-          </Button>
-        </div>
       </div>
 
       <div className="mt-3 grid place-items-center rounded-2xl p-4">
+        <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-amber-200/70">
+          Tip: drag an image from the sidebar into the canvas to place it manually
+        </p>
         <p className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-amber-200/90">
           Printable Area: {CANVAS_CM} x {CANVAS_CM} cm ({CANVAS_SIZE_PX} x {CANVAS_SIZE_PX} px)
         </p>
@@ -188,6 +208,9 @@ export function CollagePreview({
           onMouseMove={onMouseMove}
           onMouseUp={onMouseUp}
           onMouseLeave={onMouseLeave}
+          onDragOver={onDragOver}
+          onDrop={onDrop}
+          onDragLeave={onDragLeave}
         />
       </div>
 

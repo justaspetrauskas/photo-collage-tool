@@ -14,7 +14,23 @@ interface PreviewOptions {
   moveOutsideCanvas?: boolean;
   moveCollisionImageIds?: string[];
   resizeCurrentDimensions?: { width: number; height: number } | null;
+  placementPreview?: { x: number; y: number; width: number; height: number; valid: boolean } | null;
   animationTimeMs?: number;
+}
+
+function drawPlacementPreview(
+  ctx: CanvasRenderingContext2D,
+  preview: { x: number; y: number; width: number; height: number; valid: boolean },
+  scale: number,
+): void {
+  ctx.save();
+  ctx.lineWidth = 2 / scale;
+  ctx.setLineDash([10 / scale, 7 / scale]);
+  ctx.fillStyle = preview.valid ? 'rgba(34, 197, 94, 0.14)' : 'rgba(239, 68, 68, 0.14)';
+  ctx.strokeStyle = preview.valid ? 'rgba(34, 197, 94, 0.9)' : 'rgba(239, 68, 68, 0.9)';
+  ctx.fillRect(preview.x, preview.y, preview.width, preview.height);
+  ctx.strokeRect(preview.x, preview.y, preview.width, preview.height);
+  ctx.restore();
 }
 
 function drawReplaceTargetFeedback(
@@ -475,6 +491,10 @@ export function drawPagePreview(
 
   if (options.hoveredImageId && options.hoveredImageId !== options.selectedImageId) {
     drawHoverFeedback(ctx, page, options.hoveredImageId, scale);
+  }
+
+  if (options.placementPreview) {
+    drawPlacementPreview(ctx, options.placementPreview, scale);
   }
 
   if (
