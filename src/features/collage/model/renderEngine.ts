@@ -6,9 +6,13 @@ interface PreviewOptions {
   gridSpacingPx?: number;
   selectedImageId?: string | null;
   hoveredImageId?: string | null;
+  drawerSelectedImageId?: string | null;
+  imageZoomLevels?: Record<string, number>;
+  imagePanOffsets?: Record<string, { x: number; y: number }>;
   interactionMode?: InteractionMode;
   dragActive?: boolean;
   moveOutsideCanvas?: boolean;
+  moveCollisionImageIds?: string[];
   resizeCurrentDimensions?: { width: number; height: number } | null;
   animationTimeMs?: number;
 }
@@ -70,6 +74,33 @@ function drawHoverFeedback(
   ctx.strokeStyle = 'rgba(16, 57, 92, 0.78)';
   ctx.setLineDash([6 / scale, 4 / scale]);
   ctx.strokeRect(hovered.x, hovered.y, hovered.width, hovered.height);
+  ctx.restore();
+}
+
+function drawDrawerSelectedFeedback(
+  ctx: CanvasRenderingContext2D,
+  page: PageLayout,
+  drawerSelectedImageId: string,
+  scale: number,
+): void {
+  const selected = page.items.find((item) => item.imageId === drawerSelectedImageId);
+  if (!selected) {
+    return;
+  }
+
+  ctx.save();
+  ctx.lineWidth = 2.5 / scale;
+  ctx.strokeStyle = 'rgba(250, 204, 21, 0.65)';
+  ctx.setLineDash([]);
+  ctx.strokeRect(selected.x, selected.y, selected.width, selected.height);
+  
+  // Add a subtle glow effect
+  ctx.shadowColor = 'rgba(250, 204, 21, 0.4)';
+  ctx.shadowBlur = 12 / scale;
+  ctx.lineWidth = 1.5 / scale;
+  ctx.strokeStyle = 'rgba(250, 204, 21, 0.35)';
+  ctx.strokeRect(selected.x - 2 / scale, selected.y - 2 / scale, selected.width + 4 / scale, selected.height + 4 / scale);
+  
   ctx.restore();
 }
 
@@ -200,41 +231,69 @@ function drawResizeLabel(
     return;
   }
 
-    // Convert pixels to cm (300 DPI: 1 cm ≈ 118.11 px)
-    const pxPerCm = (300 / 2.54); // 300 DPI / 2.54 cm per inch
-    const widthCm = dimensions.width / pxPerCm;
-    const heightCm = dimensions.height / pxPerCm;
+  // Convert pixels to cm (300 DPI: 1 cm ≈ 118.11 px)
+  const pxPerCm = 300 / 2.54;
+  const widthCm = dimensions.width / pxPerCm;
+  const heightCm = dimensions.height / pxPerCm;
   const label = `${widthCm.toFixed(2)} × ${heightCm.toFixed(2)} cm`;
 
-  // Position label above the image
-  const labelX = selected.x + selected.width / 2;
-  const labelY = selected.y - 20 / scale;
-  const labelPaddingX = 8 / scale;
+  const labelInset = 6 / scale;
+  const labelPaddingX = 7 / scale;
   const labelPaddingY = 4 / scale;
 
   ctx.save();
-  ctx.font = `bold ${13 / scale}px ui-sans-serif, system-ui, sans-serif`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'bottom';
+  ctx.font = `600 ${12 / scale}px ui-sans-serif, system-ui, sans-serif`;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
 
-  // Measure text
   const metrics = ctx.measureText(label);
   const textWidth = metrics.width;
   const boxWidth = textWidth + labelPaddingX * 2;
-  const boxHeight = 16 / scale;
+  const boxHeight = 18 / scale;
+  const boxX = selected.x + labelInset;
+  const boxY = selected.y + labelInset;
 
-  // Draw background box
-  ctx.fillStyle = 'rgba(168, 85, 247, 0.95)';
-  ctx.fillRect(labelX - boxWidth / 2, labelY - boxHeight, boxWidth, boxHeight);
+  ctx.fillStyle = 'rgba(20, 26, 40, 0.72)';
+  ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
 
-  // Draw border
-  ctx.strokeStyle = 'rgba(168, 85, 247, 1)';
-  ctx.lineWidth = 1.5 / scale;
-  ctx.strokeRect(labelX - boxWidth / 2, labelY - boxHeight, boxWidth, boxHeight);
-
-  // Draw text
   ctx.fillStyle = '#ffffff';
-  ctx.fillText(label, labelX, labelY - labelPaddingY);
+  ctx.fillText(label, boxX + labelPaddingX, boxY + boxHeight / 2 + 0.5 / scale);
+
+  ctx.restore();
+}
+
+function drawMoveCollisionFeedback(
+  ctx: CanvasRenderingContext2D,
+  page: PageLayout,
+  selectedImageId: string,
+  collisionImageIds: string[],
+  scale: number,
+): void {
+  const selected = page.items.find((item) => item.imageId === selectedImageId);
+  if (!selected || !collisionImageIds.length) {
+    return;
+  }
+
+  ctx.save();
+
+  ctx.lineWidth = 2 / scale;
+  ctx.strokeStyle = 'rgba(251, 191, 36, 0.95)';
+  ctx.setLineDash([8 / scale, 4 / scale]);
+  ctx.strokeRect(selected.x, selected.y, selected.width, selected.height);
+
+  for (const collisionId of collisionImageIds) {
+    const collided = page.items.find((item) => item.imageId === collisionId);
+    if (!collided) {
+      continue;
+    }
+
+    ctx.fillStyle = 'rgba(251, 191, 36, 0.16)';
+    ctx.fillRect(collided.x, collided.y, collided.width, collided.height);
+    ctx.strokeStyle = 'rgba(251, 191, 36, 0.95)';
+    ctx.lineWidth = 2.2 / scale;
+    ctx.setLineDash([7 / scale, 5 / scale]);
+    ctx.strokeRect(collided.x, collided.y, collided.width, collided.height);
+  }
 
   ctx.restore();
 }
@@ -244,6 +303,7 @@ function drawPage(
   page: PageLayout,
   itemById: Map<string, ImageItem>,
   imageById: Map<string, HTMLImageElement>,
+  options?: { imageZoomLevels?: Record<string, number>; imagePanOffsets?: Record<string, { x: number; y: number }> },
 ): void {
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, page.widthPx, page.heightPx);
@@ -265,6 +325,7 @@ function drawPage(
     const innerWidth = placed.contentWidthPx;
     const innerHeight = placed.contentHeightPx;
 
+    // Frame is always drawn at its original size — zoom only affects image content inside
     if (frameThicknessPx > 0) {
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(placed.x, placed.y, placed.width, placed.height);
@@ -277,14 +338,41 @@ function drawPage(
       placed.maxOffsetY,
     );
 
-    const drawX = innerX - clamped.offsetX;
-    const drawY = innerY - clamped.offsetY;
+    const zoom = options?.imageZoomLevels?.[placed.imageId] ?? 1;
+    const pan = options?.imagePanOffsets?.[placed.imageId] ?? { x: 0, y: 0 };
+
+    let drawX: number;
+    let drawY: number;
+    let drawW: number;
+    let drawH: number;
+
+    if (zoom > 1) {
+      // Scale up the drawn image around the current visible center,
+      // then shift by pan. Pan is stored in drawer CSS px; map to canvas px
+      // via ratio of drawnImageWidthPx to approximate drawer display width (400px).
+      drawW = placed.drawnImageWidthPx * zoom;
+      drawH = placed.drawnImageHeightPx * zoom;
+
+      // Position that keeps the same visible center when zooming
+      drawX = innerX + innerWidth / 2 * (1 - zoom) - clamped.offsetX * zoom;
+      drawY = innerY + innerHeight / 2 * (1 - zoom) - clamped.offsetY * zoom;
+
+      // Apply pan (drawer pixels → canvas pixels)
+      const panScale = placed.drawnImageWidthPx / 400;
+      drawX += pan.x * panScale;
+      drawY += pan.y * panScale;
+    } else {
+      drawW = placed.drawnImageWidthPx;
+      drawH = placed.drawnImageHeightPx;
+      drawX = innerX - clamped.offsetX;
+      drawY = innerY - clamped.offsetY;
+    }
 
     ctx.save();
     ctx.beginPath();
     ctx.rect(innerX, innerY, innerWidth, innerHeight);
     ctx.clip();
-    ctx.drawImage(img, drawX, drawY, placed.drawnImageWidthPx, placed.drawnImageHeightPx);
+    ctx.drawImage(img, drawX, drawY, drawW, drawH);
     ctx.restore();
   }
 }
@@ -324,7 +412,10 @@ export function drawPagePreview(
   ctx.save();
   ctx.translate(offsetX, offsetY);
   ctx.scale(scale, scale);
-  drawPage(ctx, page, itemById, imageById);
+  drawPage(ctx, page, itemById, imageById, {
+    imageZoomLevels: options.imageZoomLevels,
+    imagePanOffsets: options.imagePanOffsets,
+  });
 
   if (options.gridEnabled) {
     ctx.save();
@@ -386,6 +477,14 @@ export function drawPagePreview(
     drawHoverFeedback(ctx, page, options.hoveredImageId, scale);
   }
 
+  if (
+    options.drawerSelectedImageId &&
+    options.drawerSelectedImageId !== options.selectedImageId &&
+    options.drawerSelectedImageId !== options.hoveredImageId
+  ) {
+    drawDrawerSelectedFeedback(ctx, page, options.drawerSelectedImageId, scale);
+  }
+
   if (options.selectedImageId) {
     drawSelectionFeedback(
       ctx,
@@ -398,6 +497,16 @@ export function drawPagePreview(
 
     if (options.moveOutsideCanvas && options.interactionMode === 'move') {
       drawMoveOutsideFeedback(ctx, page, options.selectedImageId, scale);
+    }
+
+    if (options.interactionMode === 'move' && (options.moveCollisionImageIds?.length ?? 0) > 0) {
+      drawMoveCollisionFeedback(
+        ctx,
+        page,
+        options.selectedImageId,
+        options.moveCollisionImageIds ?? [],
+        scale,
+      );
     }
 
     if (options.resizeCurrentDimensions && options.interactionMode === 'resize') {

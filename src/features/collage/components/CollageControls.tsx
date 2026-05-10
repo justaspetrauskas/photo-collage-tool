@@ -3,6 +3,8 @@ import { Field } from '../../../shared/ui/Field';
 import { Panel } from '../../../shared/ui/Panel';
 import type { PaginationMode } from '../model/types';
 import type { ChangeEvent } from 'react';
+import { useState } from 'react';
+import { Check, Zap, Download, RotateCcw, Trash2, Plus } from 'lucide-react';
 
 interface CollageControlsProps {
   maxImageCm: number;
@@ -51,97 +53,136 @@ export function CollageControls({
   onStartFromScratch,
   onClearEverything,
 }: CollageControlsProps) {
+  const [collapsed, setCollapsed] = useState(false);
+
   return (
-    <Panel className="animate-fade-up [animation-delay:80ms] space-y-3">
-      <div>
-        <p className="m-0 text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-cyan-300">Tool Panel</p>
-        <h2 className="m-0 mt-1 text-lg font-semibold text-ink">Scene Controls</h2>
+    <Panel className="animate-fade-up [animation-delay:80ms] space-y-2 p-3 sm:p-4">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="m-0 text-sm font-semibold text-ink">Scene Controls</h3>
+        <Button variant="soft" className="px-2 py-1 text-xs" onClick={() => setCollapsed((v) => !v)}>
+          {collapsed ? '▶' : '▼'}
+        </Button>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
-      <Field label="Upload Photos">
-        <input className="field-input" type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={onUploadFiles} />
-      </Field>
+      {collapsed ? null : (
+        <>
+          <div className="space-y-2">
+            {/* File Upload Row */}
+            <div className="grid grid-cols-1 gap-2">
+              <Field label="Upload Photos" className="mb-0">
+                <input className="field-input py-1.5 text-xs" type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={onUploadFiles} />
+              </Field>
+            </div>
 
-      <Field label="Max Image Size (cm)">
-        <input
-          className="field-input"
-          type="number"
-          min="1"
-          max="20"
-          step="0.1"
-          value={maxImageCm}
-          onChange={(event) => setMaxImageCm(Number(event.target.value))}
-        />
-      </Field>
+            {/* Sizing Controls - Compact Grid */}
+            <div className="grid gap-2 grid-cols-3 sm:grid-cols-4">
+              <Field label="Max (cm)" className="mb-0">
+                <input
+                  className="field-input py-1 text-xs"
+                  type="number"
+                  min="1"
+                  max="20"
+                  step="0.1"
+                  value={maxImageCm}
+                  onChange={(event) => setMaxImageCm(Number(event.target.value))}
+                />
+              </Field>
 
-      <Field label="Min Image Size (cm)">
-        <input
-          className="field-input"
-          type="number"
-          min="0.5"
-          max="20"
-          step="0.1"
-          value={minImageCm}
-          onChange={(event) => setMinImageCm(Number(event.target.value))}
-        />
-      </Field>
+              <Field label="Min (cm)" className="mb-0">
+                <input
+                  className="field-input py-1 text-xs"
+                  type="number"
+                  min="0.5"
+                  max="20"
+                  step="0.1"
+                  value={minImageCm}
+                  onChange={(event) => setMinImageCm(Number(event.target.value))}
+                />
+              </Field>
 
-      <Field label="Frame Thickness (mm)">
-        <input
-          className="field-input"
-          type="number"
-          min="0"
-          max="20"
-          step="0.1"
-          value={frameMm}
-          onChange={(event) => setFrameMm(Number(event.target.value))}
-        />
-      </Field>
+              <Field label="Frame (mm)" className="mb-0">
+                <input
+                  className="field-input py-1 text-xs"
+                  type="number"
+                  min="0"
+                  max="20"
+                  step="0.1"
+                  value={frameMm}
+                  onChange={(event) => setFrameMm(Number(event.target.value))}
+                />
+              </Field>
 
-      <label className="mt-1 flex items-center gap-2 rounded-xl bg-[#0d1629]/82 px-3 py-2 text-sm font-medium text-ink/90">
-        <input
-          className="h-4 w-4 rounded border-line text-accent focus:ring-accent/30"
-          type="checkbox"
-          checked={gridModeEnabled}
-          onChange={(event) => setGridModeEnabled(event.target.checked)}
-        />
-        Occupancy guidelines overlay (preview only)
-      </label>
+              <Field label="Pagination" className="mb-0">
+                <select
+                  className="field-input py-1 text-xs"
+                  value={paginationMode}
+                  onChange={(event) => setPaginationMode(event.target.value as PaginationMode)}
+                >
+                  <option value="auto">Auto</option>
+                  <option value="assisted">Assist</option>
+                </select>
+              </Field>
+            </div>
 
-      <label className="mt-1 flex items-center gap-2 rounded-xl bg-[#0d1629]/82 px-3 py-2 text-sm font-medium text-ink/90">
-        <input
-          className="h-4 w-4 rounded border-line text-accent focus:ring-accent/30"
-          type="checkbox"
-          checked={autoCompactPages}
-          onChange={(event) => setAutoCompactPages(event.target.checked)}
-        />
-        Auto compact pages (backfill earlier pages)
-      </label>
-      </div>
+            {/* Checkboxes - Compact Row */}
+            <div className="flex flex-wrap gap-1.5">
+              <label className="flex items-center gap-1.5 rounded-lg bg-[#121a2b]/82 px-2.5 py-1 text-xs font-medium text-ink/90">
+                <input
+                  className="h-3 w-3 rounded border-line text-accent focus:ring-accent/30"
+                  type="checkbox"
+                  checked={gridModeEnabled}
+                  onChange={(event) => setGridModeEnabled(event.target.checked)}
+                />
+                <span>Grid</span>
+              </label>
 
-      <Field label="Pagination Mode" className="pt-1">
-        <select
-          className="field-input"
-          value={paginationMode}
-          onChange={(event) => setPaginationMode(event.target.value as PaginationMode)}
-        >
-          <option value="auto">Auto Pagination</option>
-          <option value="assisted">Assisted Pagination</option>
-        </select>
-      </Field>
+              <label className="flex items-center gap-1.5 rounded-lg bg-[#121a2b]/82 px-2.5 py-1 text-xs font-medium text-ink/90">
+                <input
+                  className="h-3 w-3 rounded border-line text-accent focus:ring-accent/30"
+                  type="checkbox"
+                  checked={autoCompactPages}
+                  onChange={(event) => setAutoCompactPages(event.target.checked)}
+                />
+                <span>Compact</span>
+              </label>
+            </div>
 
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
-        <Button onClick={onApplyGlobalSettings}>Apply Global Constraints</Button>
-        <Button onClick={onGenerateLayout}>Generate Layout</Button>
-        <Button onClick={onExportPages} disabled={!pagesCount}>Export PNG Pages</Button>
-        <Button variant="soft" onClick={onStartFromScratch}>Start From Scratch</Button>
-        <Button variant="soft" onClick={onClearEverything}>Clear Everything</Button>
-      </div>
+            {/* Action Buttons - Column with Icons */}
+            <div className="space-y-1.5">
+              <Button onClick={onApplyGlobalSettings} className="w-full flex items-center justify-start gap-2 py-1.5 px-3 text-sm">
+                <Check className="w-4 h-4" />
+                Apply Constraints
+              </Button>
+              <Button onClick={onGenerateLayout} className="w-full flex items-center justify-start gap-2 py-1.5 px-3 text-sm">
+                <Zap className="w-4 h-4" />
+                Generate Layout
+              </Button>
+              <Button onClick={onExportPages} disabled={!pagesCount} className="w-full flex items-center justify-start gap-2 py-1.5 px-3 text-sm disabled:opacity-50">
+                <Download className="w-4 h-4" />
+                Export PNG
+              </Button>
 
-      {paginationMode === 'assisted' && overflowCount > 0 ? (
-        <Button onClick={onCreateNextPage}>Create Next Page ({overflowCount} remaining)</Button>
-      ) : null}
+              <div className="h-px bg-line/20 my-1"></div>
+
+              <Button variant="soft" onClick={onStartFromScratch} className="w-full flex items-center justify-start gap-2 py-1.5 px-3 text-sm">
+                <RotateCcw className="w-4 h-4" />
+                Start Fresh
+              </Button>
+              <Button variant="soft" onClick={onClearEverything} className="w-full flex items-center justify-start gap-2 py-1.5 px-3 text-sm">
+                <Trash2 className="w-4 h-4" />
+                Clear All
+              </Button>
+
+              {paginationMode === 'assisted' && overflowCount > 0 ? (
+                <Button onClick={onCreateNextPage} className="w-full flex items-center justify-start gap-2 py-1.5 px-3 text-sm">
+                  <Plus className="w-4 h-4" />
+                  Next Page ({overflowCount})
+                </Button>
+              ) : null}
+            </div>
+          </div>
+        </>
+      )}
     </Panel>
   );
 }

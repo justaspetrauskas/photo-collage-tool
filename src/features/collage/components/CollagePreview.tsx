@@ -1,8 +1,9 @@
 import { Button } from '../../../shared/ui/Button';
 import { Panel } from '../../../shared/ui/Panel';
-import { cmToPx } from '../model/constants';
+import { CANVAS_CM, CANVAS_SIZE_PX, cmToPx } from '../model/constants';
 import type { InteractionMode, PageLayout } from '../model/types';
 import type { MouseEventHandler, RefObject } from 'react';
+import { useEditorUIStore } from '../store/editorUIStore';
 
 interface CollagePreviewProps {
   pages: PageLayout[];
@@ -111,12 +112,12 @@ export function CollagePreview({
           : 'Replace Drag';
 
   return (
-    <Panel className="animate-fade-up [animation-delay:130ms]">
+    <Panel className="animate-fade-up [animation-delay:130ms] bg-transparent shadow-none backdrop-blur-0">
       <h2 className="m-0 text-xl font-semibold text-ink">Canvas Lightbox</h2>
       <p className="m-0 text-sm text-muted">{helperText}</p>
       {resizeLimitNotice ? <p className="m-0 mt-1 text-xs font-semibold text-warn">{resizeLimitNotice}</p> : null}
 
-      <div className="mt-3 rounded-xl bg-[#0d1629]/78 p-3 backdrop-blur-md">
+      <div className="mt-3 rounded-xl bg-[#0e1626]/76 p-3 backdrop-blur-md">
         <p className="m-0 text-xs font-bold uppercase tracking-[0.08em] text-muted">
           {hasSelection ? `Selected: ${selectedImageName ?? selectedImageId}` : 'No image selected'}
         </p>
@@ -176,9 +177,12 @@ export function CollagePreview({
         </div>
       </div>
 
-      <div className="mt-3 grid place-items-center rounded-2xl bg-[#0b0f17]/92 p-4 shadow-[inset_0_0_0_1px_rgba(34,211,238,0.12),0_0_30px_rgba(56,189,248,0.1)]">
+      <div className="mt-3 grid place-items-center rounded-2xl p-4">
+        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-amber-200/90">
+          Printable Area: {CANVAS_CM} x {CANVAS_CM} cm ({CANVAS_SIZE_PX} x {CANVAS_SIZE_PX} px)
+        </p>
         <canvas
-          className={`h-auto max-w-full rounded-xl bg-[#0b0f17] shadow-[0_20px_40px_rgba(0,0,0,0.5)] ${canvasCursorClass}`}
+          className={`h-auto max-w-full rounded-xl ${canvasCursorClass}`}
           ref={previewCanvasRef}
           onMouseDown={onMouseDown}
           onMouseMove={onMouseMove}

@@ -11,6 +11,7 @@ import {
 } from '../model/constants';
 import { buildPaginatedLayout, clampOffsets } from '../model/layoutEngine';
 import { drawPagePreview, renderPageToExportCanvas } from '../model/renderEngine';
+import { useEditorUIStore } from '../store/editorUIStore';
 import type {
   ImageItem,
   InteractionMode,
@@ -61,6 +62,7 @@ function randomId(prefix = 'img'): string {
 }
 
 export function useCollageEditor() {
+  const { drawerSelectedImageId, imageZoomLevels, imagePanOffsets } = useEditorUIStore();
   const [images, setImages] = useState<ImageItem[]>([]);
   const [pages, setPages] = useState<Array<{ id: string; widthPx: number; heightPx: number; items: PositionedImage[] }>>([]);
   const [maxImageCm, setMaxImageCm] = useState<number>(DEFAULT_MAX_IMAGE_CM);
@@ -82,6 +84,7 @@ export function useCollageEditor() {
   const [isHydrated, setIsHydrated] = useState<boolean>(false);
   const [replaceAnimationTick, setReplaceAnimationTick] = useState<number>(0);
   const [moveOutsideCanvas, setMoveOutsideCanvas] = useState<boolean>(false);
+  const [moveCollisionImageIds, setMoveCollisionImageIds] = useState<string[]>([]);
   const [resizeCurrentDimensions, setResizeCurrentDimensions] = useState<{ width: number; height: number } | null>(null);
 
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -120,13 +123,29 @@ export function useCollageEditor() {
       gridSpacingPx: cmToPx(DEFAULT_GRID_SPACING_CM),
       selectedImageId,
       hoveredImageId,
+      drawerSelectedImageId,
+      imageZoomLevels,
+      imagePanOffsets,
       interactionMode,
       dragActive,
       moveOutsideCanvas,
+      moveCollisionImageIds,
       resizeCurrentDimensions,
       animationTimeMs: replaceAnimationTick,
     });
-  }, [selectedPage, itemById, imageById, gridModeEnabled, selectedImageId, hoveredImageId, interactionMode, dragActive, moveOutsideCanvas, resizeCurrentDimensions, replaceAnimationTick]);
+  }, [selectedPage, itemById, imageById, gridModeEnabled, selectedImageId, hoveredImageId, drawerSelectedImageId, imageZoomLevels, imagePanOffsets, interactionMode, dragActive, moveOutsideCanvas, moveCollisionImageIds, resizeCurrentDimensions, replaceAnimationTick]);
+
+function rectanglesTouchOrOverlap(
+  a: { x: number; y: number; width: number; height: number },
+  b: { x: number; y: number; width: number; height: number },
+): boolean {
+  const aRight = a.x + a.width;
+  const bRight = b.x + b.width;
+  const aBottom = a.y + a.height;
+  const bBottom = b.y + b.height;
+
+  return !(aRight < b.x || a.x > bRight || aBottom < b.y || a.y > bBottom);
+}
 
   useEffect(() => {
     const currentSrcs = new Set(images.map((image) => image.src));
@@ -573,6 +592,7 @@ export function useCollageEditor() {
       };
       setDragActive(true);
       setMoveOutsideCanvas(false);
+      setMoveCollisionImageIds([]);
       return;
     }
 
@@ -656,6 +676,21 @@ export function useCollageEditor() {
       const isOutsideCanvas = isPositionOutsideCanvas(position.x, position.y, item.width, item.height);
 
       setMoveOutsideCanvas(isOutsideCanvas);
+
+      if (!isOutsideCanvas) {
+        const movingRect = {
+          x: position.x,
+          y: position.y,
+          width: item.width,
+          height: item.height,
+        };
+        const collisionIds = page.items
+          .filter((other) => other.imageId !== drag.imageId && rectanglesTouchOrOverlap(movingRect, other))
+          .map((other) => other.imageId);
+        setMoveCollisionImageIds(collisionIds);
+      } else {
+        setMoveCollisionImageIds([]);
+      }
 
       if (!isOutsideCanvas) {
         setPages((currentPages) =>
@@ -871,6 +906,7 @@ export function useCollageEditor() {
     dragStateRef.current = null;
     setDragActive(false);
     setMoveOutsideCanvas(false);
+    setMoveCollisionImageIds([]);
     setResizeCurrentDimensions(null);
   }
 
@@ -945,6 +981,7 @@ export function useCollageEditor() {
     setError('');
     setResizeCurrentDimensions(null);
     dragStateRef.current = null;
+    setMoveCollisionImageIds([]);
   }
 
   function startFromScratch(): void {
@@ -977,6 +1014,7 @@ export function useCollageEditor() {
     setResizeCurrentDimensions(null);
     dragStateRef.current = null;
     setMoveOutsideCanvas(false);
+    setMoveCollisionImageIds([]);
     void clearSnapshot();
   }
 

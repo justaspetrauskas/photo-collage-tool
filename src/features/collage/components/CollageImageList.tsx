@@ -2,6 +2,7 @@ import { Panel } from '../../../shared/ui/Panel';
 import { Field } from '../../../shared/ui/Field';
 import { Button } from '../../../shared/ui/Button';
 import type { ImageItem } from '../model/types';
+import { useState } from 'react';
 
 interface CollageImageListProps {
   images: ImageItem[];
@@ -9,15 +10,23 @@ interface CollageImageListProps {
 }
 
 export function CollageImageList({ images, onUpdateImage }: CollageImageListProps) {
+  const [collapsed, setCollapsed] = useState(false);
+
   return (
-    <Panel className="animate-fade-up [animation-delay:180ms]">
+    <Panel className="animate-fade-up [animation-delay:180ms] bg-transparent shadow-none backdrop-blur-0">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="m-0 text-xl font-semibold text-ink">Image Cards</h2>
-        <span className="rounded-full bg-cyan-400/12 px-3 py-1 text-xs font-semibold text-cyan-200">
-          {images.length} loaded
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="rounded-full bg-amber-400/12 px-3 py-1 text-xs font-semibold text-amber-200">
+            {images.length} loaded
+          </span>
+          <Button variant="soft" className="px-2.5 py-1.5 text-xs" onClick={() => setCollapsed((v) => !v)}>
+            {collapsed ? 'Expand' : 'Collapse'}
+          </Button>
+        </div>
       </div>
 
+      {collapsed ? null : (
       <div className="relative mt-2">
         <div className="pointer-events-none absolute inset-y-0 left-0 z-[1] w-8 bg-gradient-to-r from-[#0a1224] to-transparent sm:hidden" />
         <div className="pointer-events-none absolute inset-y-0 right-0 z-[1] w-8 bg-gradient-to-l from-[#0a1224] to-transparent sm:hidden" />
@@ -26,7 +35,7 @@ export function CollageImageList({ images, onUpdateImage }: CollageImageListProp
           {images.map((image) => (
             <article
               key={image.id}
-              className="group min-w-[84vw] snap-center overflow-hidden rounded-2xl bg-[#0d172c]/82 p-3 transition duration-200 hover:-translate-y-1 hover:shadow-[0_18px_38px_rgba(15,23,42,0.65)] sm:min-w-0"
+              className="group min-w-[84vw] snap-center overflow-hidden rounded-2xl bg-transparent p-3 transition duration-200 sm:min-w-0"
             >
             <div className="relative">
               <img className="h-40 w-full rounded-xl object-cover" src={image.src} alt={image.fileName} loading="lazy" />
@@ -119,6 +128,7 @@ export function CollageImageList({ images, onUpdateImage }: CollageImageListProp
           ))}
         </div>
       </div>
+      )}
     </Panel>
   );
 }
