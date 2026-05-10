@@ -310,7 +310,22 @@ export function useCollageEditor() {
     );
   }
 
+  function focusImageOnCanvas(imageId: string): void {
+    setSelectedImageId(imageId);
+    setHoveredImageId(imageId);
+
+    if (!pages.length) {
+      return;
+    }
+
+    const pageIndex = pages.findIndex((page) => page.items.some((item) => item.imageId === imageId));
+    if (pageIndex >= 0) {
+      setSelectedPageIndex(pageIndex);
+    }
+  }
+
   function updateImage(id: string, patch: Partial<ImageItem>): void {
+    focusImageOnCanvas(id);
     setImages((current) => current.map((image) => (image.id === id ? { ...image, ...patch } : image)));
   }
 
