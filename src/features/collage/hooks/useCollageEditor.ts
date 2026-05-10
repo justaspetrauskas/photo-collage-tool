@@ -1,15 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, MouseEvent } from 'react';
-import {
-  CANVAS_CM,
-  CANVAS_SIZE_PX,
-  DEFAULT_FRAME_MM,
-  DEFAULT_MAX_IMAGE_CM,
-  mmToPx,
-} from './constants';
-import { buildPaginatedLayout, clampOffsets } from './layoutEngine';
-import { drawPagePreview, renderPageToExportCanvas } from './renderEngine';
-import type { ImageItem, LoadedImage, PaginationMode, PositionedImage, PreviewTransform } from './types';
+import { CANVAS_SIZE_PX, DEFAULT_FRAME_MM, DEFAULT_MAX_IMAGE_CM, mmToPx } from '../model/constants';
+import { buildPaginatedLayout, clampOffsets } from '../model/layoutEngine';
+import { drawPagePreview, renderPageToExportCanvas } from '../model/renderEngine';
+import type { ImageItem, PaginationMode, PositionedImage, PreviewTransform } from '../model/types';
+import { fileToImage } from '../lib/fileToImage';
 
 interface DragState {
   imageId: string;
@@ -25,24 +20,7 @@ function randomId(prefix = 'img'): string {
   return `${prefix}-${crypto.randomUUID()}`;
 }
 
-function fileToImage(file: File): Promise<LoadedImage> {
-  return new Promise((resolve, reject) => {
-    const src = URL.createObjectURL(file);
-    const image = new Image();
-    image.onload = () => {
-      resolve({
-        src,
-        image,
-        naturalWidth: image.naturalWidth,
-        naturalHeight: image.naturalHeight,
-      });
-    };
-    image.onerror = () => reject(new Error(`Failed to load image ${file.name}`));
-    image.src = src;
-  });
-}
-
-export default function App() {
+export function useCollageEditor() {
   const [images, setImages] = useState<ImageItem[]>([]);
   const [pages, setPages] = useState<Array<{ id: string; widthPx: number; heightPx: number; items: PositionedImage[] }>>([]);
   const [maxImageCm, setMaxImageCm] = useState<number>(DEFAULT_MAX_IMAGE_CM);
@@ -60,7 +38,6 @@ export default function App() {
 
   const itemById = useMemo(() => new Map(images.map((img) => [img.id, img])), [images]);
   const imageById = useMemo(() => new Map(images.map((img) => [img.id, img.bitmap])), [images]);
-
   const selectedPage = pages[selectedPageIndex] ?? null;
 
   useEffect(() => {
@@ -223,7 +200,7 @@ export default function App() {
     return null;
   }
 
-  function onMouseDown(event: MouseEvent<HTMLCanvasElement>): void {
+  function onCanvasMouseDown(event: MouseEvent<HTMLCanvasElement>): void {
     const point = pagePointFromMouse(event);
     if (!point) {
       return;
@@ -250,7 +227,7 @@ export default function App() {
     };
   }
 
-  function onMouseMove(event: MouseEvent<HTMLCanvasElement>): void {
+  function onCanvasMouseMove(event: MouseEvent<HTMLCanvasElement>): void {
     if (!dragRef.current) {
       return;
     }
@@ -277,7 +254,7 @@ export default function App() {
     });
   }
 
-  function onMouseUp(): void {
+  function onCanvasMouseUp(): void {
     dragRef.current = null;
   }
 
@@ -295,151 +272,29 @@ export default function App() {
     });
   }
 
-  return (
-    <div className="app-shell">
-      <header>
-        <p className="eyebrow">Print Layout Studio</p>
-        <h1>Photo Collage Generator</h1>
-        <p className="subtitle">
-          {CANVAS_CM}cm × {CANVAS_CM}cm at 300 DPI ({CANVAS_SIZE_PX}px)
-        </p>
-      </header>
-
-      <section className="panel controls-grid">
-        <label>
-          Upload Photos
-          <input type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={onUploadFiles} />
-        </label>
-
-        <label>
-          Max Image Size (cm)
-          <input
-            type="number"
-            min="1"
-            max="20"
-            step="0.1"
-            value={maxImageCm}
-            onChange={(e) => setMaxImageCm(Number(e.target.value))}
-          />
-        </label>
-
-        <label>
-          Frame Thickness (mm)
-          <input
-            type="number"
-            min="0"
-            max="20"
-            step="0.1"
-            value={frameMm}
-            onChange={(e) => setFrameMm(Number(e.target.value))}
-          />
-        </label>
-
-        <label>
-          Pagination Mode
-          <select value={paginationMode} onChange={(e) => setPaginationMode(e.target.value as PaginationMode)}>
-            <option value="auto">Auto Pagination</option>
-            <option value="assisted">Assisted Pagination</option>
-          </select>
-        </label>
-
-        <button type="button" onClick={applyGlobalSettings}>
-          Apply Global Constraints
-        </button>
-        <button type="button" onClick={onGenerateLayout}>
-          Generate Layout
-        </button>
-        <button type="button" onClick={exportPagesAsPng} disabled={!pages.length}>
-          Export PNG Pages
-        </button>
-        {paginationMode === 'assisted' && overflowImageIds.length > 0 ? (
-          <button type="button" onClick={onCreateNextPage}>
-            Create Next Page ({overflowImageIds.length} remaining)
-          </button>
-        ) : null}
-      </section>
-
-      {error ? <p className="error-text">{error}</p> : null}
-      {oversizedImageIds.length ? (
-        <p className="warning-text">
-          {oversizedImageIds.length} image(s) are oversized and cannot fit the canvas with current constraints.
-        </p>
-      ) : null}
-
-      <section className="panel">
-        <h2>Page Preview</h2>
-        <p className="hint">Drag inside any image frame to change crop offset.</p>
-
-        <div className="canvas-wrap">
-          <canvas
-            ref={previewCanvasRef}
-            onMouseDown={onMouseDown}
-            onMouseMove={onMouseMove}
-            onMouseUp={onMouseUp}
-            onMouseLeave={onMouseUp}
-          />
-        </div>
-
-        <div className="page-tabs">
-          {pages.map((page, index) => (
-            <button
-              key={page.id}
-              type="button"
-              className={index === selectedPageIndex ? 'active' : ''}
-              onClick={() => setSelectedPageIndex(index)}
-            >
-              Page {index + 1}
-            </button>
-          ))}
-        </div>
-      </section>
-
-      <section className="panel">
-        <h2>Images ({images.length})</h2>
-        <div className="image-list">
-          {images.map((image) => (
-            <article key={image.id} className="image-card">
-              <img src={image.src} alt={image.fileName} loading="lazy" />
-              <div>
-                <strong>{image.fileName}</strong>
-                <p>
-                  {image.naturalWidth} × {image.naturalHeight}px
-                </p>
-                <label className="small-field">
-                  Max Width (cm)
-                  <input
-                    type="number"
-                    min="1"
-                    max="20"
-                    step="0.1"
-                    value={image.maxWidthCm}
-                    onChange={(e) => updateImage(image.id, { maxWidthCm: Number(e.target.value) })}
-                  />
-                </label>
-                <label className="small-field">
-                  Max Height (cm)
-                  <input
-                    type="number"
-                    min="1"
-                    max="20"
-                    step="0.1"
-                    value={image.maxHeightCm}
-                    onChange={(e) => updateImage(image.id, { maxHeightCm: Number(e.target.value) })}
-                  />
-                </label>
-                <label className="checkbox-row">
-                  <input
-                    type="checkbox"
-                    checked={image.frameEnabled}
-                    onChange={(e) => updateImage(image.id, { frameEnabled: e.target.checked })}
-                  />
-                  Frame enabled
-                </label>
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
-    </div>
-  );
+  return {
+    images,
+    pages,
+    maxImageCm,
+    setMaxImageCm,
+    frameMm,
+    setFrameMm,
+    paginationMode,
+    setPaginationMode,
+    selectedPageIndex,
+    setSelectedPageIndex,
+    overflowImageIds,
+    oversizedImageIds,
+    error,
+    previewCanvasRef,
+    onUploadFiles,
+    applyGlobalSettings,
+    onGenerateLayout,
+    exportPagesAsPng,
+    onCreateNextPage,
+    updateImage,
+    onCanvasMouseDown,
+    onCanvasMouseMove,
+    onCanvasMouseUp,
+  };
 }
