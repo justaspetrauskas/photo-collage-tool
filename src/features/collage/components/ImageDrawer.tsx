@@ -18,6 +18,7 @@ interface ImageDrawerProps {
   onDeleteImage: (id: string) => void;
   onRemoveFromCanvas: (id: string) => void;
   onEnhanceImage: (id: string, preset: EnhancePreset) => Promise<void>;
+  onRestoreOriginalImage: (id: string) => Promise<void>;
   onEnhanceAll: (preset: EnhancePreset) => Promise<void>;
   enhancingImageIds: Set<string>;
   onBeginManualPlacementDrag: (id: string) => void;
@@ -38,11 +39,12 @@ interface ImageDrawerCardProps {
   onDelete: () => void;
   onRemoveFromCanvas: () => void;
   onEnhance: (preset: EnhancePreset) => void;
+  onRestoreOriginal: () => void;
   onBeginManualPlacementDrag: (id: string) => void;
   onEndManualPlacementDrag: () => void;
 }
 
-function ImageDrawerCard({ image, isUsed, isSelected, isEnhancing, cardRef, onSelect, onUpdateImage, onDelete, onRemoveFromCanvas, onEnhance, onBeginManualPlacementDrag, onEndManualPlacementDrag }: ImageDrawerCardProps) {
+function ImageDrawerCard({ image, isUsed, isSelected, isEnhancing, cardRef, onSelect, onUpdateImage, onDelete, onRemoveFromCanvas, onEnhance, onRestoreOriginal, onBeginManualPlacementDrag, onEndManualPlacementDrag }: ImageDrawerCardProps) {
   const [enhancePreset, setEnhancePreset] = useState<EnhancePreset>('lighting');
   const [showBefore, setShowBefore] = useState(false);
   const { imageZoomLevels, setImageZoom, imagePanOffsets, setImagePan } = useEditorUIStore();
@@ -226,13 +228,25 @@ function ImageDrawerCard({ image, isUsed, isSelected, isEnhancing, cardRef, onSe
               ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Enhancing…</>
               : <><Sparkles className="w-3.5 h-3.5" /> Apply</>}
           </button>
+          {hasEnhancedVersion ? (
+            <button
+              disabled={isEnhancing}
+              className="w-full text-xs py-1.5 rounded-md border border-line/25 bg-white/5 hover:bg-white/10 text-ink/85 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={() => {
+                setShowBefore(false);
+                onRestoreOriginal();
+              }}
+            >
+              Return to initial state
+            </button>
+          ) : null}
         </div>
       </div>
     </div>
   );
 }
 
-export function ImageDrawer({ images, pages, onUpdateImage, onDeleteImage, onRemoveFromCanvas, onEnhanceImage, onEnhanceAll, enhancingImageIds, onBeginManualPlacementDrag, onEndManualPlacementDrag, onUploadFiles, onUploadFileList, sceneControls }: ImageDrawerProps) {
+export function ImageDrawer({ images, pages, onUpdateImage, onDeleteImage, onRemoveFromCanvas, onEnhanceImage, onRestoreOriginalImage, onEnhanceAll, enhancingImageIds, onBeginManualPlacementDrag, onEndManualPlacementDrag, onUploadFiles, onUploadFileList, sceneControls }: ImageDrawerProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [sceneCollapsed, setSceneCollapsed] = useState(false);
   const [globalPreset, setGlobalPreset] = useState<EnhancePreset>('consistent');
@@ -369,6 +383,7 @@ export function ImageDrawer({ images, pages, onUpdateImage, onDeleteImage, onRem
                     onDelete={() => onDeleteImage(image.id)}
                     onRemoveFromCanvas={() => onRemoveFromCanvas(image.id)}
                     onEnhance={(preset) => void onEnhanceImage(image.id, preset)}
+                    onRestoreOriginal={() => void onRestoreOriginalImage(image.id)}
                     onBeginManualPlacementDrag={onBeginManualPlacementDrag}
                     onEndManualPlacementDrag={onEndManualPlacementDrag}
                     cardRef={(node: HTMLDivElement | null) => { cardRefs.current[image.id] = node; }}

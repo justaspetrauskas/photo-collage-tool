@@ -1515,6 +1515,37 @@ function rectanglesTouchOrOverlap(
     }
   }
 
+  async function restoreOriginalImage(imageId: string): Promise<void> {
+    const image = images.find((img) => img.id === imageId);
+    if (!image || image.src === image.originalSrc) {
+      return;
+    }
+
+    setEnhancingImageIds((prev) => new Set(prev).add(imageId));
+    try {
+      const originalImg = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const el = new Image();
+        el.onload = () => resolve(el);
+        el.onerror = () => reject(new Error('Failed to restore original image'));
+        el.src = image.originalSrc;
+      });
+
+      setImages((prev) =>
+        prev.map((img) =>
+          img.id === imageId ? { ...img, src: img.originalSrc, bitmap: originalImg } : img,
+        ),
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to restore original image');
+    } finally {
+      setEnhancingImageIds((prev) => {
+        const next = new Set(prev);
+        next.delete(imageId);
+        return next;
+      });
+    }
+  }
+
   function deleteImage(imageId: string): void {
     const image = images.find((img) => img.id === imageId);
     if (image) {
@@ -1619,6 +1650,7 @@ function rectanglesTouchOrOverlap(
     removeFromCanvas,
     enhanceImage,
     enhanceAllImages,
+    restoreOriginalImage,
     enhancingImageIds,
     onCanvasMouseDown,
     onCanvasMouseMove,

@@ -83,7 +83,7 @@ export function CollageControls({
                   type="range"
                   min="0"
                   max="10"
-                  step="0.1"
+                  step="0.5"
                   value={frameMm}
                   onChange={(event) => setFrameMm(Number(event.target.value))}
                 />
