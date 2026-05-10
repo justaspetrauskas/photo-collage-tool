@@ -6,6 +6,7 @@ import type { MouseEventHandler, RefObject } from 'react';
 interface CollagePreviewProps {
   pages: PageLayout[];
   selectedImageId: string | null;
+  hoveredImageId: string | null;
   selectedImageName: string | null;
   interactionMode: InteractionMode;
   dragActive: boolean;
@@ -18,11 +19,13 @@ interface CollagePreviewProps {
   onMouseDown: MouseEventHandler<HTMLCanvasElement>;
   onMouseMove: MouseEventHandler<HTMLCanvasElement>;
   onMouseUp: MouseEventHandler<HTMLCanvasElement>;
+  onMouseLeave: MouseEventHandler<HTMLCanvasElement>;
 }
 
 export function CollagePreview({
   pages,
   selectedImageId,
+  hoveredImageId,
   selectedImageName,
   interactionMode,
   dragActive,
@@ -35,8 +38,10 @@ export function CollagePreview({
   onMouseDown,
   onMouseMove,
   onMouseUp,
+  onMouseLeave,
 }: CollagePreviewProps) {
   const hasSelection = Boolean(selectedImageId);
+  const hasHover = Boolean(hoveredImageId);
   const helperText = !hasSelection
     ? 'Click any image on the canvas to select it first.'
     : interactionMode === 'crop'
@@ -48,14 +53,20 @@ export function CollagePreview({
         : 'Resize mode: drag selected image to change its max size and relayout.';
 
   const canvasCursorClass = !hasSelection
-    ? 'cursor-pointer'
+    ? hasHover
+      ? 'cursor-pointer'
+      : 'cursor-default'
     : interactionMode === 'crop'
       ? dragActive
         ? 'cursor-grabbing'
-        : 'cursor-move'
+        : hasHover
+          ? 'cursor-move'
+          : 'cursor-default'
       : dragActive
         ? 'cursor-se-resize'
-        : 'cursor-nwse-resize';
+        : hasHover
+          ? 'cursor-nwse-resize'
+          : 'cursor-default';
 
   return (
     <Panel className="animate-fade-up [animation-delay:130ms]">
@@ -74,14 +85,14 @@ export function CollagePreview({
         ) : null}
         <div className="mt-2 flex flex-wrap gap-2">
           <Button
-            variant={interactionMode === 'crop' ? 'primary' : 'soft'}
+            variant={hasSelection && interactionMode === 'crop' ? 'primary' : 'soft'}
             onClick={() => onSetInteractionMode('crop')}
             disabled={!hasSelection}
           >
             Crop Drag
           </Button>
           <Button
-            variant={interactionMode === 'resize' ? 'primary' : 'soft'}
+            variant={hasSelection && interactionMode === 'resize' ? 'primary' : 'soft'}
             onClick={() => onSetInteractionMode('resize')}
             disabled={!hasSelection}
           >
@@ -106,7 +117,7 @@ export function CollagePreview({
           onMouseDown={onMouseDown}
           onMouseMove={onMouseMove}
           onMouseUp={onMouseUp}
-          onMouseLeave={onMouseUp}
+          onMouseLeave={onMouseLeave}
         />
       </div>
 

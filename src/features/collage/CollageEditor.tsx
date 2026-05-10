@@ -52,6 +52,7 @@ export function CollageEditor() {
       <CollagePreview
         pages={editor.pages}
         selectedImageId={editor.selectedImageId}
+        hoveredImageId={editor.hoveredImageId}
         selectedImageName={editor.selectedImage?.fileName ?? null}
         interactionMode={editor.interactionMode}
         dragActive={editor.dragActive}
@@ -64,6 +65,7 @@ export function CollageEditor() {
         onMouseDown={editor.onCanvasMouseDown}
         onMouseMove={editor.onCanvasMouseMove}
         onMouseUp={editor.onCanvasMouseUp}
+        onMouseLeave={editor.onCanvasMouseLeave}
       />
 
       <CollageImageList images={editor.images} onUpdateImage={editor.updateImage} />

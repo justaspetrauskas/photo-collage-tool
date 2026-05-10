@@ -5,8 +5,27 @@ interface PreviewOptions {
   gridEnabled?: boolean;
   gridSpacingPx?: number;
   selectedImageId?: string | null;
+  hoveredImageId?: string | null;
   interactionMode?: InteractionMode;
   dragActive?: boolean;
+}
+
+function drawHoverFeedback(
+  ctx: CanvasRenderingContext2D,
+  page: PageLayout,
+  hoveredImageId: string,
+): void {
+  const hovered = page.items.find((item) => item.imageId === hoveredImageId);
+  if (!hovered) {
+    return;
+  }
+
+  ctx.save();
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = 'rgba(16, 57, 92, 0.78)';
+  ctx.setLineDash([6, 4]);
+  ctx.strokeRect(hovered.x, hovered.y, hovered.width, hovered.height);
+  ctx.restore();
 }
 
 function drawSelectionFeedback(
@@ -198,6 +217,10 @@ export function drawPagePreview(
   }
 
   ctx.restore();
+
+  if (options.hoveredImageId && options.hoveredImageId !== options.selectedImageId) {
+    drawHoverFeedback(ctx, page, options.hoveredImageId);
+  }
 
 
   if (options.selectedImageId) {

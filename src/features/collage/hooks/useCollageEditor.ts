@@ -41,6 +41,25 @@ interface ResizeDragState {
   baseMaxHeightCm: number;
 }
 
+function rectanglesOverlap(
+  a: { x: number; y: number; width: number; height: number },
+  b: { x: number; y: number; width: number; height: number },
+): boolean {
+  return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+}
+
+function pageHasOverlap(page: { items: Array<{ x: number; y: number; width: number; height: number }> }): boolean {
+  for (let i = 0; i < page.items.length; i += 1) {
+    const current = page.items[i];
+    for (let j = i + 1; j < page.items.length; j += 1) {
+      if (rectanglesOverlap(current, page.items[j])) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 function randomId(prefix = 'img'): string {
   return `${prefix}-${crypto.randomUUID()}`;
 }
@@ -56,6 +75,7 @@ export function useCollageEditor() {
   const [paginationMode, setPaginationMode] = useState<PaginationMode>('auto');
   const [interactionMode, setInteractionMode] = useState<InteractionMode>('crop');
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
+  const [hoveredImageId, setHoveredImageId] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState<boolean>(false);
   const [assistedPageCount, setAssistedPageCount] = useState<number>(1);
   const [selectedPageIndex, setSelectedPageIndex] = useState<number>(0);
@@ -85,10 +105,11 @@ export function useCollageEditor() {
       gridEnabled: gridModeEnabled,
       gridSpacingPx: cmToPx(DEFAULT_GRID_SPACING_CM),
       selectedImageId,
+      hoveredImageId,
       interactionMode,
       dragActive,
     });
-  }, [selectedPage, itemById, imageById, gridModeEnabled, selectedImageId, interactionMode, dragActive]);
+  }, [selectedPage, itemById, imageById, gridModeEnabled, selectedImageId, hoveredImageId, interactionMode, dragActive]);
 
   useEffect(() => {
     const currentSrcs = new Set(images.map((image) => image.src));
@@ -228,6 +249,18 @@ export function useCollageEditor() {
     oversizedImageIds,
     images,
   ]);
+
+  useEffect(() => {
+    if (!isHydrated || !images.length || !pages.length) {
+      return;
+    }
+
+    if (!pages.some(pageHasOverlap)) {
+      return;
+    }
+
+    regenerateLayout(resolveMaxPages(), true, images);
+  }, [isHydrated, images, pages, paginationMode, assistedPageCount, minImageCm, autoCompactPages]);
 
   async function onUploadFiles(event: ChangeEvent<HTMLInputElement>): Promise<void> {
     const files = Array.from(event.target.files ?? []);
@@ -403,6 +436,7 @@ export function useCollageEditor() {
     const point = pagePointFromMouse(event);
     if (!point) {
       setSelectedImageId(null);
+      setHoveredImageId(null);
       setDragActive(false);
       return;
     }
@@ -410,11 +444,13 @@ export function useCollageEditor() {
     const hit = findHitItem(point);
     if (!hit) {
       setSelectedImageId(null);
+      setHoveredImageId(null);
       setDragActive(false);
       return;
     }
 
     setSelectedImageId(hit.imageId);
+    setHoveredImageId(hit.imageId);
 
     const item = itemById.get(hit.imageId);
     if (!item) {
@@ -450,7 +486,15 @@ export function useCollageEditor() {
   function onCanvasMouseMove(event: MouseEvent<HTMLCanvasElement>): void {
     const point = pagePointFromMouse(event);
     if (!point) {
+      if (!dragActive && hoveredImageId !== null) {
+        setHoveredImageId(null);
+      }
       return;
+    }
+
+    const hit = findHitItem(point);
+    if (!dragActive) {
+      setHoveredImageId(hit?.imageId ?? null);
     }
 
     if (interactionMode === 'crop' && cropDragRef.current) {
@@ -494,6 +538,11 @@ export function useCollageEditor() {
     cropDragRef.current = null;
     resizeDragRef.current = null;
     setDragActive(false);
+  }
+
+  function onCanvasMouseLeave(): void {
+    onCanvasMouseUp();
+    setHoveredImageId(null);
   }
 
   function expandSelectedImage(scaleFactor: number): void {
@@ -613,6 +662,7 @@ export function useCollageEditor() {
     setInteractionMode,
     selectedImage,
     selectedImageId,
+    hoveredImageId,
     dragActive,
     selectedPageIndex,
     setSelectedPageIndex,
@@ -631,6 +681,7 @@ export function useCollageEditor() {
     onCanvasMouseDown,
     onCanvasMouseMove,
     onCanvasMouseUp,
+    onCanvasMouseLeave,
     expandSelectedImage,
     resetSelectedCrop,
   };
