@@ -3,6 +3,9 @@ import { Field } from '../../../shared/ui/Field';
 import type { PaginationMode } from '../model/types';
 import { CANVAS_CM } from '../model/constants';
 import { Check, Zap, Download, RotateCcw, Trash2, Plus } from 'lucide-react';
+import { useState } from 'react';
+
+type ExportFormat = 'png' | 'jpg' | 'jpeg';
 
 export interface CollageControlsProps {
   maxImageCm: number;
@@ -21,7 +24,7 @@ export interface CollageControlsProps {
   overflowCount: number;
   onApplyGlobalSettings: () => void;
   onGenerateLayout: () => void;
-  onExportPages: () => void;
+  onExportPages: (format: ExportFormat) => void;
   onCreateNextPage: () => void;
   onStartFromScratch: () => void;
   onClearEverything: () => void;
@@ -49,6 +52,8 @@ export function CollageControls({
   onStartFromScratch,
   onClearEverything,
 }: CollageControlsProps) {
+  const [exportFormat, setExportFormat] = useState<ExportFormat>('png');
+
   return (
     <div className="space-y-2">
       {/* Sizing Controls - Compact Grid */}
@@ -132,10 +137,30 @@ export function CollageControls({
                 <Zap className="w-4 h-4" />
                 Generate Layout
               </Button>
-              <Button onClick={onExportPages} disabled={!pagesCount} className="w-full flex items-center justify-start gap-2 py-1.5 px-3 text-sm disabled:opacity-50">
-                <Download className="w-4 h-4" />
-                Export PNG
-              </Button>
+
+              <div className="rounded-lg border border-amber-300/35 bg-amber-400/10 p-2">
+                <div className="flex items-center gap-2">
+                  <select
+                    className="field-input py-1 text-xs flex-1"
+                    value={exportFormat}
+                    onChange={(event) => setExportFormat(event.target.value as ExportFormat)}
+                    aria-label="Export format"
+                  >
+                    <option value="png">PNG</option>
+                    <option value="jpg">JPG</option>
+                    <option value="jpeg">JPEG</option>
+                  </select>
+                  <Button
+                    onClick={() => onExportPages(exportFormat)}
+                    disabled={!pagesCount}
+                    className="flex-1 min-w-0 flex items-center justify-center gap-2 py-2 px-3 text-sm font-semibold disabled:opacity-50"
+                  >
+                    <Download className="w-4 h-4" />
+                    Export All Pages
+                  </Button>
+                </div>
+                <p className="mt-1 text-[10px] text-amber-100/90">Files: photo-grid-&lt;id&gt;-page-&lt;n&gt;.{exportFormat}</p>
+              </div>
 
               <div className="h-px bg-line/20 my-1"></div>
 

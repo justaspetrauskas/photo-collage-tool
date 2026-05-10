@@ -92,7 +92,7 @@ export function CollageEditor() {
             overflowCount: editor.overflowImageIds.length,
             onApplyGlobalSettings: editor.applyGlobalSettings,
             onGenerateLayout: editor.onGenerateLayout,
-            onExportPages: editor.exportPagesAsPng,
+            onExportPages: editor.exportPages,
             onCreateNextPage: editor.onCreateNextPage,
             onStartFromScratch: editor.startFromScratch,
             onClearEverything: editor.clearEverything,

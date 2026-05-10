@@ -1465,16 +1465,27 @@ function rectanglesTouchOrOverlap(
     updateImage(selectedImageId, { offsetX: 0, offsetY: 0 });
   }
 
-  function exportPagesAsPng(): void {
+  function exportPages(format: 'png' | 'jpg' | 'jpeg' = 'png'): void {
     if (!pages.length) {
       return;
     }
 
+    const normalizedFormat = format === 'png' ? 'png' : 'jpeg';
+    const extension = format === 'jpg' ? 'jpg' : format;
+    const mimeType = normalizedFormat === 'png' ? 'image/png' : 'image/jpeg';
+    const exportId =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID().slice(0, 8)
+        : Math.random().toString(36).slice(2, 10);
+
     pages.forEach((page, index) => {
       const canvas = renderPageToExportCanvas(page, itemById, imageById);
       const link = document.createElement('a');
-      link.download = `collage-page-${index + 1}.png`;
-      link.href = canvas.toDataURL('image/png');
+      link.download = `photo-grid-${exportId}-page-${index + 1}.${extension}`;
+      link.href =
+        normalizedFormat === 'png'
+          ? canvas.toDataURL(mimeType)
+          : canvas.toDataURL(mimeType, 0.92);
       link.click();
     });
   }
@@ -1673,7 +1684,7 @@ function rectanglesTouchOrOverlap(
     uploadFileList,
     applyGlobalSettings,
     onGenerateLayout,
-    exportPagesAsPng,
+    exportPages,
     onCreateNextPage,
     startFromScratch,
     clearEverything,
