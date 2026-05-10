@@ -5,7 +5,7 @@ import type {
   MouseEventHandler,
   MutableRefObject,
 } from 'react';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../../shared/ui/Button';
 import { Panel } from '../../../shared/ui/Panel';
 import { CANVAS_CM, CANVAS_SIZE_PX, cmToPx } from '../model/constants';
@@ -45,6 +45,7 @@ interface CollagePreviewProps {
 interface PageCanvasCardProps {
   index: number;
   page: PageLayout;
+  scrollRoot: Element | null;
   isActive: boolean;
   onVisible: (index: number) => void;
   onJumpToPage: (index: number) => void;
@@ -62,6 +63,7 @@ interface PageCanvasCardProps {
 function PageCanvasCard({
   index,
   page,
+  scrollRoot,
   isActive,
   onVisible,
   onJumpToPage,
@@ -77,6 +79,7 @@ function PageCanvasCard({
 }: PageCanvasCardProps) {
   const { ref: inViewRef, inView } = useInView({
     threshold: 0.62,
+    root: scrollRoot,
     rootMargin: '-20% 0px -20% 0px',
   });
 
@@ -155,7 +158,18 @@ export function CollagePreview({
 }: CollagePreviewProps) {
   const pageCanvasRefs = useRef<Array<HTMLCanvasElement | null>>([]);
   const pageContainerRefs = useRef<Array<HTMLDivElement | null>>([]);
+  const previewBodyRef = useRef<HTMLDivElement | null>(null);
+  const [scrollRoot, setScrollRoot] = useState<Element | null>(null);
   const hasSelection = Boolean(selectedImageId);
+
+  useEffect(() => {
+    if (!previewBodyRef.current) {
+      return;
+    }
+
+    const root = previewBodyRef.current.closest('[data-collage-scroll-root]');
+    setScrollRoot(root);
+  }, []);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -208,6 +222,64 @@ export function CollagePreview({
     pageCanvasRefs.current.length = pages.length;
     pageContainerRefs.current.length = pages.length;
   }, [pages.length]);
+
+  useEffect(() => {
+    const rootEl = scrollRoot as HTMLElement | null;
+    if (!rootEl || pages.length === 0) {
+      return;
+    }
+
+    let rafId = 0;
+    const syncActivePageFromScroll = () => {
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+      }
+
+      rafId = requestAnimationFrame(() => {
+        const rootRect = rootEl.getBoundingClientRect();
+        const viewportCenterY = rootRect.top + rootRect.height / 2;
+
+        let bestIndex = -1;
+        let bestDistance = Number.POSITIVE_INFINITY;
+
+        for (let index = 0; index < pageContainerRefs.current.length; index += 1) {
+          const node = pageContainerRefs.current[index];
+          if (!node) {
+            continue;
+          }
+
+          const rect = node.getBoundingClientRect();
+          const outsideViewport = rect.bottom < rootRect.top || rect.top > rootRect.bottom;
+          if (outsideViewport) {
+            continue;
+          }
+
+          const cardCenterY = rect.top + rect.height / 2;
+          const distance = Math.abs(cardCenterY - viewportCenterY);
+          if (distance < bestDistance) {
+            bestDistance = distance;
+            bestIndex = index;
+          }
+        }
+
+        if (bestIndex >= 0 && bestIndex !== selectedPageIndex) {
+          onSelectPage(bestIndex);
+        }
+      });
+    };
+
+    syncActivePageFromScroll();
+    rootEl.addEventListener('scroll', syncActivePageFromScroll, { passive: true });
+    window.addEventListener('resize', syncActivePageFromScroll);
+
+    return () => {
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+      }
+      rootEl.removeEventListener('scroll', syncActivePageFromScroll);
+      window.removeEventListener('resize', syncActivePageFromScroll);
+    };
+  }, [scrollRoot, pages.length, selectedPageIndex, onSelectPage]);
 
   useEffect(() => {
     pages.forEach((page, index) => {
@@ -264,7 +336,7 @@ export function CollagePreview({
       <p className="m-0 text-sm text-muted">{helperText}</p>
       {resizeLimitNotice ? <p className="m-0 mt-1 text-xs font-semibold text-warn">{resizeLimitNotice}</p> : null}
 
-      <div className="mt-3 p-4">
+      <div ref={previewBodyRef} className="mt-3 p-4">
         <p className="mb-4 text-xs font-semibold uppercase tracking-[0.08em] text-amber-200/90">
           Printable Area: {CANVAS_CM} x {CANVAS_CM} cm ({CANVAS_SIZE_PX} x {CANVAS_SIZE_PX} px)
         </p>
@@ -294,6 +366,7 @@ export function CollagePreview({
                 key={page.id}
                 index={index}
                 page={page}
+                scrollRoot={scrollRoot}
                 isActive={index === selectedPageIndex}
                 onVisible={handleVisiblePage}
                 onJumpToPage={jumpToPage}

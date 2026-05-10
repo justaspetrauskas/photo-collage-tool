@@ -17,7 +17,7 @@ export function CollageEditor() {
 
       <div className="flex flex-1 overflow-hidden">
         {/* Main Content Area — canvas only */}
-        <div className="flex-1 overflow-y-auto relative">
+        <div className="flex-1 overflow-y-auto relative" data-collage-scroll-root>
           <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-16 bg-gradient-to-l from-[#000000]/20 via-transparent to-transparent z-20" />
           <div className="mx-auto w-full max-w-[1440px] px-6 pt-4 sm:px-8">
             <main>
