@@ -2,14 +2,21 @@ import { Field } from '../../../shared/ui/Field';
 import { Button } from '../../../shared/ui/Button';
 import type { ImageItem, PageLayout } from '../model/types';
 import { useState, useRef } from 'react';
-import { ChevronRight, ChevronLeft } from 'lucide-react';
+import { ChevronRight, ChevronLeft, UploadCloud, ChevronDown, ChevronUp } from 'lucide-react';
 import { useEditorUIStore } from '../store/editorUIStore';
 import { useDrag } from '@use-gesture/react';
+import { CollageControls, type CollageControlsProps } from './CollageControls';
+import type { ChangeEvent } from 'react';
+
+const MAX_IMAGES = 24;
 
 interface ImageDrawerProps {
   images: ImageItem[];
   pages: PageLayout[];
   onUpdateImage: (id: string, patch: Partial<ImageItem>) => void;
+  onUploadFiles: (event: ChangeEvent<HTMLInputElement>) => Promise<void>;
+  onUploadFileList: (files: File[]) => Promise<void>;
+  sceneControls: CollageControlsProps;
 }
 
 interface ImageDrawerCardProps {
@@ -160,12 +167,26 @@ function ImageDrawerCard({ image, isUsed, isSelected, onSelect, onUpdateImage }:
   );
 }
 
-export function ImageDrawer({ images, pages, onUpdateImage }: ImageDrawerProps) {
+export function ImageDrawer({ images, pages, onUpdateImage, onUploadFiles, onUploadFileList, sceneControls }: ImageDrawerProps) {
   const [collapsed, setCollapsed] = useState(false);
+  const [sceneCollapsed, setSceneCollapsed] = useState(false);
   const { drawerSelectedImageId, setDrawerSelectedImageId } = useEditorUIStore();
+  const uploadInputRef = useRef<HTMLInputElement>(null);
+  const [dragOver, setDragOver] = useState(false);
 
   const usedImageIds = new Set<string>();
   pages.forEach((page) => page.items.forEach((item) => usedImageIds.add(item.imageId)));
+
+  const atLimit = images.length >= MAX_IMAGES;
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    if (atLimit) return;
+    const remaining = MAX_IMAGES - images.length;
+    const files = Array.from(e.dataTransfer.files).slice(0, remaining);
+    if (files.length > 0) void onUploadFileList(files);
+  };
 
   return (
     <div
@@ -173,6 +194,7 @@ export function ImageDrawer({ images, pages, onUpdateImage }: ImageDrawerProps) 
         collapsed ? 'w-12' : 'w-[28vw] min-w-[400px]'
       }`}
     >
+      {/* Drawer toggle button */}
       <button
         onClick={() => setCollapsed((v) => !v)}
         className="flex-shrink-0 h-12 border-b border-line/20 flex items-center justify-center hover:bg-amber-500/10 transition"
@@ -181,18 +203,38 @@ export function ImageDrawer({ images, pages, onUpdateImage }: ImageDrawerProps) 
       </button>
 
       {!collapsed && (
-        <div className="flex-1 overflow-y-auto">
-          <div className="p-6 space-y-3">
-            <div className="flex items-center justify-between px-2 mb-4">
-              <h3 className="text-sm font-semibold">Images ({images.length})</h3>
-              <span className="text-xs text-amber-300">{usedImageIds.size} used</span>
-            </div>
+        <div className="flex-1 overflow-y-auto flex flex-col min-h-0">
 
-            {images.length === 0 ? (
-              <p className="text-xs text-muted text-center py-4">No images uploaded yet</p>
-            ) : (
-              <div className="space-y-3">
-                {images.map((image) => (
+          {/* Scene Controls Section */}
+          <div className="flex-shrink-0 border-b border-line/20">
+            <button
+              onClick={() => setSceneCollapsed((v) => !v)}
+              className="w-full flex items-center justify-between px-5 py-3 text-sm font-semibold hover:bg-amber-500/5 transition"
+            >
+              <span>Scene Controls</span>
+              {sceneCollapsed ? <ChevronDown className="w-4 h-4 text-muted" /> : <ChevronUp className="w-4 h-4 text-muted" />}
+            </button>
+            {!sceneCollapsed && (
+              <div className="px-4 pb-4">
+                <CollageControls {...sceneControls} />
+              </div>
+            )}
+          </div>
+
+          {/* Full-width divider label */}
+          <div className="flex-shrink-0 flex items-center gap-3 px-5 py-3 border-b border-line/20">
+            <h3 className="text-sm font-semibold">Images</h3>
+            <span className="text-xs text-muted">{images.length}/{MAX_IMAGES}</span>
+            {usedImageIds.size > 0 && <span className="text-xs text-amber-300 ml-auto">{usedImageIds.size} used</span>}
+          </div>
+
+          {/* Images list */}
+          <div className="flex-1 overflow-y-auto">
+            <div className="p-4 space-y-3">
+              {images.length === 0 ? (
+                <p className="text-xs text-muted text-center py-8">No images yet — upload below</p>
+              ) : (
+                images.map((image) => (
                   <ImageDrawerCard
                     key={image.id}
                     image={image}
@@ -201,14 +243,53 @@ export function ImageDrawer({ images, pages, onUpdateImage }: ImageDrawerProps) 
                     onSelect={() => setDrawerSelectedImageId(image.id)}
                     onUpdateImage={(patch) => onUpdateImage(image.id, patch)}
                   />
-                ))}
-              </div>
-            )}
+                ))
+              )}
+            </div>
           </div>
+
+          {/* Upload zone — always visible at the bottom */}
+          <div className="flex-shrink-0 border-t border-line/20 p-4">
+            <input
+              ref={uploadInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              multiple
+              className="hidden"
+              disabled={atLimit}
+              onChange={onUploadFiles}
+            />
+            <button
+              type="button"
+              disabled={atLimit}
+              onClick={() => !atLimit && uploadInputRef.current?.click()}
+              onDragOver={(e) => { e.preventDefault(); if (!atLimit) setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={handleDrop}
+              className={`w-full rounded-xl border-2 border-dashed py-6 flex flex-col items-center gap-2 transition select-none ${
+                atLimit
+                  ? 'border-line/20 opacity-40 cursor-not-allowed'
+                  : dragOver
+                  ? 'border-amber-400 bg-amber-400/10 cursor-copy'
+                  : 'border-line/30 hover:border-amber-400/60 hover:bg-amber-400/5 cursor-pointer'
+              }`}
+            >
+              <UploadCloud className={`w-7 h-7 ${dragOver ? 'text-amber-400' : 'text-muted'}`} />
+              <div className="text-center">
+                {atLimit ? (
+                  <p className="text-xs font-medium text-muted">Limit reached ({MAX_IMAGES} photos)</p>
+                ) : (
+                  <>
+                    <p className="text-xs font-medium text-ink/80">Upload Photos</p>
+                    <p className="text-xs text-muted mt-0.5">Click or drag &amp; drop · {MAX_IMAGES - images.length} remaining</p>
+                  </>
+                )}
+              </div>
+            </button>
+          </div>
+
         </div>
       )}
     </div>
   );
 }
-
-

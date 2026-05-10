@@ -1,4 +1,3 @@
-import { CollageControls } from './components/CollageControls';
 import { CollageHeader } from './components/CollageHeader';
 import { ImageDrawer } from './components/ImageDrawer';
 import { CollagePreview } from './components/CollagePreview';
@@ -15,34 +14,10 @@ export function CollageEditor() {
       <CollageHeader />
 
       <div className="flex flex-1 overflow-hidden">
-        {/* Main Content Area */}
+        {/* Main Content Area — canvas only */}
         <div className="flex-1 overflow-y-auto relative">
           <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-16 bg-gradient-to-l from-[#000000]/20 via-transparent to-transparent z-20" />
-          <div className="mx-auto w-full max-w-[1440px] space-y-4 px-6 pt-4 sm:px-8">
-            <CollageControls
-              maxImageCm={editor.maxImageCm}
-              setMaxImageCm={editor.setMaxImageCm}
-              minImageCm={editor.minImageCm}
-              setMinImageCm={editor.setMinImageCm}
-              frameMm={editor.frameMm}
-              setFrameMm={editor.setFrameMm}
-              gridModeEnabled={editor.gridModeEnabled}
-              setGridModeEnabled={editor.setGridModeEnabled}
-              autoCompactPages={editor.autoCompactPages}
-              setAutoCompactPages={editor.setAutoCompactPages}
-              paginationMode={editor.paginationMode}
-              setPaginationMode={editor.setPaginationMode}
-              pagesCount={editor.pages.length}
-              overflowCount={editor.overflowImageIds.length}
-              onUploadFiles={editor.onUploadFiles}
-              onApplyGlobalSettings={editor.applyGlobalSettings}
-              onGenerateLayout={editor.onGenerateLayout}
-              onExportPages={editor.exportPagesAsPng}
-              onCreateNextPage={editor.onCreateNextPage}
-              onStartFromScratch={editor.startFromScratch}
-              onClearEverything={editor.clearEverything}
-            />
-
+          <div className="mx-auto w-full max-w-[1440px] px-6 pt-4 sm:px-8">
             <main>
               {editor.error ? <p className="mb-2 mt-0 text-sm text-danger">{editor.error}</p> : null}
               {editor.oversizedImageIds.length ? (
@@ -76,8 +51,36 @@ export function CollageEditor() {
           </div>
         </div>
 
-        {/* Image Drawer */}
-        <ImageDrawer images={editor.images} pages={editor.pages} onUpdateImage={editor.updateImage} />
+        {/* Drawer — scene controls + images + upload */}
+        <ImageDrawer
+          images={editor.images}
+          pages={editor.pages}
+          onUpdateImage={editor.updateImage}
+          onUploadFiles={editor.onUploadFiles}
+          onUploadFileList={editor.uploadFileList}
+          sceneControls={{
+            maxImageCm: editor.maxImageCm,
+            setMaxImageCm: editor.setMaxImageCm,
+            minImageCm: editor.minImageCm,
+            setMinImageCm: editor.setMinImageCm,
+            frameMm: editor.frameMm,
+            setFrameMm: editor.setFrameMm,
+            gridModeEnabled: editor.gridModeEnabled,
+            setGridModeEnabled: editor.setGridModeEnabled,
+            autoCompactPages: editor.autoCompactPages,
+            setAutoCompactPages: editor.setAutoCompactPages,
+            paginationMode: editor.paginationMode,
+            setPaginationMode: editor.setPaginationMode,
+            pagesCount: editor.pages.length,
+            overflowCount: editor.overflowImageIds.length,
+            onApplyGlobalSettings: editor.applyGlobalSettings,
+            onGenerateLayout: editor.onGenerateLayout,
+            onExportPages: editor.exportPagesAsPng,
+            onCreateNextPage: editor.onCreateNextPage,
+            onStartFromScratch: editor.startFromScratch,
+            onClearEverything: editor.clearEverything,
+          }}
+        />
       </div>
     </div>
   );

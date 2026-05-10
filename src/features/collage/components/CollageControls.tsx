@@ -1,12 +1,9 @@
 import { Button } from '../../../shared/ui/Button';
 import { Field } from '../../../shared/ui/Field';
-import { Panel } from '../../../shared/ui/Panel';
 import type { PaginationMode } from '../model/types';
-import type { ChangeEvent } from 'react';
-import { useState } from 'react';
 import { Check, Zap, Download, RotateCcw, Trash2, Plus } from 'lucide-react';
 
-interface CollageControlsProps {
+export interface CollageControlsProps {
   maxImageCm: number;
   setMaxImageCm: (value: number) => void;
   minImageCm: number;
@@ -21,7 +18,6 @@ interface CollageControlsProps {
   setPaginationMode: (value: PaginationMode) => void;
   pagesCount: number;
   overflowCount: number;
-  onUploadFiles: (event: ChangeEvent<HTMLInputElement>) => Promise<void>;
   onApplyGlobalSettings: () => void;
   onGenerateLayout: () => void;
   onExportPages: () => void;
@@ -45,7 +41,6 @@ export function CollageControls({
   setPaginationMode,
   pagesCount,
   overflowCount,
-  onUploadFiles,
   onApplyGlobalSettings,
   onGenerateLayout,
   onExportPages,
@@ -53,28 +48,9 @@ export function CollageControls({
   onStartFromScratch,
   onClearEverything,
 }: CollageControlsProps) {
-  const [collapsed, setCollapsed] = useState(false);
-
   return (
-    <Panel className="animate-fade-up [animation-delay:80ms] space-y-2 p-3 sm:p-4">
-      <div className="flex items-center justify-between gap-2">
-        <h3 className="m-0 text-sm font-semibold text-ink">Scene Controls</h3>
-        <Button variant="soft" className="px-2 py-1 text-xs" onClick={() => setCollapsed((v) => !v)}>
-          {collapsed ? '▶' : '▼'}
-        </Button>
-      </div>
-
-      {collapsed ? null : (
-        <>
-          <div className="space-y-2">
-            {/* File Upload Row */}
-            <div className="grid grid-cols-1 gap-2">
-              <Field label="Upload Photos" className="mb-0">
-                <input className="field-input py-1.5 text-xs" type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={onUploadFiles} />
-              </Field>
-            </div>
-
-            {/* Sizing Controls - Compact Grid */}
+    <div className="space-y-2">
+      {/* Sizing Controls - Compact Grid */}
             <div className="grid gap-2 grid-cols-3 sm:grid-cols-4">
               <Field label="Max (cm)" className="mb-0">
                 <input
@@ -181,8 +157,5 @@ export function CollageControls({
               ) : null}
             </div>
           </div>
-        </>
-      )}
-    </Panel>
   );
 }

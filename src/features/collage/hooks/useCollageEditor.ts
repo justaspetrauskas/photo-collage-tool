@@ -300,6 +300,11 @@ function rectanglesTouchOrOverlap(
 
   async function onUploadFiles(event: ChangeEvent<HTMLInputElement>): Promise<void> {
     const files = Array.from(event.target.files ?? []);
+    await uploadFileList(files);
+    event.target.value = '';
+  }
+
+  async function uploadFileList(files: File[]): Promise<void> {
     if (!files.length) {
       return;
     }
@@ -330,8 +335,6 @@ function rectanglesTouchOrOverlap(
       setError('');
     } catch {
       setError('Some images failed to load. Please retry with valid JPG, PNG, or WebP files.');
-    } finally {
-      event.target.value = '';
     }
   }
 
@@ -1049,6 +1052,7 @@ function rectanglesTouchOrOverlap(
     error,
     previewCanvasRef,
     onUploadFiles,
+    uploadFileList,
     applyGlobalSettings,
     onGenerateLayout,
     exportPagesAsPng,
