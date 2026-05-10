@@ -1056,19 +1056,124 @@ function rectanglesTouchOrOverlap(
       return;
     }
 
-    const size = resolveManualPlacementSize(image);
-    const canFit = size.width <= selectedPage.widthPx && size.height <= selectedPage.heightPx;
-    const x = Math.max(0, Math.min(selectedPage.widthPx - size.width, point.x - size.width / 2));
-    const y = Math.max(0, Math.min(selectedPage.heightPx - size.height, point.y - size.height / 2));
+    const proposedSize = resolveManualPlacementSize(image);
+    const existingItems = selectedPage.items.filter((item) => item.imageId !== imageId);
+    const smartSize = computeSmartDropSize(
+      image,
+      proposedSize,
+      point.x - proposedSize.width / 2,
+      point.y - proposedSize.height / 2,
+      selectedPage.widthPx,
+      selectedPage.heightPx,
+      existingItems,
+    );
+
+    const x = Math.max(0, Math.min(selectedPage.widthPx - smartSize.width, point.x - smartSize.width / 2));
+    const y = Math.max(0, Math.min(selectedPage.heightPx - smartSize.height, point.y - smartSize.height / 2));
 
     setCanvasPlacementPreview({
       imageId,
       x,
       y,
-      width: size.width,
-      height: size.height,
-      valid: canFit,
+      width: smartSize.width,
+      height: smartSize.height,
+      valid: true,
     });
+  }
+
+  function onCanvasDragLeave(): void {
+    setCanvasPlacementPreview(null);
+  }
+
+  /**
+   * Compute smart sizing for dropped images: fit to available space while respecting minimums.
+   */
+  function computeSmartDropSize(
+    image: ImageItem,
+    proposedSize: ReturnType<typeof resolveManualPlacementSize>,
+    dropX: number,
+    dropY: number,
+    canvasWidthPx: number,
+    canvasHeightPx: number,
+    existingItems: PositionedImage[],
+  ): ReturnType<typeof resolveManualPlacementSize> {
+    const minContentPx = cmToPx(minImageCm);
+    const frameThicknessPx = proposedSize.frameThicknessPx;
+    const aspectRatio = image.naturalWidth / image.naturalHeight;
+
+    // Calculate available width from drop point to right edge (accounting for existing items)
+    let availableWidth = canvasWidthPx - dropX;
+
+    for (const existing of existingItems) {
+      // Check if there's an item in the path below/at/above this drop location
+      const existingRight = existing.x + existing.width;
+      const existingBottom = existing.y + existing.height;
+      const dropBottom = dropY + proposedSize.height;
+
+      // If item overlaps vertically with potential drop area, reduce available width
+      if (existingRight > dropX && existing.y < dropBottom && existingBottom > dropY) {
+        const rightmostConflict = existingRight;
+        availableWidth = Math.min(availableWidth, rightmostConflict - dropX);
+      }
+    }
+
+    // Also consider available height from drop point
+    let availableHeight = canvasHeightPx - dropY;
+
+    for (const existing of existingItems) {
+      const existingRight = existing.x + existing.width;
+      const existingBottom = existing.y + existing.height;
+      const dropRight = dropX + proposedSize.width;
+
+      // If item overlaps horizontally, reduce available height
+      if (existingBottom > dropY && existing.x < dropRight && existingRight > dropX) {
+        const bottomMostConflict = existingBottom;
+        availableHeight = Math.min(availableHeight, bottomMostConflict - dropY);
+      }
+    }
+
+    // Calculate scaled dimensions respecting both available space and aspect ratio
+    let finalWidth = proposedSize.width;
+    let finalHeight = proposedSize.height;
+
+    // If either dimension exceeds available space, scale down proportionally
+    if (finalWidth > availableWidth || finalHeight > availableHeight) {
+      const scaleX = finalWidth > availableWidth ? availableWidth / finalWidth : 1;
+      const scaleY = finalHeight > availableHeight ? availableHeight / finalHeight : 1;
+      const scale = Math.min(scaleX, scaleY);
+
+      finalWidth = Math.round(proposedSize.width * scale);
+      finalHeight = Math.round(proposedSize.height * scale);
+    }
+
+    // Ensure minimum size is respected
+    const minTotalPx = minContentPx + frameThicknessPx * 2;
+    if (finalWidth < minTotalPx || finalHeight < minTotalPx) {
+      return proposedSize; // Keep original size if scaling would violate minimum
+    }
+
+    // Recalculate content dimensions and crop metrics based on final size
+    const finalContentWidthPx = finalWidth - frameThicknessPx * 2;
+    const finalContentHeightPx = finalHeight - frameThicknessPx * 2;
+
+    const crop = computeCropMetrics(
+      image.naturalWidth,
+      image.naturalHeight,
+      finalContentWidthPx,
+      finalContentHeightPx,
+    );
+
+    return {
+      width: finalWidth,
+      height: finalHeight,
+      contentWidthPx: finalContentWidthPx,
+      contentHeightPx: finalContentHeightPx,
+      frameThicknessPx,
+      drawnImageWidthPx: crop.drawnImageWidthPx,
+      drawnImageHeightPx: crop.drawnImageHeightPx,
+      maxOffsetX: crop.maxOffsetX,
+      maxOffsetY: crop.maxOffsetY,
+    };
   }
 
   function onCanvasDrop(event: DragEvent<HTMLCanvasElement>): void {
@@ -1081,15 +1186,23 @@ function rectanglesTouchOrOverlap(
       return;
     }
 
-    const size = resolveManualPlacementSize(image);
-    if (size.width > selectedPage.widthPx || size.height > selectedPage.heightPx) {
-      setError('Image does not fit on canvas with current size constraints.');
-      setCanvasPlacementPreview(null);
-      return;
-    }
+    const proposedSize = resolveManualPlacementSize(image);
+    
+    // Compute smart size: fit to available space while respecting minimums
+    const existingItems = selectedPage.items.filter((item) => item.imageId !== imageId);
+    const smartSize = computeSmartDropSize(
+      image,
+      proposedSize,
+      point.x - proposedSize.width / 2,
+      point.y - proposedSize.height / 2,
+      selectedPage.widthPx,
+      selectedPage.heightPx,
+      existingItems,
+    );
 
-    const x = Math.max(0, Math.min(selectedPage.widthPx - size.width, point.x - size.width / 2));
-    const y = Math.max(0, Math.min(selectedPage.heightPx - size.height, point.y - size.height / 2));
+    // Position the image (centering on drop point, clamped to canvas bounds)
+    const x = Math.max(0, Math.min(selectedPage.widthPx - smartSize.width, point.x - smartSize.width / 2));
+    const y = Math.max(0, Math.min(selectedPage.heightPx - smartSize.height, point.y - smartSize.height / 2));
 
     setPages((currentPages) =>
       currentPages.map((page, pageIndex) => {
@@ -1109,31 +1222,31 @@ function rectanglesTouchOrOverlap(
               imageId,
               x,
               y,
-              width: size.width,
-              height: size.height,
-              contentWidthPx: size.contentWidthPx,
-              contentHeightPx: size.contentHeightPx,
-              frameThicknessPx: size.frameThicknessPx,
-              drawnImageWidthPx: size.drawnImageWidthPx,
-              drawnImageHeightPx: size.drawnImageHeightPx,
-              maxOffsetX: size.maxOffsetX,
-              maxOffsetY: size.maxOffsetY,
+              width: smartSize.width,
+              height: smartSize.height,
+              contentWidthPx: smartSize.contentWidthPx,
+              contentHeightPx: smartSize.contentHeightPx,
+              frameThicknessPx: smartSize.frameThicknessPx,
+              drawnImageWidthPx: smartSize.drawnImageWidthPx,
+              drawnImageHeightPx: smartSize.drawnImageHeightPx,
+              maxOffsetX: smartSize.maxOffsetX,
+              maxOffsetY: smartSize.maxOffsetY,
             },
           ],
         };
       }),
     );
 
-    const clamped = clampOffsets(image.offsetX, image.offsetY, size.maxOffsetX, size.maxOffsetY);
+    const clamped = clampOffsets(image.offsetX, image.offsetY, smartSize.maxOffsetX, smartSize.maxOffsetY);
     setImages((current) =>
       current.map((entry) =>
         entry.id === imageId
           ? {
               ...entry,
-              renderWidthPx: size.contentWidthPx,
-              renderHeightPx: size.contentHeightPx,
-              cropMaxOffsetX: size.maxOffsetX,
-              cropMaxOffsetY: size.maxOffsetY,
+              renderWidthPx: smartSize.contentWidthPx,
+              renderHeightPx: smartSize.contentHeightPx,
+              cropMaxOffsetX: smartSize.maxOffsetX,
+              cropMaxOffsetY: smartSize.maxOffsetY,
               offsetX: clamped.offsetX,
               offsetY: clamped.offsetY,
             }
