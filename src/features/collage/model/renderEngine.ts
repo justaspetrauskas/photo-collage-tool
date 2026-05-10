@@ -133,22 +133,9 @@ function drawSelectionFeedback(
     return;
   }
 
-  const interactionColor =
-    interactionMode === 'crop'
-      ? 'rgba(13, 110, 184, 0.92)'
-      : interactionMode === 'resize'
-        ? 'rgba(207, 91, 44, 0.92)'
-        : interactionMode === 'move'
-          ? 'rgba(168, 85, 247, 0.92)'
-          : 'rgba(34, 139, 84, 0.92)';
-  const interactionFill =
-    interactionMode === 'crop'
-      ? 'rgba(13, 110, 184, 0.12)'
-      : interactionMode === 'resize'
-        ? 'rgba(207, 91, 44, 0.12)'
-        : interactionMode === 'move'
-          ? 'rgba(168, 85, 247, 0.12)'
-          : 'rgba(34, 139, 84, 0.12)';
+  // Theme amber accent: #fcc515 (252, 197, 21)
+  const interactionColor = 'rgba(252, 197, 21, 0.92)';
+  const interactionFill = 'rgba(252, 197, 21, 0.12)';
   const thickness = dragActive ? 3 : 2;
 
   ctx.save();
