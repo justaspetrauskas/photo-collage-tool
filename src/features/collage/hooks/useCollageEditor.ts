@@ -41,6 +41,8 @@ import {
 import {
   calculateCropOffsets,
   calculateNewPosition,
+  calculateOutsideRatio,
+  getCanvasSnapPosition,
   isPositionOutsideCanvas,
   resolvePushLayout,
   getPreferredPushAxis,
@@ -64,6 +66,22 @@ type ResizeFeedback = {
   currentRect: { x: number; y: number; width: number; height: number };
   intent: 'expand' | 'shrink' | 'steady';
 };
+
+type SwapAnimation = {
+  startedTick: number;
+  durationTicks: number;
+  transitions: Record<
+    string,
+    {
+      from: { x: number; y: number };
+      to: { x: number; y: number };
+    }
+  >;
+};
+
+function elapsedTicks(currentTick: number, startTick: number): number {
+  return currentTick >= startTick ? currentTick - startTick : 10000 - startTick + currentTick;
+}
 
 function randomId(prefix = 'img'): string {
   return `${prefix}-${crypto.randomUUID()}`;
@@ -107,6 +125,7 @@ export function useCollageEditor() {
   const [error, setError] = useState<string>('');
   const [isHydrated, setIsHydrated] = useState<boolean>(false);
   const [replaceAnimationTick, setReplaceAnimationTick] = useState<number>(0);
+  const [swapAnimation, setSwapAnimation] = useState<SwapAnimation | null>(null);
   const [moveOutsideCanvas, setMoveOutsideCanvas] = useState<boolean>(false);
   const [moveCollisionImageIds, setMoveCollisionImageIds] = useState<string[]>([]);
   const [resizeCurrentDimensions, setResizeCurrentDimensions] = useState<{ width: number; height: number } | null>(null);
@@ -126,8 +145,10 @@ export function useCollageEditor() {
   const selectedPage = pages[selectedPageIndex] ?? null;
   const selectedImage = selectedImageId ? itemById.get(selectedImageId) ?? null : null;
 
+  const shouldRunAnimationLoop = (dragActive && interactionMode === 'replace') || Boolean(swapAnimation);
+
   useEffect(() => {
-    if (!(dragActive && interactionMode === 'replace')) {
+    if (!shouldRunAnimationLoop) {
       return;
     }
 
@@ -139,7 +160,17 @@ export function useCollageEditor() {
 
     frameId = window.requestAnimationFrame(animate);
     return () => window.cancelAnimationFrame(frameId);
-  }, [dragActive, interactionMode]);
+  }, [shouldRunAnimationLoop]);
+
+  useEffect(() => {
+    if (!swapAnimation) {
+      return;
+    }
+
+    if (elapsedTicks(replaceAnimationTick, swapAnimation.startedTick) >= swapAnimation.durationTicks) {
+      setSwapAnimation(null);
+    }
+  }, [replaceAnimationTick, swapAnimation]);
 
   useEffect(() => {
     const canvas = previewCanvasRef.current;
@@ -161,10 +192,11 @@ export function useCollageEditor() {
       moveCollisionImageIds,
       resizeCurrentDimensions,
       resizeFeedback,
+      swapAnimation,
       placementPreview: canvasPlacementPreview,
       animationTimeMs: replaceAnimationTick,
     });
-  }, [selectedPage, itemById, imageById, gridModeEnabled, selectedImageId, hoveredImageId, drawerSelectedImageId, imageZoomLevels, imagePanOffsets, interactionMode, dragActive, moveOutsideCanvas, moveCollisionImageIds, resizeCurrentDimensions, resizeFeedback, canvasPlacementPreview, replaceAnimationTick]);
+  }, [selectedPage, itemById, imageById, gridModeEnabled, selectedImageId, hoveredImageId, drawerSelectedImageId, imageZoomLevels, imagePanOffsets, interactionMode, dragActive, moveOutsideCanvas, moveCollisionImageIds, resizeCurrentDimensions, resizeFeedback, swapAnimation, canvasPlacementPreview, replaceAnimationTick]);
 
 function rectanglesTouchOrOverlap(
   a: { x: number; y: number; width: number; height: number },
@@ -519,6 +551,21 @@ function rectanglesTouchOrOverlap(
       };
     }));
 
+    setSwapAnimation({
+      startedTick: replaceAnimationTick,
+      durationTicks: 16,
+      transitions: {
+        [sourceImageId]: {
+          from: { x: sourceSlot.x, y: sourceSlot.y },
+          to: { x: targetSlot.x, y: targetSlot.y },
+        },
+        [targetImageId]: {
+          from: { x: targetSlot.x, y: targetSlot.y },
+          to: { x: sourceSlot.x, y: sourceSlot.y },
+        },
+      },
+    });
+
     setError('');
     setSelectedImageId(sourceImageId);
     setHoveredImageId(targetImageId);
@@ -862,11 +909,16 @@ function rectanglesTouchOrOverlap(
       return;
     }
 
+    const fixedHorizontal = point.x >= hit.x + hit.width / 2 ? 'left' : 'right';
+    const fixedVertical = point.y >= hit.y + hit.height / 2 ? 'top' : 'bottom';
+
     dragStateRef.current = {
       type: 'resize',
       imageId: hit.imageId,
       startX: point.x,
       startY: point.y,
+      fixedHorizontal,
+      fixedVertical,
       baseMaxWidthCm: item.maxWidthCm,
       baseMaxHeightCm: item.maxHeightCm,
       baseX: hit.x,
@@ -944,14 +996,21 @@ function rectanglesTouchOrOverlap(
       }
 
       const item = page.items[itemIndex];
-      const isOutsideCanvas = isPositionOutsideCanvas(position.x, position.y, item.width, item.height);
+      const snapResult = getCanvasSnapPosition(position.x, position.y, item.width, item.height);
+      const effectivePosition = snapResult.snapped ? { x: snapResult.x, y: snapResult.y } : position;
+      const isOutsideCanvas = isPositionOutsideCanvas(
+        effectivePosition.x,
+        effectivePosition.y,
+        item.width,
+        item.height,
+      );
 
       setMoveOutsideCanvas(isOutsideCanvas);
 
       if (!isOutsideCanvas) {
         const movingRect = {
-          x: position.x,
-          y: position.y,
+          x: effectivePosition.x,
+          y: effectivePosition.y,
           width: item.width,
           height: item.height,
         };
@@ -973,8 +1032,8 @@ function rectanglesTouchOrOverlap(
             const nextItems = [...currentPage.items];
             nextItems[itemIndex] = {
               ...nextItems[itemIndex],
-              x: position.x,
-              y: position.y,
+                x: effectivePosition.x,
+                y: effectivePosition.y,
             };
 
             return {
@@ -989,8 +1048,8 @@ function rectanglesTouchOrOverlap(
 
     if (interactionMode === 'resize' && isResizeDrag(dragStateRef.current)) {
       const drag = dragStateRef.current;
-      const deltaX = point.x - drag.startX;
-      const deltaY = point.y - drag.startY;
+      const deltaX = drag.fixedHorizontal === 'left' ? point.x - drag.startX : drag.startX - point.x;
+      const deltaY = drag.fixedVertical === 'top' ? point.y - drag.startY : drag.startY - point.y;
       const preferredPushAxis = getPreferredPushAxis(deltaX, deltaY);
 
       // Convert deltas from pixels to cm and lock scaling to preserve aspect ratio.
@@ -1022,9 +1081,8 @@ function rectanglesTouchOrOverlap(
         return;
       }
 
-      // Top-left corner is always fixed (origin point)
-      const nextX = drag.baseX;
-      const nextY = drag.baseY;
+      const anchorX = drag.fixedHorizontal === 'left' ? drag.baseX : drag.baseX + drag.baseWidth;
+      const anchorY = drag.fixedVertical === 'top' ? drag.baseY : drag.baseY + drag.baseHeight;
 
       const tryApplyResize = (candidateMaxWidthCm: number, candidateMaxHeightCm: number) => {
         const nextContent = computeContentBox(
@@ -1034,11 +1092,15 @@ function rectanglesTouchOrOverlap(
           candidateMaxHeightCm,
         );
         const nextFrameThicknessPx = targetImage.frameEnabled ? targetImage.frameThicknessPx : 0;
+        const nextWidth = nextContent.widthPx + nextFrameThicknessPx * 2;
+        const nextHeight = nextContent.heightPx + nextFrameThicknessPx * 2;
+        const nextX = drag.fixedHorizontal === 'left' ? anchorX : anchorX - nextWidth;
+        const nextY = drag.fixedVertical === 'top' ? anchorY : anchorY - nextHeight;
         const candidate = {
           x: nextX,
           y: nextY,
-          width: nextContent.widthPx + nextFrameThicknessPx * 2,
-          height: nextContent.heightPx + nextFrameThicknessPx * 2,
+          width: nextWidth,
+          height: nextHeight,
         };
 
         const pushedItems = resolvePushLayout(page.items, itemIndex, candidate, preferredPushAxis);
@@ -1073,6 +1135,7 @@ function rectanglesTouchOrOverlap(
           nextItems: patchedItems,
           content: nextContent,
           crop: nextCrop,
+          rect: candidate,
           maxWidthCm: candidateMaxWidthCm,
           maxHeightCm: candidateMaxHeightCm,
         };
@@ -1121,10 +1184,10 @@ function rectanglesTouchOrOverlap(
       setResizeFeedback({
         baseRect: { x: drag.baseX, y: drag.baseY, width: drag.baseWidth, height: drag.baseHeight },
         currentRect: {
-          x: nextX,
-          y: nextY,
-          width: resolved.nextItems[itemIndex].width,
-          height: resolved.nextItems[itemIndex].height,
+          x: resolved.rect.x,
+          y: resolved.rect.y,
+          width: resolved.rect.width,
+          height: resolved.rect.height,
         },
         intent: resizeIntent,
       });
@@ -1188,6 +1251,57 @@ function rectanglesTouchOrOverlap(
       );
       setSelectedImageId(null);
       setHoveredImageId(null);
+    }
+
+    if (interactionMode === 'move' && isMoveDrag(dragStateRef.current) && !moveOutsideCanvas) {
+      const imageId = dragStateRef.current.imageId;
+      const pageIndex = pages.findIndex((page) => page.items.some((item) => item.imageId === imageId));
+      if (pageIndex >= 0) {
+        const page = pages[pageIndex];
+        const itemIndex = page.items.findIndex((item) => item.imageId === imageId);
+        if (itemIndex >= 0) {
+          const item = page.items[itemIndex];
+          const outsideRatio = calculateOutsideRatio(item.x, item.y, item.width, item.height);
+
+          if (outsideRatio > 0 && outsideRatio < 0.05) {
+            const snappedX = Math.max(0, Math.min(CANVAS_SIZE_PX - item.width, item.x));
+            const snappedY = Math.max(0, Math.min(CANVAS_SIZE_PX - item.height, item.y));
+
+            if (snappedX !== item.x || snappedY !== item.y) {
+              setPages((currentPages) =>
+                currentPages.map((currentPage, currentPageIndex) => {
+                  if (currentPageIndex !== pageIndex) {
+                    return currentPage;
+                  }
+
+                  const nextItems = [...currentPage.items];
+                  nextItems[itemIndex] = {
+                    ...nextItems[itemIndex],
+                    x: snappedX,
+                    y: snappedY,
+                  };
+
+                  return {
+                    ...currentPage,
+                    items: nextItems,
+                  };
+                }),
+              );
+
+              setSwapAnimation({
+                startedTick: replaceAnimationTick,
+                durationTicks: 12,
+                transitions: {
+                  [imageId]: {
+                    from: { x: item.x, y: item.y },
+                    to: { x: snappedX, y: snappedY },
+                  },
+                },
+              });
+            }
+          }
+        }
+      }
     }
 
     dragStateRef.current = null;
@@ -1514,6 +1628,7 @@ function rectanglesTouchOrOverlap(
     setError('');
     setResizeCurrentDimensions(null);
     setResizeFeedback(null);
+    setSwapAnimation(null);
     dragStateRef.current = null;
     setMoveCollisionImageIds([]);
   }
@@ -1641,6 +1756,7 @@ function rectanglesTouchOrOverlap(
     setError('');
     setResizeCurrentDimensions(null);
     setResizeFeedback(null);
+    setSwapAnimation(null);
     dragStateRef.current = null;
     setMoveOutsideCanvas(false);
     setMoveCollisionImageIds([]);

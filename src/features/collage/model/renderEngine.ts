@@ -19,6 +19,17 @@ interface PreviewOptions {
     currentRect: { x: number; y: number; width: number; height: number };
     intent: 'expand' | 'shrink' | 'steady';
   } | null;
+  swapAnimation?: {
+    startedTick: number;
+    durationTicks: number;
+    transitions: Record<
+      string,
+      {
+        from: { x: number; y: number };
+        to: { x: number; y: number };
+      }
+    >;
+  } | null;
   placementPreview?: { x: number; y: number; width: number; height: number; valid: boolean } | null;
   animationTimeMs?: number;
 }
@@ -392,7 +403,14 @@ function drawPage(
   page: PageLayout,
   itemById: Map<string, ImageItem>,
   imageById: Map<string, HTMLImageElement>,
-  options?: { imageZoomLevels?: Record<string, number>; imagePanOffsets?: Record<string, { x: number; y: number }> },
+  options?: {
+    imageZoomLevels?: Record<string, number>;
+    imagePanOffsets?: Record<string, { x: number; y: number }>;
+    swapAnimation?: {
+      progress: number;
+      transitions: PreviewOptions['swapAnimation']['transitions'];
+    } | null;
+  },
 ): void {
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, page.widthPx, page.heightPx);
@@ -408,16 +426,25 @@ function drawPage(
       continue;
     }
 
+    const swapTransition = options?.swapAnimation?.transitions?.[placed.imageId];
+    const animationProgress = options?.swapAnimation?.progress ?? 1;
+    const animatedX = swapTransition
+      ? swapTransition.from.x + (swapTransition.to.x - swapTransition.from.x) * animationProgress
+      : placed.x;
+    const animatedY = swapTransition
+      ? swapTransition.from.y + (swapTransition.to.y - swapTransition.from.y) * animationProgress
+      : placed.y;
+
     const frameThicknessPx = placed.frameThicknessPx;
-    const innerX = placed.x + frameThicknessPx;
-    const innerY = placed.y + frameThicknessPx;
+    const innerX = animatedX + frameThicknessPx;
+    const innerY = animatedY + frameThicknessPx;
     const innerWidth = placed.contentWidthPx;
     const innerHeight = placed.contentHeightPx;
 
     // Frame is always drawn at its original size — zoom only affects image content inside
     if (frameThicknessPx > 0) {
       ctx.fillStyle = '#ffffff';
-      ctx.fillRect(placed.x, placed.y, placed.width, placed.height);
+      ctx.fillRect(animatedX, animatedY, placed.width, placed.height);
     }
 
     const clamped = clampOffsets(
@@ -501,9 +528,31 @@ export function drawPagePreview(
   ctx.save();
   ctx.translate(offsetX, offsetY);
   ctx.scale(scale, scale);
+
+  let resolvedSwapAnimation: {
+    progress: number;
+    transitions: NonNullable<PreviewOptions['swapAnimation']>['transitions'];
+  } | null = null;
+
+  if (options.swapAnimation && typeof options.animationTimeMs === 'number') {
+    const elapsed =
+      options.animationTimeMs >= options.swapAnimation.startedTick
+        ? options.animationTimeMs - options.swapAnimation.startedTick
+        : 10000 - options.swapAnimation.startedTick + options.animationTimeMs;
+    const linearProgress = Math.max(0, Math.min(1, elapsed / Math.max(1, options.swapAnimation.durationTicks)));
+    const easedProgress = 1 - Math.pow(1 - linearProgress, 3);
+    if (linearProgress < 1) {
+      resolvedSwapAnimation = {
+        progress: easedProgress,
+        transitions: options.swapAnimation.transitions,
+      };
+    }
+  }
+
   drawPage(ctx, page, itemById, imageById, {
     imageZoomLevels: options.imageZoomLevels,
     imagePanOffsets: options.imagePanOffsets,
+    swapAnimation: resolvedSwapAnimation,
   });
 
   if (options.gridEnabled) {

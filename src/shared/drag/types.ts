@@ -23,6 +23,8 @@ export interface ResizeDragState {
   imageId: string;
   startX: number;
   startY: number;
+  fixedHorizontal: 'left' | 'right';
+  fixedVertical: 'top' | 'bottom';
   baseMaxWidthCm: number;
   baseMaxHeightCm: number;
   baseX: number;
