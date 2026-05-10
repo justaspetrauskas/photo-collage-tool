@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, MouseEvent } from 'react';
 import {
+  CANVAS_CM,
   CANVAS_SIZE_PX,
   DEFAULT_FRAME_MM,
   DEFAULT_GRID_SPACING_CM,
@@ -11,11 +12,18 @@ import {
 } from '../model/constants';
 import { buildPaginatedLayout, clampOffsets } from '../model/layoutEngine';
 import { drawPagePreview, renderPageToExportCanvas } from '../model/renderEngine';
-import type { ImageItem, PaginationMode, PersistedEditorSnapshot, PositionedImage, PreviewTransform } from '../model/types';
+import type {
+  ImageItem,
+  InteractionMode,
+  PaginationMode,
+  PersistedEditorSnapshot,
+  PositionedImage,
+  PreviewTransform,
+} from '../model/types';
 import { blobToImage, fileToImage } from '../lib/fileToImage';
 import { loadSnapshot, saveSnapshot } from '../lib/persistence';
 
-interface DragState {
+interface CropDragState {
   imageId: string;
   startX: number;
   startY: number;
@@ -23,6 +31,14 @@ interface DragState {
   baseOffsetY: number;
   maxOffsetX: number;
   maxOffsetY: number;
+}
+
+interface ResizeDragState {
+  imageId: string;
+  startX: number;
+  startY: number;
+  baseMaxWidthCm: number;
+  baseMaxHeightCm: number;
 }
 
 function randomId(prefix = 'img'): string {
@@ -37,6 +53,9 @@ export function useCollageEditor() {
   const [frameMm, setFrameMm] = useState<number>(DEFAULT_FRAME_MM);
   const [gridModeEnabled, setGridModeEnabled] = useState<boolean>(false);
   const [paginationMode, setPaginationMode] = useState<PaginationMode>('auto');
+  const [interactionMode, setInteractionMode] = useState<InteractionMode>('crop');
+  const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
+  const [dragActive, setDragActive] = useState<boolean>(false);
   const [assistedPageCount, setAssistedPageCount] = useState<number>(1);
   const [selectedPageIndex, setSelectedPageIndex] = useState<number>(0);
   const [overflowImageIds, setOverflowImageIds] = useState<string[]>([]);
@@ -46,12 +65,14 @@ export function useCollageEditor() {
 
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const previewTransformRef = useRef<PreviewTransform | null>(null);
-  const dragRef = useRef<DragState | null>(null);
+  const cropDragRef = useRef<CropDragState | null>(null);
+  const resizeDragRef = useRef<ResizeDragState | null>(null);
   const knownImageSrcsRef = useRef<Set<string>>(new Set());
 
   const itemById = useMemo(() => new Map(images.map((img) => [img.id, img])), [images]);
   const imageById = useMemo(() => new Map(images.map((img) => [img.id, img.bitmap])), [images]);
   const selectedPage = pages[selectedPageIndex] ?? null;
+  const selectedImage = selectedImageId ? itemById.get(selectedImageId) ?? null : null;
 
   useEffect(() => {
     const canvas = previewCanvasRef.current;
@@ -62,8 +83,11 @@ export function useCollageEditor() {
     previewTransformRef.current = drawPagePreview(canvas, selectedPage, itemById, imageById, {
       gridEnabled: gridModeEnabled,
       gridSpacingPx: cmToPx(DEFAULT_GRID_SPACING_CM),
+      selectedImageId,
+      interactionMode,
+      dragActive,
     });
-  }, [selectedPage, itemById, imageById, gridModeEnabled]);
+  }, [selectedPage, itemById, imageById, gridModeEnabled, selectedImageId, interactionMode, dragActive]);
 
   useEffect(() => {
     const currentSrcs = new Set(images.map((image) => image.src));
@@ -121,6 +145,7 @@ export function useCollageEditor() {
         setFrameMm(snapshot.settings.frameMm);
         setGridModeEnabled(snapshot.settings.gridModeEnabled);
         setPaginationMode(snapshot.settings.paginationMode);
+        setInteractionMode(snapshot.settings.interactionMode ?? 'crop');
         setAssistedPageCount(snapshot.settings.assistedPageCount);
         setSelectedPageIndex(snapshot.settings.selectedPageIndex);
       } catch {
@@ -154,6 +179,7 @@ export function useCollageEditor() {
           frameMm,
           gridModeEnabled,
           paginationMode,
+          interactionMode,
           assistedPageCount,
           selectedPageIndex,
         },
@@ -190,6 +216,7 @@ export function useCollageEditor() {
     frameMm,
     gridModeEnabled,
     paginationMode,
+    interactionMode,
     assistedPageCount,
     selectedPageIndex,
     pages,
@@ -250,15 +277,26 @@ export function useCollageEditor() {
     setImages((current) => current.map((image) => (image.id === id ? { ...image, ...patch } : image)));
   }
 
-  function regenerateLayout(overrideAssistedCount: number): void {
-    if (!images.length) {
+  function resolveMaxPages(overrideAssistedCount?: number): number {
+    if (paginationMode === 'auto') {
+      return Number.POSITIVE_INFINITY;
+    }
+    return overrideAssistedCount ?? assistedPageCount;
+  }
+
+  function regenerateLayout(
+    overrideAssistedCount: number,
+    preservePageSelection = false,
+    sourceImages: ImageItem[] = images,
+  ): void {
+    if (!sourceImages.length) {
       setPages([]);
       setOverflowImageIds([]);
       setOversizedImageIds([]);
       return;
     }
 
-    const result = buildPaginatedLayout(images, {
+    const result = buildPaginatedLayout(sourceImages, {
       canvasWidthPx: CANVAS_SIZE_PX,
       canvasHeightPx: CANVAS_SIZE_PX,
       maxPages: paginationMode === 'auto' ? Number.POSITIVE_INFINITY : overrideAssistedCount,
@@ -267,8 +305,7 @@ export function useCollageEditor() {
     });
 
     const metricsById = result.imageMetrics;
-    setImages((current) =>
-      current.map((image) => {
+    const nextImages = sourceImages.map((image) => {
         const metrics = metricsById.get(image.id);
         if (!metrics) {
           return {
@@ -288,13 +325,18 @@ export function useCollageEditor() {
           cropMaxOffsetX: metrics.maxOffsetX,
           cropMaxOffsetY: metrics.maxOffsetY,
         };
-      }),
-    );
+      });
+
+    setImages(nextImages);
 
     setPages(result.pages);
     setOverflowImageIds(result.overflowImageIds);
     setOversizedImageIds(result.oversizedImageIds);
-    setSelectedPageIndex(0);
+    if (preservePageSelection) {
+      setSelectedPageIndex((current) => Math.max(0, Math.min(current, Math.max(0, result.pages.length - 1))));
+    } else {
+      setSelectedPageIndex(0);
+    }
   }
 
   function onGenerateLayout(): void {
@@ -355,59 +397,127 @@ export function useCollageEditor() {
   function onCanvasMouseDown(event: MouseEvent<HTMLCanvasElement>): void {
     const point = pagePointFromMouse(event);
     if (!point) {
+      setSelectedImageId(null);
+      setDragActive(false);
       return;
     }
 
     const hit = findHitItem(point);
     if (!hit) {
+      setSelectedImageId(null);
+      setDragActive(false);
       return;
     }
+
+    setSelectedImageId(hit.imageId);
 
     const item = itemById.get(hit.imageId);
     if (!item) {
       return;
     }
 
-    dragRef.current = {
-      imageId: hit.imageId,
-      startX: point.x,
-      startY: point.y,
-      baseOffsetX: item.offsetX,
-      baseOffsetY: item.offsetY,
-      maxOffsetX: hit.maxOffsetX,
-      maxOffsetY: hit.maxOffsetY,
-    };
-  }
-
-  function onCanvasMouseMove(event: MouseEvent<HTMLCanvasElement>): void {
-    if (!dragRef.current) {
+    if (interactionMode === 'crop') {
+      setDragActive(true);
+      cropDragRef.current = {
+        imageId: hit.imageId,
+        startX: point.x,
+        startY: point.y,
+        baseOffsetX: item.offsetX,
+        baseOffsetY: item.offsetY,
+        maxOffsetX: hit.maxOffsetX,
+        maxOffsetY: hit.maxOffsetY,
+      };
+      resizeDragRef.current = null;
       return;
     }
 
+    resizeDragRef.current = {
+      imageId: hit.imageId,
+      startX: point.x,
+      startY: point.y,
+      baseMaxWidthCm: item.maxWidthCm,
+      baseMaxHeightCm: item.maxHeightCm,
+    };
+    cropDragRef.current = null;
+    setDragActive(true);
+  }
+
+  function onCanvasMouseMove(event: MouseEvent<HTMLCanvasElement>): void {
     const point = pagePointFromMouse(event);
     if (!point) {
       return;
     }
 
-    const drag = dragRef.current;
-    const deltaX = point.x - drag.startX;
-    const deltaY = point.y - drag.startY;
+    if (interactionMode === 'crop' && cropDragRef.current) {
+      const drag = cropDragRef.current;
+      const deltaX = point.x - drag.startX;
+      const deltaY = point.y - drag.startY;
 
-    const clamped = clampOffsets(
-      drag.baseOffsetX - deltaX,
-      drag.baseOffsetY - deltaY,
-      drag.maxOffsetX,
-      drag.maxOffsetY,
-    );
+      const clamped = clampOffsets(
+        drag.baseOffsetX - deltaX,
+        drag.baseOffsetY - deltaY,
+        drag.maxOffsetX,
+        drag.maxOffsetY,
+      );
 
-    updateImage(drag.imageId, {
-      offsetX: Math.round(clamped.offsetX),
-      offsetY: Math.round(clamped.offsetY),
-    });
+      updateImage(drag.imageId, {
+        offsetX: Math.round(clamped.offsetX),
+        offsetY: Math.round(clamped.offsetY),
+      });
+      return;
+    }
+
+    if (interactionMode === 'resize' && resizeDragRef.current) {
+      const drag = resizeDragRef.current;
+      const deltaPx = Math.max(point.x - drag.startX, point.y - drag.startY);
+      const deltaCm = deltaPx / cmToPx(1);
+
+      const nextMaxWidthCm = Math.max(minImageCm, Math.min(CANVAS_CM, drag.baseMaxWidthCm + deltaCm));
+      const nextMaxHeightCm = Math.max(minImageCm, Math.min(CANVAS_CM, drag.baseMaxHeightCm + deltaCm));
+
+      const nextImages = images.map((image) => (image.id === drag.imageId ? {
+        ...image,
+        maxWidthCm: Number(nextMaxWidthCm.toFixed(2)),
+        maxHeightCm: Number(nextMaxHeightCm.toFixed(2)),
+      } : image));
+
+      regenerateLayout(resolveMaxPages(), true, nextImages);
+    }
   }
 
   function onCanvasMouseUp(): void {
-    dragRef.current = null;
+    cropDragRef.current = null;
+    resizeDragRef.current = null;
+    setDragActive(false);
+  }
+
+  function expandSelectedImage(scaleFactor: number): void {
+    if (!selectedImageId) {
+      return;
+    }
+
+    const current = itemById.get(selectedImageId);
+    if (!current) {
+      return;
+    }
+
+    const nextMaxWidthCm = Math.max(minImageCm, Math.min(CANVAS_CM, current.maxWidthCm * scaleFactor));
+    const nextMaxHeightCm = Math.max(minImageCm, Math.min(CANVAS_CM, current.maxHeightCm * scaleFactor));
+
+    const nextImages = images.map((image) => (image.id === selectedImageId ? {
+      ...image,
+      maxWidthCm: Number(nextMaxWidthCm.toFixed(2)),
+      maxHeightCm: Number(nextMaxHeightCm.toFixed(2)),
+    } : image));
+
+    regenerateLayout(resolveMaxPages(), true, nextImages);
+  }
+
+  function resetSelectedCrop(): void {
+    if (!selectedImageId) {
+      return;
+    }
+    updateImage(selectedImageId, { offsetX: 0, offsetY: 0 });
   }
 
   function exportPagesAsPng(): void {
@@ -437,6 +547,11 @@ export function useCollageEditor() {
     setGridModeEnabled,
     paginationMode,
     setPaginationMode,
+    interactionMode,
+    setInteractionMode,
+    selectedImage,
+    selectedImageId,
+    dragActive,
     selectedPageIndex,
     setSelectedPageIndex,
     overflowImageIds,
@@ -452,5 +567,7 @@ export function useCollageEditor() {
     onCanvasMouseDown,
     onCanvasMouseMove,
     onCanvasMouseUp,
+    expandSelectedImage,
+    resetSelectedCrop,
   };
 }

@@ -25,6 +25,87 @@ interface ProjectedRect extends ImageMetrics {
   naturalHeight: number;
 }
 
+function repackPageItems(
+  pageWidthPx: number,
+  pageHeightPx: number,
+  items: PageLayout['items'],
+): PageLayout['items'] | null {
+  const bin = new MaxRectsBin(pageWidthPx, pageHeightPx, 0);
+  const itemById = new Map(items.map((item) => [item.imageId, item]));
+
+  for (const item of items) {
+    const placed = bin.add(item.width, item.height, { id: item.imageId });
+    if (!placed) {
+      return null;
+    }
+  }
+
+  return bin.rects.flatMap((rect) => {
+    const item = itemById.get((rect.data as { id: string }).id);
+    if (!item) {
+      return [];
+    }
+
+    return [
+      {
+        ...item,
+        x: rect.x,
+        y: rect.y,
+      },
+    ];
+  });
+}
+
+function compactPages(pages: PageLayout[]): PageLayout[] {
+  if (pages.length <= 1) {
+    return pages;
+  }
+
+  const workingPages = pages.map((page) => ({
+    ...page,
+    items: [...page.items],
+  }));
+
+  for (let pageIndex = 0; pageIndex < workingPages.length - 1; pageIndex += 1) {
+    let currentItems = workingPages[pageIndex].items;
+    let changed = true;
+
+    while (changed) {
+      changed = false;
+
+      for (let fromPageIndex = pageIndex + 1; fromPageIndex < workingPages.length; fromPageIndex += 1) {
+        const donorItems = [...workingPages[fromPageIndex].items];
+
+        for (const candidate of donorItems) {
+          const packed = repackPageItems(
+            workingPages[pageIndex].widthPx,
+            workingPages[pageIndex].heightPx,
+            [...currentItems, candidate],
+          );
+
+          if (!packed) {
+            continue;
+          }
+
+          currentItems = packed;
+          workingPages[pageIndex].items = currentItems;
+          workingPages[fromPageIndex].items = workingPages[fromPageIndex].items.filter(
+            (item) => item.imageId !== candidate.imageId,
+          );
+          changed = true;
+        }
+      }
+    }
+  }
+
+  return workingPages
+    .filter((page) => page.items.length > 0)
+    .map((page, index) => ({
+      ...page,
+      id: `page-${index + 1}`,
+    }));
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
@@ -217,8 +298,10 @@ export function buildPaginatedLayout(images: ImageItem[], options: LayoutOptions
     .filter((rect) => rect.baseContentWidthPx + rect.frameThicknessPx * 2 > canvasWidthPx || rect.baseContentHeightPx + rect.frameThicknessPx * 2 > canvasHeightPx)
     .map((rect) => rect.id);
 
+  const compactedPages = compactPages(pages);
+
   return {
-    pages,
+    pages: compactedPages,
     overflowImageIds,
     oversizedImageIds,
     imageMetrics: metricsById,

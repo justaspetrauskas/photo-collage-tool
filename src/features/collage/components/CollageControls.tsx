@@ -92,7 +92,7 @@ export function CollageControls({
           checked={gridModeEnabled}
           onChange={(event) => setGridModeEnabled(event.target.checked)}
         />
-        Occupancy grid overlay (preview only)
+        Occupancy guidelines overlay (preview only)
       </label>
 
       <Field label="Pagination Mode">

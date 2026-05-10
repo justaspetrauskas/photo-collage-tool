@@ -44,6 +44,13 @@ export function CollageEditor() {
 
       <CollagePreview
         pages={editor.pages}
+        selectedImageId={editor.selectedImageId}
+        selectedImageName={editor.selectedImage?.fileName ?? null}
+        interactionMode={editor.interactionMode}
+        dragActive={editor.dragActive}
+        onSetInteractionMode={editor.setInteractionMode}
+        onExpandSelectedImage={editor.expandSelectedImage}
+        onResetSelectedCrop={editor.resetSelectedCrop}
         selectedPageIndex={editor.selectedPageIndex}
         onSelectPage={editor.setSelectedPageIndex}
         previewCanvasRef={editor.previewCanvasRef}

@@ -1,30 +1,72 @@
 import { clampOffsets } from './layoutEngine';
-import type { ImageItem, PageLayout, PreviewTransform } from './types';
+import type { ImageItem, InteractionMode, PageLayout, PreviewTransform } from './types';
 
 interface PreviewOptions {
   gridEnabled?: boolean;
   gridSpacingPx?: number;
+  selectedImageId?: string | null;
+  interactionMode?: InteractionMode;
+  dragActive?: boolean;
 }
 
-function isCellOccupied(
-  cellX: number,
-  cellY: number,
-  cellSize: number,
+function drawSelectionFeedback(
+  ctx: CanvasRenderingContext2D,
   page: PageLayout,
-): boolean {
-  const cellRight = cellX + cellSize;
-  const cellBottom = cellY + cellSize;
+  selectedImageId: string,
+  interactionMode: InteractionMode,
+  dragActive: boolean,
+): void {
+  const selected = page.items.find((item) => item.imageId === selectedImageId);
+  if (!selected) {
+    return;
+  }
 
-  for (const item of page.items) {
-    const itemRight = item.x + item.width;
-    const itemBottom = item.y + item.height;
-    const overlaps = cellX < itemRight && cellRight > item.x && cellY < itemBottom && cellBottom > item.y;
-    if (overlaps) {
-      return true;
+  const interactionColor = interactionMode === 'crop' ? 'rgba(13, 110, 184, 0.92)' : 'rgba(207, 91, 44, 0.92)';
+  const interactionFill = interactionMode === 'crop' ? 'rgba(13, 110, 184, 0.12)' : 'rgba(207, 91, 44, 0.12)';
+  const thickness = dragActive ? 3 : 2;
+
+  ctx.save();
+  ctx.lineWidth = thickness;
+  ctx.strokeStyle = interactionColor;
+  ctx.fillStyle = interactionFill;
+  ctx.fillRect(selected.x, selected.y, selected.width, selected.height);
+  ctx.strokeRect(selected.x, selected.y, selected.width, selected.height);
+
+  if (interactionMode === 'crop') {
+    const innerX = selected.x + selected.frameThicknessPx;
+    const innerY = selected.y + selected.frameThicknessPx;
+    const innerW = selected.contentWidthPx;
+    const innerH = selected.contentHeightPx;
+
+    ctx.setLineDash([5, 4]);
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(innerX + innerW / 2, innerY);
+    ctx.lineTo(innerX + innerW / 2, innerY + innerH);
+    ctx.moveTo(innerX, innerY + innerH / 2);
+    ctx.lineTo(innerX + innerW, innerY + innerH / 2);
+    ctx.stroke();
+  } else {
+    const handleSize = 9;
+    const half = handleSize / 2;
+    const corners = [
+      [selected.x, selected.y],
+      [selected.x + selected.width, selected.y],
+      [selected.x, selected.y + selected.height],
+      [selected.x + selected.width, selected.y + selected.height],
+    ];
+
+    ctx.setLineDash([]);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+    ctx.strokeStyle = interactionColor;
+    ctx.lineWidth = 1.3;
+    for (const [cx, cy] of corners) {
+      ctx.fillRect(cx - half, cy - half, handleSize, handleSize);
+      ctx.strokeRect(cx - half, cy - half, handleSize, handleSize);
     }
   }
 
-  return false;
+  ctx.restore();
 }
 
 function drawPage(
@@ -118,19 +160,10 @@ export function drawPagePreview(
     const spacing = Math.max(1, Math.round(options.gridSpacingPx ?? 100));
     ctx.save();
     ctx.lineWidth = 1 / scale;
-    ctx.strokeStyle = 'rgba(0, 0, 0, 0.2)';
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
+    ctx.setLineDash([4 / scale, 4 / scale]);
 
-    for (let y = 0; y < page.heightPx; y += spacing) {
-      for (let x = 0; x < page.widthPx; x += spacing) {
-        const cellWidth = Math.min(spacing, page.widthPx - x);
-        const cellHeight = Math.min(spacing, page.heightPx - y);
-        const occupied = isCellOccupied(x, y, spacing, page);
-
-        ctx.fillStyle = occupied ? 'rgba(207, 91, 44, 0.2)' : 'rgba(60, 60, 60, 0.035)';
-        ctx.fillRect(x, y, cellWidth, cellHeight);
-      }
-    }
-
+    // Global rhythm lines for measurement, very subtle.
     for (let x = 0; x <= page.widthPx; x += spacing) {
       ctx.beginPath();
       ctx.moveTo(x, 0);
@@ -144,10 +177,56 @@ export function drawPagePreview(
       ctx.lineTo(page.widthPx, y);
       ctx.stroke();
     }
+
+    // Occupied-space emphasis: highlight placed rectangles and their boundary-aligned guides.
+    ctx.setLineDash([]);
+    ctx.fillStyle = 'rgba(207, 91, 44, 0.08)';
+    ctx.strokeStyle = 'rgba(207, 91, 44, 0.55)';
+    ctx.lineWidth = 1.5 / scale;
+
+    const edgeX = new Set<number>();
+    const edgeY = new Set<number>();
+
+    for (const item of page.items) {
+      ctx.fillRect(item.x, item.y, item.width, item.height);
+      ctx.strokeRect(item.x, item.y, item.width, item.height);
+      edgeX.add(item.x);
+      edgeX.add(item.x + item.width);
+      edgeY.add(item.y);
+      edgeY.add(item.y + item.height);
+    }
+
+    ctx.strokeStyle = 'rgba(207, 91, 44, 0.38)';
+    ctx.setLineDash([10 / scale, 8 / scale]);
+
+    for (const x of edgeX) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, page.heightPx);
+      ctx.stroke();
+    }
+
+    for (const y of edgeY) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(page.widthPx, y);
+      ctx.stroke();
+    }
     ctx.restore();
   }
 
   ctx.restore();
+
+
+  if (options.selectedImageId) {
+    drawSelectionFeedback(
+      ctx,
+      page,
+      options.selectedImageId,
+      options.interactionMode ?? 'crop',
+      options.dragActive ?? false,
+    );
+  }
 
   return {
     dpr,

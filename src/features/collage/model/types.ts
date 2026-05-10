@@ -1,4 +1,5 @@
 export type PaginationMode = 'auto' | 'assisted';
+export type InteractionMode = 'crop' | 'resize';
 
 export interface ImageItem {
   id: string;
@@ -104,6 +105,7 @@ export interface PersistedEditorSnapshot {
     frameMm: number;
     gridModeEnabled: boolean;
     paginationMode: PaginationMode;
+    interactionMode: InteractionMode;
     assistedPageCount: number;
     selectedPageIndex: number;
   };
