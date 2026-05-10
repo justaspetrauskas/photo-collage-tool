@@ -14,6 +14,7 @@ function drawHoverFeedback(
   ctx: CanvasRenderingContext2D,
   page: PageLayout,
   hoveredImageId: string,
+  scale: number,
 ): void {
   const hovered = page.items.find((item) => item.imageId === hoveredImageId);
   if (!hovered) {
@@ -21,9 +22,9 @@ function drawHoverFeedback(
   }
 
   ctx.save();
-  ctx.lineWidth = 1.5;
+  ctx.lineWidth = 1.5 / scale;
   ctx.strokeStyle = 'rgba(16, 57, 92, 0.78)';
-  ctx.setLineDash([6, 4]);
+  ctx.setLineDash([6 / scale, 4 / scale]);
   ctx.strokeRect(hovered.x, hovered.y, hovered.width, hovered.height);
   ctx.restore();
 }
@@ -34,6 +35,7 @@ function drawSelectionFeedback(
   selectedImageId: string,
   interactionMode: InteractionMode,
   dragActive: boolean,
+  scale: number,
 ): void {
   const selected = page.items.find((item) => item.imageId === selectedImageId);
   if (!selected) {
@@ -45,7 +47,7 @@ function drawSelectionFeedback(
   const thickness = dragActive ? 3 : 2;
 
   ctx.save();
-  ctx.lineWidth = thickness;
+  ctx.lineWidth = thickness / scale;
   ctx.strokeStyle = interactionColor;
   ctx.fillStyle = interactionFill;
   ctx.fillRect(selected.x, selected.y, selected.width, selected.height);
@@ -57,8 +59,8 @@ function drawSelectionFeedback(
     const innerW = selected.contentWidthPx;
     const innerH = selected.contentHeightPx;
 
-    ctx.setLineDash([5, 4]);
-    ctx.lineWidth = 1.5;
+    ctx.setLineDash([5 / scale, 4 / scale]);
+    ctx.lineWidth = 1.5 / scale;
     ctx.beginPath();
     ctx.moveTo(innerX + innerW / 2, innerY);
     ctx.lineTo(innerX + innerW / 2, innerY + innerH);
@@ -78,7 +80,7 @@ function drawSelectionFeedback(
     ctx.setLineDash([]);
     ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
     ctx.strokeStyle = interactionColor;
-    ctx.lineWidth = 1.3;
+    ctx.lineWidth = 1.3 / scale;
     for (const [cx, cy] of corners) {
       ctx.fillRect(cx - half, cy - half, handleSize, handleSize);
       ctx.strokeRect(cx - half, cy - half, handleSize, handleSize);
@@ -177,7 +179,6 @@ export function drawPagePreview(
 
   if (options.gridEnabled) {
     ctx.save();
-    ctx.lineWidth = 1 / scale;
 
     // Occupied-space emphasis: highlight placed rectangles and their boundary-aligned guides.
     ctx.setLineDash([]);
@@ -216,12 +217,9 @@ export function drawPagePreview(
     ctx.restore();
   }
 
-  ctx.restore();
-
   if (options.hoveredImageId && options.hoveredImageId !== options.selectedImageId) {
-    drawHoverFeedback(ctx, page, options.hoveredImageId);
+    drawHoverFeedback(ctx, page, options.hoveredImageId, scale);
   }
-
 
   if (options.selectedImageId) {
     drawSelectionFeedback(
@@ -230,8 +228,11 @@ export function drawPagePreview(
       options.selectedImageId,
       options.interactionMode ?? 'crop',
       options.dragActive ?? false,
+      scale,
     );
   }
+
+  ctx.restore();
 
   return {
     dpr,
