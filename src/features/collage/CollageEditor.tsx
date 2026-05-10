@@ -32,6 +32,7 @@ export function CollageEditor() {
         onExportPages={editor.exportPagesAsPng}
         onCreateNextPage={editor.onCreateNextPage}
         onStartFromScratch={editor.startFromScratch}
+        onClearEverything={editor.clearEverything}
       />
 
       <p className="m-0 text-xs text-muted">

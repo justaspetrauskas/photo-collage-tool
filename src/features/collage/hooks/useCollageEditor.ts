@@ -539,7 +539,35 @@ export function useCollageEditor() {
     });
   }
 
-  function resetEditorState(): void {
+  function resetGeneratedLayoutState(): void {
+    setImages((current) =>
+      current.map((image) => ({
+        ...image,
+        renderWidthPx: 0,
+        renderHeightPx: 0,
+        offsetX: 0,
+        offsetY: 0,
+        cropMaxOffsetX: 0,
+        cropMaxOffsetY: 0,
+      })),
+    );
+    setPages([]);
+    setSelectedImageId(null);
+    setDragActive(false);
+    setAssistedPageCount(1);
+    setSelectedPageIndex(0);
+    setOverflowImageIds([]);
+    setOversizedImageIds([]);
+    setError('');
+    cropDragRef.current = null;
+    resizeDragRef.current = null;
+  }
+
+  function startFromScratch(): void {
+    resetGeneratedLayoutState();
+  }
+
+  function clearEverything(): void {
     for (const image of images) {
       URL.revokeObjectURL(image.src);
     }
@@ -563,10 +591,6 @@ export function useCollageEditor() {
     setError('');
     cropDragRef.current = null;
     resizeDragRef.current = null;
-  }
-
-  function startFromScratch(): void {
-    resetEditorState();
     void clearSnapshot();
   }
 
@@ -602,6 +626,7 @@ export function useCollageEditor() {
     exportPagesAsPng,
     onCreateNextPage,
     startFromScratch,
+    clearEverything,
     updateImage,
     onCanvasMouseDown,
     onCanvasMouseMove,

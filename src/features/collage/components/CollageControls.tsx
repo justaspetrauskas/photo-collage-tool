@@ -25,6 +25,7 @@ interface CollageControlsProps {
   onExportPages: () => void;
   onCreateNextPage: () => void;
   onStartFromScratch: () => void;
+  onClearEverything: () => void;
 }
 
 export function CollageControls({
@@ -48,6 +49,7 @@ export function CollageControls({
   onExportPages,
   onCreateNextPage,
   onStartFromScratch,
+  onClearEverything,
 }: CollageControlsProps) {
   return (
     <Panel className="animate-fade-up [animation-delay:80ms] grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">
@@ -126,6 +128,7 @@ export function CollageControls({
       <Button onClick={onGenerateLayout}>Generate Layout</Button>
       <Button onClick={onExportPages} disabled={!pagesCount}>Export PNG Pages</Button>
       <Button variant="soft" onClick={onStartFromScratch}>Start From Scratch</Button>
+      <Button variant="soft" onClick={onClearEverything}>Clear Everything</Button>
 
       {paginationMode === 'assisted' && overflowCount > 0 ? (
         <Button onClick={onCreateNextPage}>Create Next Page ({overflowCount} remaining)</Button>
