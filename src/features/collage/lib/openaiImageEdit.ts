@@ -1,94 +1,169 @@
-const API_BASE = 'https://api.openai.com/v1';
-const MODEL = 'gpt-image-1';
-
 export type EnhancePreset = 'lighting' | 'contrast' | 'cinematic' | 'consistent';
-
-const PRESET_PROMPTS: Record<EnhancePreset, string> = {
-  lighting:
-    'Improve the lighting of this photo: brighten shadows, recover highlights, and create a natural, well-exposed look. Preserve the original composition and subjects exactly.',
-  contrast:
-    'Enhance the color and contrast of this photo: increase vibrancy, deepen blacks, and lift midtones for a punchy, editorial look. Keep the original composition exactly.',
-  cinematic:
-    'Apply a cinematic color grade: teal shadows, warm highlights, lifted blacks. Make it feel like a film still. Preserve the original composition exactly.',
-  consistent:
-    'Normalize the color temperature, exposure, and white balance of this photo to match a neutral, clean editorial style. Preserve the original composition exactly.',
-};
 
 export interface EnhanceOptions {
   preset?: EnhancePreset;
-  customPrompt?: string;
 }
 
 /**
- * Sends an image to OpenAI image edit API and returns a data URL of the result.
+ * Deterministic, content-preserving enhancement using canvas pixels only.
+ * Uses subtle adaptive adjustments to avoid altering scene identity.
  */
 export async function enhanceImageWithAI(
   imageSrc: string,
   options: EnhanceOptions = {},
 ): Promise<string> {
-  const apiKey = (import.meta.env.VITE_OPENAI_API_KEY as string | undefined) ?? '';
-  if (!apiKey || apiKey === 'sk-...') {
-    throw new Error('Missing OpenAI API key. Add VITE_OPENAI_API_KEY to .env.local');
-  }
-
-  const prompt =
-    options.customPrompt ?? PRESET_PROMPTS[options.preset ?? 'lighting'];
-
-  const pngBlob = await imageSourceToPngBlob(imageSrc);
-
-  const formData = new FormData();
-  formData.append('model', MODEL);
-  formData.append('image[]', pngBlob, 'image.png');
-  formData.append('prompt', prompt);
-  formData.append('n', '1');
-  formData.append('size', 'auto');
-
-  const response = await fetch(`${API_BASE}/images/edits`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}` },
-    body: formData,
-  });
-
-  if (!response.ok) {
-    const body = (await response.json().catch(() => ({}))) as {
-      error?: { message?: string };
-    };
-    throw new Error(body.error?.message ?? `OpenAI error ${response.status}`);
-  }
-
-  const data = (await response.json()) as {
-    data: Array<{ b64_json?: string; url?: string }>;
-  };
-
-  const item = data.data[0];
-  if (item.b64_json) {
-    return `data:image/png;base64,${item.b64_json}`;
-  }
-  if (item.url) {
-    return item.url;
-  }
-  throw new Error('No image in OpenAI response');
-}
-
-/** Draws the source image onto a canvas and exports as PNG blob (max 1024px). */
-async function imageSourceToPngBlob(src: string): Promise<Blob> {
-  const img = await loadImage(src);
-  const MAX = 1024;
-  const scale = Math.min(1, MAX / Math.max(img.naturalWidth, img.naturalHeight));
-  const w = Math.round(img.naturalWidth * scale);
-  const h = Math.round(img.naturalHeight * scale);
+  const preset = options.preset ?? 'lighting';
+  const source = await loadImage(imageSrc);
   const canvas = document.createElement('canvas');
-  canvas.width = w;
-  canvas.height = h;
+  canvas.width = source.naturalWidth;
+  canvas.height = source.naturalHeight;
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Could not get canvas 2D context');
-  ctx.drawImage(img, 0, 0, w, h);
-  return new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob((blob) => {
-      if (blob) resolve(blob);
-      else reject(new Error('canvas.toBlob returned null'));
-    }, 'image/png');
-  });
+  ctx.drawImage(source, 0, 0);
+
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const data = imageData.data;
+  const stats = analyzeImage(data);
+  const settings = resolveSettings(preset, stats);
+
+  for (let i = 0; i < data.length; i += 4) {
+    let r = data[i];
+    let g = data[i + 1];
+    let b = data[i + 2];
+
+    r = r + settings.exposure;
+    g = g + settings.exposure;
+    b = b + settings.exposure;
+
+    r = (r - 128) * settings.contrast + 128;
+    g = (g - 128) * settings.contrast + 128;
+    b = (b - 128) * settings.contrast + 128;
+
+    ({ r, g, b } = adjustSaturation(r, g, b, settings.saturation));
+
+    r += settings.warmth;
+    b -= settings.warmth * 0.75;
+
+    // Tiny skin-tone refinement on likely skin pixels only.
+    if (isLikelySkinPixel(r, g, b)) {
+      r += settings.skinWarmth;
+      g += settings.skinLift * 0.75;
+      b -= settings.skinWarmth * 0.45;
+      ({ r, g, b } = adjustSaturation(r, g, b, settings.skinSaturation));
+    }
+
+    data[i] = clampByte(r);
+    data[i + 1] = clampByte(g);
+    data[i + 2] = clampByte(b);
+  }
+
+  ctx.putImageData(imageData, 0, 0);
+  return canvas.toDataURL('image/png');
+}
+
+interface ImageStats {
+  meanLuma: number;
+  stdLuma: number;
+  meanR: number;
+  meanB: number;
+}
+
+interface ResolvedSettings {
+  exposure: number;
+  contrast: number;
+  saturation: number;
+  warmth: number;
+  skinLift: number;
+  skinWarmth: number;
+  skinSaturation: number;
+}
+
+function analyzeImage(data: Uint8ClampedArray): ImageStats {
+  const pxCount = data.length / 4;
+  let sumL = 0;
+  let sumL2 = 0;
+  let sumR = 0;
+  let sumB = 0;
+
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+    const l = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+    sumL += l;
+    sumL2 += l * l;
+    sumR += r;
+    sumB += b;
+  }
+
+  const meanLuma = sumL / pxCount;
+  const variance = Math.max(0, sumL2 / pxCount - meanLuma * meanLuma);
+  const stdLuma = Math.sqrt(variance);
+
+  return {
+    meanLuma,
+    stdLuma,
+    meanR: sumR / pxCount,
+    meanB: sumB / pxCount,
+  };
+}
+
+function resolveSettings(preset: EnhancePreset, stats: ImageStats): ResolvedSettings {
+  const targetLuma = preset === 'cinematic' ? 0.48 : 0.5;
+  const targetContrast = preset === 'cinematic' ? 0.24 : 0.22;
+
+  const exposure = clamp((targetLuma - stats.meanLuma) * 70, -10, 10);
+  const contrast = clamp(1 + (targetContrast - stats.stdLuma) * 0.75, 0.97, 1.1);
+
+  const coolBias = clamp((stats.meanB - stats.meanR) * 0.04, -4, 8);
+  const baseWarmth = preset === 'cinematic' ? 6 : preset === 'contrast' ? 3 : 4;
+  const warmth = clamp(baseWarmth + coolBias, 1, 10);
+
+  const saturation =
+    preset === 'contrast' ? 1.05 : preset === 'cinematic' ? 1.04 : preset === 'consistent' ? 1.01 : 1.02;
+  const skinLift = preset === 'consistent' ? 0.9 : 1.1;
+  const skinWarmth = preset === 'cinematic' ? 1.6 : 1.1;
+  const skinSaturation = preset === 'consistent' ? 1.004 : 1.01;
+
+  if (preset === 'consistent') {
+    return {
+      exposure,
+      contrast: clamp(1 + (0.21 - stats.stdLuma) * 0.65, 0.98, 1.07),
+      saturation,
+      warmth: clamp(coolBias, -3, 4),
+      skinLift,
+      skinWarmth,
+      skinSaturation,
+    };
+  }
+
+  return { exposure, contrast, saturation, warmth, skinLift, skinWarmth, skinSaturation };
+}
+
+function adjustSaturation(r: number, g: number, b: number, factor: number): { r: number; g: number; b: number } {
+  const luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  return {
+    r: luma + (r - luma) * factor,
+    g: luma + (g - luma) * factor,
+    b: luma + (b - luma) * factor,
+  };
+}
+
+function isLikelySkinPixel(r: number, g: number, b: number): boolean {
+  // YCbCr thresholding tuned conservative to avoid changing non-skin regions.
+  const cb = 128 - 0.168736 * r - 0.331264 * g + 0.5 * b;
+  const cr = 128 + 0.5 * r - 0.418688 * g - 0.081312 * b;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  return cb >= 84 && cb <= 124 && cr >= 134 && cr <= 176 && r > 62 && g > 36 && b > 18 && max - min > 12;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function clampByte(value: number): number {
+  return Math.round(clamp(value, 0, 255));
 }
 
 function loadImage(src: string): Promise<HTMLImageElement> {
@@ -104,6 +179,6 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 export const ENHANCE_PRESET_LABELS: Record<EnhancePreset, string> = {
   lighting: 'Lighting fix',
   contrast: 'Color & contrast',
-  cinematic: 'Cinematic grade',
+  cinematic: 'Cinematic warm',
   consistent: 'Normalize (global)',
 };

@@ -5,6 +5,7 @@ export interface ImageItem {
   id: string;
   fileName: string;
   sourceBlob: Blob;
+  originalSrc: string;
   src: string;
   bitmap: HTMLImageElement;
   naturalWidth: number;

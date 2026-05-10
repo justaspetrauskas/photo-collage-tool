@@ -150,7 +150,11 @@ function rectanglesTouchOrOverlap(
 }
 
   useEffect(() => {
-    const currentSrcs = new Set(images.map((image) => image.src));
+    const currentSrcs = new Set<string>();
+    for (const image of images) {
+      currentSrcs.add(image.src);
+      currentSrcs.add(image.originalSrc);
+    }
     for (const previousSrc of knownImageSrcsRef.current) {
       if (!currentSrcs.has(previousSrc)) {
         URL.revokeObjectURL(previousSrc);
@@ -182,6 +186,7 @@ function rectanglesTouchOrOverlap(
             const restored = await blobToImage(savedImage.sourceBlob);
             return {
               ...savedImage,
+              originalSrc: restored.src,
               src: restored.src,
               bitmap: restored.image,
               sourceBlob: restored.blob,
@@ -317,6 +322,7 @@ function rectanglesTouchOrOverlap(
         id: randomId(`${Date.now()}-${index}`),
         fileName: files[index].name,
         sourceBlob: entry.blob,
+        originalSrc: entry.src,
         src: entry.src,
         bitmap: entry.image,
         naturalWidth: entry.naturalWidth,
@@ -1012,7 +1018,7 @@ function rectanglesTouchOrOverlap(
         ),
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'AI enhancement failed');
+      setError(err instanceof Error ? err.message : 'Auto enhancement failed');
     } finally {
       setEnhancingImageIds((prev) => {
         const next = new Set(prev);
@@ -1033,6 +1039,10 @@ function rectanglesTouchOrOverlap(
     if (image) {
       URL.revokeObjectURL(image.src);
       knownImageSrcsRef.current.delete(image.src);
+      if (image.originalSrc !== image.src) {
+        URL.revokeObjectURL(image.originalSrc);
+        knownImageSrcsRef.current.delete(image.originalSrc);
+      }
     }
     setImages((prev) => prev.filter((img) => img.id !== imageId));
     setPages((prev) =>
@@ -1047,8 +1057,13 @@ function rectanglesTouchOrOverlap(
   }
 
   function clearEverything(): void {
+    const urlsToRevoke = new Set<string>();
     for (const image of images) {
-      URL.revokeObjectURL(image.src);
+      urlsToRevoke.add(image.src);
+      urlsToRevoke.add(image.originalSrc);
+    }
+    for (const src of urlsToRevoke) {
+      URL.revokeObjectURL(src);
     }
 
     knownImageSrcsRef.current = new Set();

@@ -39,8 +39,11 @@ interface ImageDrawerCardProps {
 
 function ImageDrawerCard({ image, isUsed, isSelected, isEnhancing, onSelect, onUpdateImage, onDelete, onRemoveFromCanvas, onEnhance }: ImageDrawerCardProps) {
   const [enhancePreset, setEnhancePreset] = useState<EnhancePreset>('lighting');
+  const [showBefore, setShowBefore] = useState(false);
   const { imageZoomLevels, setImageZoom, imagePanOffsets, setImagePan } = useEditorUIStore();
   const imgContainerRef = useRef<HTMLDivElement>(null);
+  const hasEnhancedVersion = image.src !== image.originalSrc;
+  const previewSrc = showBefore && hasEnhancedVersion ? image.originalSrc : image.src;
 
   const zoom = imageZoomLevels[image.id] ?? 1;
   const pan = imagePanOffsets[image.id] ?? { x: 0, y: 0 };
@@ -70,7 +73,7 @@ function ImageDrawerCard({ image, isUsed, isSelected, isEnhancing, onSelect, onU
       <div ref={imgContainerRef} className="relative overflow-hidden bg-[#000000]/40 aspect-square select-none">
         <img
           {...bind()}
-          src={image.src}
+          src={previewSrc}
           alt={image.fileName}
           className={`w-full h-full object-cover ${zoom > 1 ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'}`}
           loading="lazy"
@@ -87,6 +90,22 @@ function ImageDrawerCard({ image, isUsed, isSelected, isEnhancing, onSelect, onU
         {zoom > 1 && (
           <div className="absolute bottom-2 left-2 bg-black/60 text-white text-xs px-2 py-1 rounded-md pointer-events-none">
             {zoom.toFixed(1)}×
+          </div>
+        )}
+        {hasEnhancedVersion && (
+          <div className="absolute bottom-2 right-2 flex items-center rounded-md border border-white/20 bg-black/50 text-[10px] text-white overflow-hidden">
+            <button
+              className={`px-2 py-1 transition ${showBefore ? 'bg-white/15' : 'hover:bg-white/10'}`}
+              onClick={(e) => { e.stopPropagation(); setShowBefore(true); }}
+            >
+              Before
+            </button>
+            <button
+              className={`px-2 py-1 transition ${!showBefore ? 'bg-white/15' : 'hover:bg-white/10'}`}
+              onClick={(e) => { e.stopPropagation(); setShowBefore(false); }}
+            >
+              After
+            </button>
           </div>
         )}
       </div>
@@ -166,9 +185,10 @@ function ImageDrawerCard({ image, isUsed, isSelected, isEnhancing, onSelect, onU
           </button>
         </div>
 
-        {/* AI Enhancement */}
+        {/* Auto Enhancement */}
         <div className="pt-1 border-t border-line/20 space-y-2" onClick={(e) => e.stopPropagation()}>
-          <p className="text-[0.65rem] font-semibold uppercase tracking-widest text-muted">AI Enhance</p>
+          <p className="text-[0.65rem] font-semibold uppercase tracking-widest text-muted">Auto Enhance</p>
+          <p className="text-[10px] text-muted/90">Subtle, content-preserving adjustments only.</p>
           <select
             className="field-input py-0.5 text-xs w-full"
             value={enhancePreset}
@@ -185,7 +205,7 @@ function ImageDrawerCard({ image, isUsed, isSelected, isEnhancing, onSelect, onU
           >
             {isEnhancing
               ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Enhancing…</>
-              : <><Sparkles className="w-3.5 h-3.5" /> Enhance</>}
+              : <><Sparkles className="w-3.5 h-3.5" /> Apply</>}
           </button>
         </div>
       </div>
