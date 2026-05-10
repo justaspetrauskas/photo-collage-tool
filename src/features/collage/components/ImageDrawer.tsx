@@ -2,7 +2,7 @@ import { Field } from '../../../shared/ui/Field';
 import type { ImageItem, PageLayout } from '../model/types';
 import { CANVAS_CM } from '../model/constants';
 import { useState, useRef } from 'react';
-import { ChevronRight, ChevronLeft, UploadCloud, ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronRight, ChevronLeft, UploadCloud, ChevronDown, ChevronUp, Trash2, X } from 'lucide-react';
 import { useEditorUIStore } from '../store/editorUIStore';
 import { useDrag } from '@use-gesture/react';
 import { CollageControls, type CollageControlsProps } from './CollageControls';
@@ -14,6 +14,8 @@ interface ImageDrawerProps {
   images: ImageItem[];
   pages: PageLayout[];
   onUpdateImage: (id: string, patch: Partial<ImageItem>) => void;
+  onDeleteImage: (id: string) => void;
+  onRemoveFromCanvas: (id: string) => void;
   onUploadFiles: (event: ChangeEvent<HTMLInputElement>) => Promise<void>;
   onUploadFileList: (files: File[]) => Promise<void>;
   sceneControls: CollageControlsProps;
@@ -25,9 +27,11 @@ interface ImageDrawerCardProps {
   isSelected: boolean;
   onSelect: () => void;
   onUpdateImage: (patch: Partial<ImageItem>) => void;
+  onDelete: () => void;
+  onRemoveFromCanvas: () => void;
 }
 
-function ImageDrawerCard({ image, isUsed, isSelected, onSelect, onUpdateImage }: ImageDrawerCardProps) {
+function ImageDrawerCard({ image, isUsed, isSelected, onSelect, onUpdateImage, onDelete, onRemoveFromCanvas }: ImageDrawerCardProps) {
   const { imageZoomLevels, setImageZoom, imagePanOffsets, setImagePan } = useEditorUIStore();
   const imgContainerRef = useRef<HTMLDivElement>(null);
 
@@ -134,12 +138,32 @@ function ImageDrawerCard({ image, isUsed, isSelected, onSelect, onUpdateImage }:
             onChange={(e) => onUpdateImage({ frameEnabled: e.target.checked })} />
           <span>Frame</span>
         </label>
+
+        {/* Action buttons */}
+        <div className="flex gap-2 pt-1 border-t border-line/20">
+          <button
+            className="flex-1 flex items-center justify-center gap-1.5 text-xs py-1.5 rounded-md bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 transition"
+            title="Remove from canvas"
+            onClick={(e) => { e.stopPropagation(); onRemoveFromCanvas(); }}
+          >
+            <X className="w-3.5 h-3.5" />
+            Remove
+          </button>
+          <button
+            className="flex-1 flex items-center justify-center gap-1.5 text-xs py-1.5 rounded-md bg-red-500/10 hover:bg-red-500/20 text-red-400 transition"
+            title="Delete image"
+            onClick={(e) => { e.stopPropagation(); onDelete(); }}
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            Delete
+          </button>
+        </div>
       </div>
     </div>
   );
 }
 
-export function ImageDrawer({ images, pages, onUpdateImage, onUploadFiles, onUploadFileList, sceneControls }: ImageDrawerProps) {
+export function ImageDrawer({ images, pages, onUpdateImage, onDeleteImage, onRemoveFromCanvas, onUploadFiles, onUploadFileList, sceneControls }: ImageDrawerProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [sceneCollapsed, setSceneCollapsed] = useState(false);
   const { drawerSelectedImageId, setDrawerSelectedImageId } = useEditorUIStore();
@@ -173,6 +197,18 @@ export function ImageDrawer({ images, pages, onUpdateImage, onUploadFiles, onUpl
       >
         {collapsed ? <ChevronLeft className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
       </button>
+
+      {/* Vertical label shown only when collapsed */}
+      {collapsed && (
+        <div className="flex-1 flex items-center justify-center">
+          <span
+            className="text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-muted select-none"
+            style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
+          >
+            Settings
+          </span>
+        </div>
+      )}
 
       {!collapsed && (
         <div className="flex-1 overflow-y-auto flex flex-col min-h-0 scrollbar-themed">
@@ -214,6 +250,8 @@ export function ImageDrawer({ images, pages, onUpdateImage, onUploadFiles, onUpl
                     isSelected={drawerSelectedImageId === image.id}
                     onSelect={() => setDrawerSelectedImageId(image.id)}
                     onUpdateImage={(patch) => onUpdateImage(image.id, patch)}
+                    onDelete={() => onDeleteImage(image.id)}
+                    onRemoveFromCanvas={() => onRemoveFromCanvas(image.id)}
                   />
                 ))
               )}

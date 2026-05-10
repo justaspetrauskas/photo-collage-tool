@@ -991,6 +991,24 @@ function rectanglesTouchOrOverlap(
     resetGeneratedLayoutState();
   }
 
+  function deleteImage(imageId: string): void {
+    const image = images.find((img) => img.id === imageId);
+    if (image) {
+      URL.revokeObjectURL(image.src);
+      knownImageSrcsRef.current.delete(image.src);
+    }
+    setImages((prev) => prev.filter((img) => img.id !== imageId));
+    setPages((prev) =>
+      prev.map((page) => ({ ...page, items: page.items.filter((item) => item.imageId !== imageId) })),
+    );
+  }
+
+  function removeFromCanvas(imageId: string): void {
+    setPages((prev) =>
+      prev.map((page) => ({ ...page, items: page.items.filter((item) => item.imageId !== imageId) })),
+    );
+  }
+
   function clearEverything(): void {
     for (const image of images) {
       URL.revokeObjectURL(image.src);
@@ -1060,6 +1078,8 @@ function rectanglesTouchOrOverlap(
     startFromScratch,
     clearEverything,
     updateImage,
+    deleteImage,
+    removeFromCanvas,
     onCanvasMouseDown,
     onCanvasMouseMove,
     onCanvasMouseUp,
