@@ -13,6 +13,8 @@ interface CollageControlsProps {
   setFrameMm: (value: number) => void;
   gridModeEnabled: boolean;
   setGridModeEnabled: (value: boolean) => void;
+  autoCompactPages: boolean;
+  setAutoCompactPages: (value: boolean) => void;
   paginationMode: PaginationMode;
   setPaginationMode: (value: PaginationMode) => void;
   pagesCount: number;
@@ -33,6 +35,8 @@ export function CollageControls({
   setFrameMm,
   gridModeEnabled,
   setGridModeEnabled,
+  autoCompactPages,
+  setAutoCompactPages,
   paginationMode,
   setPaginationMode,
   pagesCount,
@@ -93,6 +97,16 @@ export function CollageControls({
           onChange={(event) => setGridModeEnabled(event.target.checked)}
         />
         Occupancy guidelines overlay (preview only)
+      </label>
+
+      <label className="mt-1 flex items-center gap-2 rounded-xl border border-line bg-white px-3 py-2 text-sm font-medium">
+        <input
+          className="h-4 w-4 rounded border-line text-accent focus:ring-accent/30"
+          type="checkbox"
+          checked={autoCompactPages}
+          onChange={(event) => setAutoCompactPages(event.target.checked)}
+        />
+        Auto compact pages (backfill earlier pages)
       </label>
 
       <Field label="Pagination Mode">

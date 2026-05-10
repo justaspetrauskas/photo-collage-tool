@@ -20,6 +20,8 @@ export function CollageEditor() {
         setFrameMm={editor.setFrameMm}
         gridModeEnabled={editor.gridModeEnabled}
         setGridModeEnabled={editor.setGridModeEnabled}
+        autoCompactPages={editor.autoCompactPages}
+        setAutoCompactPages={editor.setAutoCompactPages}
         paginationMode={editor.paginationMode}
         setPaginationMode={editor.setPaginationMode}
         pagesCount={editor.pages.length}
@@ -33,6 +35,9 @@ export function CollageEditor() {
 
       <p className="m-0 text-xs text-muted">
         Minimum image size is enforced during packing. If everything cannot fit above this size, extra pages are created.
+      </p>
+      <p className="m-0 text-xs text-muted">
+        Auto compact can move images from later pages back into earlier pages when free space appears.
       </p>
 
       {editor.error ? <p className="m-0 text-sm text-danger">{editor.error}</p> : null}

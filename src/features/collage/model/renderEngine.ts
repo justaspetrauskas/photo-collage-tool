@@ -157,26 +157,8 @@ export function drawPagePreview(
   drawPage(ctx, page, itemById, imageById);
 
   if (options.gridEnabled) {
-    const spacing = Math.max(1, Math.round(options.gridSpacingPx ?? 100));
     ctx.save();
     ctx.lineWidth = 1 / scale;
-    ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
-    ctx.setLineDash([4 / scale, 4 / scale]);
-
-    // Global rhythm lines for measurement, very subtle.
-    for (let x = 0; x <= page.widthPx; x += spacing) {
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, page.heightPx);
-      ctx.stroke();
-    }
-
-    for (let y = 0; y <= page.heightPx; y += spacing) {
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(page.widthPx, y);
-      ctx.stroke();
-    }
 
     // Occupied-space emphasis: highlight placed rectangles and their boundary-aligned guides.
     ctx.setLineDash([]);
