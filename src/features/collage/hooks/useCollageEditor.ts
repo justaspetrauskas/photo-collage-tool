@@ -80,6 +80,8 @@ export function useCollageEditor() {
         renderHeightPx: 0,
         offsetX: 0,
         offsetY: 0,
+        cropMaxOffsetX: 0,
+        cropMaxOffsetY: 0,
       }));
 
       setImages((current) => [...current, ...next]);
@@ -125,7 +127,11 @@ export function useCollageEditor() {
       current.map((image) => {
         const metrics = metricsById.get(image.id);
         if (!metrics) {
-          return image;
+          return {
+            ...image,
+            cropMaxOffsetX: 0,
+            cropMaxOffsetY: 0,
+          };
         }
 
         const clamped = clampOffsets(image.offsetX, image.offsetY, metrics.maxOffsetX, metrics.maxOffsetY);
@@ -135,6 +141,8 @@ export function useCollageEditor() {
           renderHeightPx: metrics.contentHeightPx,
           offsetX: clamped.offsetX,
           offsetY: clamped.offsetY,
+          cropMaxOffsetX: metrics.maxOffsetX,
+          cropMaxOffsetY: metrics.maxOffsetY,
         };
       }),
     );

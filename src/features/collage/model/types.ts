@@ -15,6 +15,8 @@ export interface ImageItem {
   renderHeightPx: number;
   offsetX: number;
   offsetY: number;
+  cropMaxOffsetX: number;
+  cropMaxOffsetY: number;
 }
 
 export interface PositionedImage {

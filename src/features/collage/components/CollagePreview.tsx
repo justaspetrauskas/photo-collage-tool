@@ -25,11 +25,11 @@ export function CollagePreview({
   return (
     <Panel className="animate-fade-up [animation-delay:130ms]">
       <h2 className="m-0 text-xl font-extrabold">Page Preview</h2>
-      <p className="m-0 text-sm text-muted">Drag inside any image frame to change crop offset.</p>
+      <p className="m-0 text-sm text-muted">Generate layout, then drag inside a frame to crop per image.</p>
 
       <div className="mt-3 grid place-items-center rounded-xl border border-dashed border-line bg-[linear-gradient(135deg,_#fff9f2,_#fff)] p-3">
         <canvas
-          className="max-w-full rounded-lg border border-line"
+          className="max-w-full cursor-grab rounded-lg border border-line active:cursor-grabbing"
           ref={previewCanvasRef}
           onMouseDown={onMouseDown}
           onMouseMove={onMouseMove}

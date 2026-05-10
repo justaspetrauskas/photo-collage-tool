@@ -1,5 +1,6 @@
 import { Panel } from '../../../shared/ui/Panel';
 import { Field } from '../../../shared/ui/Field';
+import { Button } from '../../../shared/ui/Button';
 import type { ImageItem } from '../model/types';
 
 interface CollageImageListProps {
@@ -57,6 +58,49 @@ export function CollageImageList({ images, onUpdateImage }: CollageImageListProp
                 />
                 Frame enabled
               </label>
+
+              <div className="mt-3 rounded-lg border border-line/70 bg-paper/80 p-2">
+                <p className="m-0 text-xs font-bold uppercase tracking-[0.08em] text-muted">Crop Offsets (px)</p>
+                {image.cropMaxOffsetX > 0 || image.cropMaxOffsetY > 0 ? (
+                  <>
+                    <Field label={`Horizontal (${image.offsetX} / ${Math.round(image.cropMaxOffsetX)})`} className="mt-2">
+                      <input
+                        className="w-full accent-accent"
+                        type="range"
+                        min={0}
+                        max={Math.max(0, Math.round(image.cropMaxOffsetX))}
+                        step={1}
+                        value={Math.round(image.offsetX)}
+                        onChange={(event) => onUpdateImage(image.id, { offsetX: Number(event.target.value) })}
+                      />
+                    </Field>
+
+                    <Field label={`Vertical (${image.offsetY} / ${Math.round(image.cropMaxOffsetY)})`} className="mt-2">
+                      <input
+                        className="w-full accent-accent"
+                        type="range"
+                        min={0}
+                        max={Math.max(0, Math.round(image.cropMaxOffsetY))}
+                        step={1}
+                        value={Math.round(image.offsetY)}
+                        onChange={(event) => onUpdateImage(image.id, { offsetY: Number(event.target.value) })}
+                      />
+                    </Field>
+
+                    <Button
+                      variant="soft"
+                      className="mt-2"
+                      onClick={() => onUpdateImage(image.id, { offsetX: 0, offsetY: 0 })}
+                    >
+                      Reset Crop
+                    </Button>
+                  </>
+                ) : (
+                  <p className="mt-1 text-xs text-muted">
+                    No crop room yet. Generate layout first, then drag in preview or use sliders.
+                  </p>
+                )}
+              </div>
             </div>
           </article>
         ))}
