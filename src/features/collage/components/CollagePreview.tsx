@@ -242,34 +242,7 @@ export function CollagePreview({
     previewCanvasRef,
   ]);
 
-  const helperText = !hasSelection
-    ? 'Scroll through all collage pages and click an image on the active page to edit.'
-    : interactionMode === 'crop'
-      ? dragActive
-        ? 'Cropping: drag to move the visible area inside the frame.'
-        : 'Crop mode: drag inside the selected image to reposition crop.'
-    : interactionMode === 'resize'
-      ? dragActive
-        ? 'Resizing: drag diagonally to scale selected image within local free space.'
-        : 'Resize mode: drag selected image to change its size in place.'
-      : interactionMode === 'move'
-        ? dragActive
-          ? moveOutsideCanvas
-            ? 'Dragging outside canvas: release to remove image.'
-            : 'Moving: drag selected image around the canvas.'
-          : 'Move mode: drag selected image to reposition it. Drag outside canvas to remove.'
-        : dragActive
-          ? 'Replacing: drag selected image over another and release to swap.'
-          : 'Replace mode: drag one image onto another to swap positions.';
-
-  const modeLabel =
-    interactionMode === 'crop'
-      ? 'Crop Drag'
-      : interactionMode === 'resize'
-      ? 'Resize Drag'
-      : interactionMode === 'move'
-        ? 'Move Drag'
-        : 'Replace Drag';
+  const helperText = 'Scroll through all collage pages. Select an image on the active page to edit via the bottom context menu.';
 
   const jumpToPage = (index: number) => {
     onSelectPage(index);
@@ -291,27 +264,6 @@ export function CollagePreview({
       <p className="m-0 text-sm text-muted">{helperText}</p>
       {resizeLimitNotice ? <p className="m-0 mt-1 text-xs font-semibold text-warn">{resizeLimitNotice}</p> : null}
 
-      {hasSelection ? (
-        <div className="mt-3 rounded-xl bg-[#0e1626]/76 p-3 backdrop-blur-md">
-          <p className="m-0 text-xs font-bold uppercase tracking-[0.08em] text-muted">
-            Selected: {selectedImageName ?? selectedImageId}
-          </p>
-          {selectedImageWidth !== null || selectedImageHeight !== null ? (
-            <p className="m-0 mt-1 text-xs text-muted">
-              Dimensions:{' '}
-              <span className="font-semibold text-ink">
-                {selectedImageWidth !== null ? `${(selectedImageWidth / cmToPx(1)).toFixed(2)} cm` : '-'} x{' '}
-                {selectedImageHeight !== null ? `${(selectedImageHeight / cmToPx(1)).toFixed(2)} cm` : '-'}
-              </span>
-            </p>
-          ) : null}
-          <p className="mt-1 text-xs text-muted">
-            Mode: <span className="font-bold text-ink">{modeLabel}</span>
-            {dragActive ? <span className="ml-2 rounded bg-accent/15 px-2 py-0.5 text-[10px] font-bold text-accent">Dragging</span> : null}
-          </p>
-        </div>
-      ) : null}
-
       <div className="mt-3 p-4">
         <p className="mb-4 text-xs font-semibold uppercase tracking-[0.08em] text-amber-200/90">
           Printable Area: {CANVAS_CM} x {CANVAS_CM} cm ({CANVAS_SIZE_PX} x {CANVAS_SIZE_PX} px)
@@ -320,7 +272,7 @@ export function CollagePreview({
         <div className="grid grid-cols-[76px_minmax(0,1fr)] gap-4">
           <aside className="sticky top-5 self-start rounded-xl border border-line/30 bg-[#0b1220]/80 p-2 backdrop-blur-md">
             <p className="mb-2 px-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-amber-200/70">
-              Quick Pages · Scroll sync
+              Quick access
             </p>
             <div className="flex flex-col gap-2">
               {pages.map((page, index) => (

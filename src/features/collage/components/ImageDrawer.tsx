@@ -1,7 +1,7 @@
 import { Field } from '../../../shared/ui/Field';
 import type { ImageItem, PageLayout } from '../model/types';
 import { CANVAS_CM } from '../model/constants';
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { ChevronRight, ChevronLeft, UploadCloud, ChevronDown, ChevronUp, Trash2, X, Sparkles, Loader2 } from 'lucide-react';
 import { type EnhancePreset, ENHANCE_PRESET_LABELS } from '../lib/openaiImageEdit';
 import { useEditorUIStore } from '../store/editorUIStore';
@@ -32,6 +32,7 @@ interface ImageDrawerCardProps {
   isUsed: boolean;
   isSelected: boolean;
   isEnhancing: boolean;
+  cardRef?: (node: HTMLDivElement | null) => void;
   onSelect: () => void;
   onUpdateImage: (patch: Partial<ImageItem>) => void;
   onDelete: () => void;
@@ -41,7 +42,7 @@ interface ImageDrawerCardProps {
   onEndManualPlacementDrag: () => void;
 }
 
-function ImageDrawerCard({ image, isUsed, isSelected, isEnhancing, onSelect, onUpdateImage, onDelete, onRemoveFromCanvas, onEnhance, onBeginManualPlacementDrag, onEndManualPlacementDrag }: ImageDrawerCardProps) {
+function ImageDrawerCard({ image, isUsed, isSelected, isEnhancing, cardRef, onSelect, onUpdateImage, onDelete, onRemoveFromCanvas, onEnhance, onBeginManualPlacementDrag, onEndManualPlacementDrag }: ImageDrawerCardProps) {
   const [enhancePreset, setEnhancePreset] = useState<EnhancePreset>('lighting');
   const [showBefore, setShowBefore] = useState(false);
   const { imageZoomLevels, setImageZoom, imagePanOffsets, setImagePan } = useEditorUIStore();
@@ -68,6 +69,8 @@ function ImageDrawerCard({ image, isUsed, isSelected, isEnhancing, onSelect, onU
 
   return (
     <div
+      ref={cardRef}
+      tabIndex={-1}
       className={`rounded-lg transition overflow-hidden border-2 ${
         isSelected ? 'bg-[#121a2b] border-amber-400/60' : 'bg-[#121a2b]/60 hover:bg-[#121a2b] border-line/20'
       }`}
@@ -132,22 +135,6 @@ function ImageDrawerCard({ image, isUsed, isSelected, isEnhancing, onSelect, onU
           <p className="text-xs font-semibold text-white truncate">{image.fileName}</p>
           <p className="text-xs text-muted">{image.naturalWidth} × {image.naturalHeight}</p>
         </div>
-        <button
-          type="button"
-          draggable
-          className="w-full rounded-md border border-line/30 bg-[#0f1626]/75 px-2 py-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-amber-200 hover:border-amber-300/40 hover:bg-amber-500/10 transition"
-          onClick={(e) => e.stopPropagation()}
-          onDragStart={(e) => {
-            e.stopPropagation();
-            onBeginManualPlacementDrag(image.id);
-            e.dataTransfer.effectAllowed = 'move';
-            e.dataTransfer.setData('application/x-collage-image-id', image.id);
-            e.dataTransfer.setData('text/plain', image.id);
-          }}
-          onDragEnd={(e) => { e.stopPropagation(); onEndManualPlacementDrag(); }}
-        >
-          Drag To Canvas
-        </button>
 
         {/* Zoom Slider */}
         <div className="text-xs">
@@ -252,7 +239,23 @@ export function ImageDrawer({ images, pages, onUpdateImage, onDeleteImage, onRem
   const [enhancingAll, setEnhancingAll] = useState(false);
   const { drawerSelectedImageId, setDrawerSelectedImageId } = useEditorUIStore();
   const uploadInputRef = useRef<HTMLInputElement>(null);
+  const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [dragOver, setDragOver] = useState(false);
+
+  // Keep selected drawer image visible when selection changes from canvas interactions.
+  useEffect(() => {
+    if (collapsed || !drawerSelectedImageId) {
+      return;
+    }
+
+    const selectedCard = cardRefs.current[drawerSelectedImageId];
+    if (!selectedCard) {
+      return;
+    }
+
+    selectedCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    selectedCard.focus({ preventScroll: true });
+  }, [collapsed, drawerSelectedImageId]);
 
   const usedImageIds = new Set<string>();
   pages.forEach((page) => page.items.forEach((item) => usedImageIds.add(item.imageId)));
@@ -368,6 +371,7 @@ export function ImageDrawer({ images, pages, onUpdateImage, onDeleteImage, onRem
                     onEnhance={(preset) => void onEnhanceImage(image.id, preset)}
                     onBeginManualPlacementDrag={onBeginManualPlacementDrag}
                     onEndManualPlacementDrag={onEndManualPlacementDrag}
+                    cardRef={(node: HTMLDivElement | null) => { cardRefs.current[image.id] = node; }}
                   />
                 ))
               )}

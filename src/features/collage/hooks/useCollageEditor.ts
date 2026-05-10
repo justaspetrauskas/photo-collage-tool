@@ -15,6 +15,7 @@ import { drawPagePreview, renderPageToExportCanvas } from '../model/renderEngine
 import { useEditorUIStore } from '../store/editorUIStore';
 import type {
   ImageItem,
+  ImageMetrics,
   InteractionMode,
   PaginationMode,
   PersistedEditorSnapshot,
@@ -72,7 +73,14 @@ interface CanvasPlacementPreview {
 }
 
 export function useCollageEditor() {
-  const { drawerSelectedImageId, imageZoomLevels, imagePanOffsets } = useEditorUIStore();
+  const {
+    drawerSelectedImageId,
+    setDrawerSelectedImageId,
+    imageZoomLevels,
+    setImageZoom,
+    imagePanOffsets,
+    setImagePan,
+  } = useEditorUIStore();
   const [images, setImages] = useState<ImageItem[]>([]);
   const [pages, setPages] = useState<Array<{ id: string; widthPx: number; heightPx: number; items: PositionedImage[] }>>([]);
   const [maxImageCm, setMaxImageCm] = useState<number>(DEFAULT_MAX_IMAGE_CM);
@@ -422,6 +430,25 @@ function rectanglesTouchOrOverlap(
     );
   }
 
+  // Keep canvas frames in sync with global frame width changes.
+  useEffect(() => {
+    if (!isHydrated || !images.length) {
+      return;
+    }
+
+    const nextFrameThicknessPx = mmToPx(frameMm);
+    const nextImages = images.map((image) => ({
+      ...image,
+      frameThicknessPx: nextFrameThicknessPx,
+    }));
+
+    setImages(nextImages);
+
+    if (pages.some((page) => page.items.length > 0)) {
+      regenerateLayout(resolveMaxPages(), true, nextImages);
+    }
+  }, [frameMm]);
+
   function focusImageOnCanvas(imageId: string): void {
     setSelectedImageId(imageId);
     setHoveredImageId(imageId);
@@ -496,10 +523,94 @@ function rectanglesTouchOrOverlap(
     return overrideAssistedCount ?? assistedPageCount;
   }
 
+  function analyzeImageSaliency(image: ImageItem): { x: number; y: number; spread: number } {
+    const sampleSize = 80;
+    const canvas = document.createElement('canvas');
+    canvas.width = sampleSize;
+    canvas.height = sampleSize;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      return { x: 0.5, y: 0.5, spread: 0.3 };
+    }
+
+    ctx.drawImage(image.bitmap, 0, 0, sampleSize, sampleSize);
+    const { data } = ctx.getImageData(0, 0, sampleSize, sampleSize);
+
+    let totalWeight = 0;
+    let weightedX = 0;
+    let weightedY = 0;
+    let weightedX2 = 0;
+    let weightedY2 = 0;
+
+    for (let y = 1; y < sampleSize - 1; y += 1) {
+      for (let x = 1; x < sampleSize - 1; x += 1) {
+        const i = (y * sampleSize + x) * 4;
+        const ix = (y * sampleSize + (x + 1)) * 4;
+        const iy = ((y + 1) * sampleSize + x) * 4;
+
+        const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+        const lumX = 0.299 * data[ix] + 0.587 * data[ix + 1] + 0.114 * data[ix + 2];
+        const lumY = 0.299 * data[iy] + 0.587 * data[iy + 1] + 0.114 * data[iy + 2];
+
+        const edge = Math.abs(lumX - lum) + Math.abs(lumY - lum);
+        const weight = edge + 1;
+
+        const nx = x / sampleSize;
+        const ny = y / sampleSize;
+
+        totalWeight += weight;
+        weightedX += nx * weight;
+        weightedY += ny * weight;
+        weightedX2 += nx * nx * weight;
+        weightedY2 += ny * ny * weight;
+      }
+    }
+
+    if (totalWeight <= 0) {
+      return { x: 0.5, y: 0.5, spread: 0.3 };
+    }
+
+    const cx = weightedX / totalWeight;
+    const cy = weightedY / totalWeight;
+    const varX = Math.max(0, weightedX2 / totalWeight - cx * cx);
+    const varY = Math.max(0, weightedY2 / totalWeight - cy * cy);
+    const spread = Math.sqrt((varX + varY) / 2);
+
+    return { x: cx, y: cy, spread };
+  }
+
+  function resolveSmartFraming(
+    image: ImageItem,
+    metrics: ImageMetrics,
+  ): { offsetX: number; offsetY: number; zoom: number } {
+    const saliency = analyzeImageSaliency(image);
+
+    const targetOffsetX =
+      saliency.x * metrics.drawnImageWidthPx - metrics.contentWidthPx / 2;
+    const targetOffsetY =
+      saliency.y * metrics.drawnImageHeightPx - metrics.contentHeightPx / 2;
+
+    const clamped = clampOffsets(
+      targetOffsetX,
+      targetOffsetY,
+      metrics.maxOffsetX,
+      metrics.maxOffsetY,
+    );
+
+    const zoom = saliency.spread < 0.16 ? 1.14 : saliency.spread < 0.22 ? 1.08 : 1;
+
+    return {
+      offsetX: clamped.offsetX,
+      offsetY: clamped.offsetY,
+      zoom,
+    };
+  }
+
   function regenerateLayout(
     overrideAssistedCount: number,
     preservePageSelection = false,
     sourceImages: ImageItem[] = images,
+    useSmartFraming = false,
   ): void {
     if (!sourceImages.length) {
       setPages([]);
@@ -529,7 +640,12 @@ function rectanglesTouchOrOverlap(
           };
         }
 
-        const clamped = clampOffsets(image.offsetX, image.offsetY, metrics.maxOffsetX, metrics.maxOffsetY);
+        const smart = useSmartFraming
+          ? resolveSmartFraming(image, metrics)
+          : null;
+        const clamped = smart
+          ? { offsetX: smart.offsetX, offsetY: smart.offsetY }
+          : clampOffsets(image.offsetX, image.offsetY, metrics.maxOffsetX, metrics.maxOffsetY);
         return {
           ...image,
           renderWidthPx: metrics.contentWidthPx,
@@ -540,6 +656,19 @@ function rectanglesTouchOrOverlap(
           cropMaxOffsetY: metrics.maxOffsetY,
         };
       });
+
+    if (useSmartFraming) {
+      for (const image of nextImages) {
+        const metrics = metricsById.get(image.id);
+        if (!metrics) {
+          continue;
+        }
+
+        const { zoom } = resolveSmartFraming(image, metrics);
+        setImageZoom(image.id, zoom);
+        setImagePan(image.id, 0, 0);
+      }
+    }
 
     setImages(nextImages);
 
@@ -555,13 +684,13 @@ function rectanglesTouchOrOverlap(
 
   function onGenerateLayout(): void {
     setAssistedPageCount(1);
-    regenerateLayout(1);
+    regenerateLayout(1, false, images, true);
   }
 
   function onCreateNextPage(): void {
     const nextCount = assistedPageCount + 1;
     setAssistedPageCount(nextCount);
-    regenerateLayout(nextCount);
+    regenerateLayout(nextCount, false, images, true);
   }
 
   function pagePointFromClient(clientX: number, clientY: number): { x: number; y: number } | null {
@@ -659,6 +788,7 @@ function rectanglesTouchOrOverlap(
     const point = pagePointFromMouse(event);
     if (!point) {
       setSelectedImageId(null);
+      setDrawerSelectedImageId(null);
       setHoveredImageId(null);
       setDragActive(false);
       setShowSelectionControls(false);
@@ -668,6 +798,7 @@ function rectanglesTouchOrOverlap(
     const hit = findHitItem(point);
     if (!hit) {
       setSelectedImageId(null);
+      setDrawerSelectedImageId(null);
       setHoveredImageId(null);
       setDragActive(false);
       setShowSelectionControls(false);
@@ -675,6 +806,7 @@ function rectanglesTouchOrOverlap(
     }
 
     setSelectedImageId(hit.imageId);
+    setDrawerSelectedImageId(hit.imageId);
     setHoveredImageId(hit.imageId);
     setShowSelectionControls(true);
 
