@@ -107,6 +107,53 @@ function compactPages(pages: PageLayout[]): PageLayout[] {
     }));
 }
 
+function enforceNoOverlap(pages: PageLayout[]): PageLayout[] {
+  if (!pages.length) {
+    return pages;
+  }
+
+  const pageWidthPx = pages[0].widthPx;
+  const pageHeightPx = pages[0].heightPx;
+  const queue = pages.flatMap((page) => page.items);
+  const normalizedPages: PageLayout[] = [];
+
+  let remaining = queue;
+  while (remaining.length > 0) {
+    const bin = new MaxRectsBin(pageWidthPx, pageHeightPx, 0);
+    const nextRemaining: PageLayout['items'] = [];
+    const pageItems: PageLayout['items'] = [];
+
+    for (const item of remaining) {
+      const placed = bin.add(item.width, item.height, { id: item.imageId });
+      if (!placed) {
+        nextRemaining.push(item);
+        continue;
+      }
+
+      pageItems.push({
+        ...item,
+        x: placed.x,
+        y: placed.y,
+      });
+    }
+
+    if (pageItems.length === 0) {
+      break;
+    }
+
+    normalizedPages.push({
+      id: `page-${normalizedPages.length + 1}`,
+      widthPx: pageWidthPx,
+      heightPx: pageHeightPx,
+      items: pageItems,
+    });
+
+    remaining = nextRemaining;
+  }
+
+  return normalizedPages;
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
@@ -301,9 +348,10 @@ export function buildPaginatedLayout(images: ImageItem[], options: LayoutOptions
     .map((rect) => rect.id);
 
   const compactedPages = enableCompaction ? compactPages(pages) : pages;
+  const safePages = enforceNoOverlap(compactedPages);
 
   return {
-    pages: compactedPages,
+    pages: safePages,
     overflowImageIds,
     oversizedImageIds,
     imageMetrics: metricsById,

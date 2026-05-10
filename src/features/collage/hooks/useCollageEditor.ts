@@ -21,7 +21,7 @@ import type {
   PreviewTransform,
 } from '../model/types';
 import { blobToImage, fileToImage } from '../lib/fileToImage';
-import { loadSnapshot, saveSnapshot } from '../lib/persistence';
+import { clearSnapshot, loadSnapshot, saveSnapshot } from '../lib/persistence';
 
 interface CropDragState {
   imageId: string;
@@ -539,6 +539,37 @@ export function useCollageEditor() {
     });
   }
 
+  function resetEditorState(): void {
+    for (const image of images) {
+      URL.revokeObjectURL(image.src);
+    }
+
+    knownImageSrcsRef.current = new Set();
+    setImages([]);
+    setPages([]);
+    setMaxImageCm(DEFAULT_MAX_IMAGE_CM);
+    setMinImageCm(DEFAULT_MIN_IMAGE_CM);
+    setFrameMm(DEFAULT_FRAME_MM);
+    setGridModeEnabled(false);
+    setAutoCompactPages(true);
+    setPaginationMode('auto');
+    setInteractionMode('crop');
+    setSelectedImageId(null);
+    setDragActive(false);
+    setAssistedPageCount(1);
+    setSelectedPageIndex(0);
+    setOverflowImageIds([]);
+    setOversizedImageIds([]);
+    setError('');
+    cropDragRef.current = null;
+    resizeDragRef.current = null;
+  }
+
+  function startFromScratch(): void {
+    resetEditorState();
+    void clearSnapshot();
+  }
+
   return {
     images,
     pages,
@@ -570,6 +601,7 @@ export function useCollageEditor() {
     onGenerateLayout,
     exportPagesAsPng,
     onCreateNextPage,
+    startFromScratch,
     updateImage,
     onCanvasMouseDown,
     onCanvasMouseMove,

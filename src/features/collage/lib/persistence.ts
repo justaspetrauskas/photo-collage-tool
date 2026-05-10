@@ -54,3 +54,19 @@ export async function saveSnapshot(snapshot: PersistedEditorSnapshot): Promise<v
     tx.onerror = () => reject(tx.error);
   });
 }
+
+export async function clearSnapshot(): Promise<void> {
+  const db = await openDatabase();
+
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const store = tx.objectStore(STORE_NAME);
+    store.delete(SNAPSHOT_KEY);
+
+    tx.oncomplete = () => {
+      db.close();
+      resolve();
+    };
+    tx.onerror = () => reject(tx.error);
+  });
+}
