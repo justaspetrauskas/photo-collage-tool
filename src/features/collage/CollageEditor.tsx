@@ -99,56 +99,70 @@ export function CollageEditor() {
 
       {/* Selection Controls Overlay — fixed at root level */}
       {hasSelection && editor.showSelectionControls && (
-        <div className="fixed bottom-4 left-1/2 z-50 w-[min(95vw,980px)] -translate-x-1/2 rounded-2xl border border-line/30 bg-[#0a0f1a]/95 p-3 shadow-[0_14px_40px_rgba(0,0,0,0.45)] backdrop-blur-md">
-          <div className="mb-2 flex items-center justify-between gap-3">
-            <div>
-              <p className="m-0 text-xs font-semibold uppercase tracking-[0.08em] text-amber-200/90">Selected Image Controls</p>
-              <p className="m-0 mt-1 text-[11px] text-muted">Shortcuts: C Crop, R Resize, M Move, P Replace, +/- Scale, 0 Reset, Esc Close</p>
+        <div className="fixed bottom-4 left-1/2 z-50 w-[min(95vw,680px)] -translate-x-1/2 rounded-xl border border-line/30 bg-[#0a0f1a]/95 p-2.5 shadow-[0_14px_40px_rgba(0,0,0,0.45)] backdrop-blur-md">
+          <div className="flex items-center justify-between gap-2">
+            {/* Image info */}
+            <div className="min-w-0 flex-1">
+              <p className="m-0 text-xs font-semibold uppercase tracking-[0.05em] text-amber-200/90 truncate">
+                {editor.selectedImage?.fileName ?? 'Selected'}
+              </p>
+              <p className="m-0 text-[10px] text-muted/80 truncate">
+                {selectedImageOnPage?.width && selectedImageOnPage?.height
+                  ? `${(selectedImageOnPage.width / 28.346).toFixed(1)}×${(selectedImageOnPage.height / 28.346).toFixed(1)} cm`
+                  : 'Dimensions: —'}
+              </p>
             </div>
-            <button
-              onClick={() => editor.setShowSelectionControls(false)}
-              className="flex-shrink-0 rounded-lg p-1 hover:bg-white/10 transition-colors"
-              aria-label="Close controls"
-            >
-              <svg className="w-5 h-5 text-muted hover:text-ink" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant={editor.interactionMode === 'crop' ? 'primary' : 'soft'}
-              onClick={() => editor.setInteractionMode('crop')}
-            >
-              Crop (C)
-            </Button>
-            <Button
-              variant={editor.interactionMode === 'resize' ? 'primary' : 'soft'}
-              onClick={() => editor.setInteractionMode('resize')}
-            >
-              Resize (R)
-            </Button>
-            <Button
-              variant={editor.interactionMode === 'move' ? 'primary' : 'soft'}
-              onClick={() => editor.setInteractionMode('move')}
-            >
-              Move (M)
-            </Button>
-            <Button
-              variant={editor.interactionMode === 'replace' ? 'primary' : 'soft'}
-              onClick={() => editor.setInteractionMode('replace')}
-            >
-              Replace (P)
-            </Button>
-            <Button variant="soft" onClick={() => editor.expandSelectedImage(1.1)}>
-              Expand (+)
-            </Button>
-            <Button variant="soft" onClick={() => editor.expandSelectedImage(0.9)}>
-              Shrink (-)
-            </Button>
-            <Button variant="soft" onClick={editor.resetSelectedCrop}>
-              Reset Crop (0)
-            </Button>
+
+            {/* Control buttons */}
+            <div className="flex flex-nowrap items-center gap-1">
+              <Button
+                variant={editor.interactionMode === 'resize' ? 'primary' : 'soft'}
+                onClick={() => editor.setInteractionMode('resize')}
+                className="px-2.5 py-1 text-xs whitespace-nowrap"
+              >
+                Resize (R)
+              </Button>
+              <Button
+                variant={editor.interactionMode === 'move' ? 'primary' : 'soft'}
+                onClick={() => editor.setInteractionMode('move')}
+                className="px-2.5 py-1 text-xs whitespace-nowrap"
+              >
+                Move (M)
+              </Button>
+              <Button
+                variant={editor.interactionMode === 'replace' ? 'primary' : 'soft'}
+                onClick={() => editor.setInteractionMode('replace')}
+                className="px-2.5 py-1 text-xs whitespace-nowrap"
+              >
+                Swap (P)
+              </Button>
+              <Button
+                variant="soft"
+                onClick={() => editor.expandSelectedImage(1.1)}
+                className="px-2.5 py-1 text-xs whitespace-nowrap"
+              >
+                + Size
+              </Button>
+              <Button
+                variant="soft"
+                onClick={() => editor.expandSelectedImage(0.9)}
+                className="px-2.5 py-1 text-xs whitespace-nowrap"
+              >
+                − Size
+              </Button>
+
+              {/* Close button - circle outlined */}
+              <button
+                onClick={() => editor.setShowSelectionControls(false)}
+                className="ml-1 flex-shrink-0 rounded-full border border-muted/40 p-1 hover:border-muted/60 hover:bg-white/5 transition-colors"
+                aria-label="Close controls"
+                title="Close (Esc)"
+              >
+                <svg className="w-4 h-4 text-muted hover:text-ink" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
           </div>
         </div>
       )}

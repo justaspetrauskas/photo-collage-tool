@@ -84,30 +84,29 @@ export function CollagePreview({
       if (key === 'escape') {
         onCloseSelectionControls();
         event.preventDefault();
-      } else if (key === 'c') {
-        onSetInteractionMode('crop');
       } else if (key === 'r') {
         onSetInteractionMode('resize');
+        event.preventDefault();
       } else if (key === 'm') {
         onSetInteractionMode('move');
+        event.preventDefault();
       } else if (key === 'p') {
         onSetInteractionMode('replace');
+        event.preventDefault();
       } else if (key === '=') {
         onExpandSelectedImage(1.1);
+        event.preventDefault();
       } else if (key === '-') {
         onExpandSelectedImage(0.9);
-      } else if (key === '0') {
-        onResetSelectedCrop();
+        event.preventDefault();
       } else {
         return;
       }
-
-      event.preventDefault();
     }
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [hasSelection, onCloseSelectionControls, onExpandSelectedImage, onResetSelectedCrop, onSetInteractionMode]);
+  }, [hasSelection, onCloseSelectionControls, onExpandSelectedImage, onSetInteractionMode]);
   const helperText = !hasSelection
     ? 'Click any image on the canvas to select it first.'
     : interactionMode === 'crop'
