@@ -29,6 +29,8 @@ export function CollageEditor() {
               ) : null}
               <CollagePreview
                 pages={editor.pages}
+                itemById={editor.itemById}
+                imageById={editor.imageById}
                 selectedImageId={editor.selectedImageId}
                 hoveredImageId={editor.hoveredImageId}
                 selectedImageName={editor.selectedImage?.fileName ?? null}

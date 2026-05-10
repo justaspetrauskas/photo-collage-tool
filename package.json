@@ -13,10 +13,12 @@
   "type": "module",
   "dependencies": {
     "@use-gesture/react": "^10.3.1",
+    "framer-motion": "^12.38.0",
     "lucide-react": "^1.14.0",
     "maxrects-packer": "^2.7.3",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
+    "react-intersection-observer": "^10.0.3",
     "zustand": "^5.0.13"
   },
   "devDependencies": {

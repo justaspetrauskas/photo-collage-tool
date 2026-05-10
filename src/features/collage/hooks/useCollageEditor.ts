@@ -1444,6 +1444,8 @@ function rectanglesTouchOrOverlap(
   return {
     images,
     pages,
+    itemById,
+    imageById,
     maxImageCm,
     setMaxImageCm,
     minImageCm,
