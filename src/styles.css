@@ -24,15 +24,40 @@
 
   body {
     @apply m-0 min-h-screen bg-bg font-sans text-ink antialiased;
+    background-color: #06080c;
     background-image:
-      linear-gradient(rgba(170, 184, 209, 0.08) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(170, 184, 209, 0.08) 1px, transparent 1px),
-      radial-gradient(1200px 550px at 8% -5%, rgba(245, 158, 11, 0.26), rgba(245, 158, 11, 0) 66%),
-      radial-gradient(980px 520px at 95% 0%, rgba(234, 179, 8, 0.2), rgba(234, 179, 8, 0) 62%),
-      radial-gradient(840px 520px at 52% 100%, rgba(56, 189, 248, 0.2), rgba(56, 189, 248, 0) 72%),
-      linear-gradient(138deg, #06080e 0%, #090d16 42%, #080c14 100%);
-    background-size: 26px 26px, 26px 26px, auto, auto, auto, auto;
-    background-position: 0 0, 0 0, 0 0, 0 0, 0 0, 0 0;
+      /* Torn-edge / ripped paper strips — diagonal light leaks */
+      linear-gradient(112deg, rgba(250, 204, 21, 0.07) 0%, transparent 38%),
+      linear-gradient(247deg, rgba(245, 158, 11, 0.06) 0%, transparent 42%),
+      linear-gradient(68deg, rgba(56, 189, 248, 0.05) 0%, transparent 35%),
+      /* Off-angle geometric rule lines — collage grid feel */
+      repeating-linear-gradient(
+        -7deg,
+        transparent,
+        transparent 80px,
+        rgba(250, 204, 21, 0.025) 80px,
+        rgba(250, 204, 21, 0.025) 81px
+      ),
+      repeating-linear-gradient(
+        83deg,
+        transparent,
+        transparent 120px,
+        rgba(255, 255, 255, 0.018) 120px,
+        rgba(255, 255, 255, 0.018) 121px
+      ),
+      /* Dense dot matrix — screen-print / halftone texture */
+      radial-gradient(circle, rgba(180, 195, 230, 0.13) 1px, transparent 1px),
+      /* Deep colour pools */
+      radial-gradient(ellipse 900px 600px at 5% 10%, rgba(245, 158, 11, 0.18) 0%, transparent 65%),
+      radial-gradient(ellipse 700px 500px at 96% 8%, rgba(250, 204, 21, 0.13) 0%, transparent 60%),
+      radial-gradient(ellipse 800px 700px at 50% 105%, rgba(56, 189, 248, 0.12) 0%, transparent 65%),
+      radial-gradient(ellipse 500px 400px at 80% 70%, rgba(220, 38, 127, 0.07) 0%, transparent 55%),
+      linear-gradient(160deg, #06080e 0%, #080c14 55%, #060912 100%);
+    background-size:
+      auto, auto, auto,
+      auto, auto,
+      6px 6px,
+      auto, auto, auto, auto, auto;
     background-attachment: fixed;
     overflow-x: hidden;
   }
@@ -47,20 +72,24 @@
   }
 
   body::before {
+    /* Scattered colour blobs — torn coloured paper pieces */
     background:
-      radial-gradient(closest-side, rgba(245, 158, 11, 0.22), rgba(245, 158, 11, 0) 68%) 18% 14% / 48% 40% no-repeat,
-      radial-gradient(closest-side, rgba(234, 179, 8, 0.2), rgba(234, 179, 8, 0) 70%) 84% 26% / 52% 46% no-repeat,
-      radial-gradient(closest-side, rgba(56, 189, 248, 0.16), rgba(56, 189, 248, 0) 72%) 50% 78% / 64% 52% no-repeat;
-    filter: blur(38px) saturate(120%);
-    animation: mesh-drift 28s linear infinite;
-    opacity: 0.9;
+      radial-gradient(closest-side, rgba(245, 158, 11, 0.28), rgba(245, 158, 11, 0) 65%) 12% 10% / 44% 36% no-repeat,
+      radial-gradient(closest-side, rgba(250, 204, 21, 0.18), rgba(250, 204, 21, 0) 68%) 82% 22% / 38% 32% no-repeat,
+      radial-gradient(closest-side, rgba(56, 189, 248, 0.14), rgba(56, 189, 248, 0) 70%) 55% 82% / 50% 42% no-repeat,
+      radial-gradient(closest-side, rgba(220, 38, 127, 0.10), rgba(220, 38, 127, 0) 72%) 78% 75% / 34% 30% no-repeat,
+      radial-gradient(closest-side, rgba(245, 158, 11, 0.12), rgba(245, 158, 11, 0) 66%) 35% 55% / 26% 22% no-repeat;
+    filter: blur(48px) saturate(130%);
+    animation: mesh-drift 34s linear infinite;
+    opacity: 1;
   }
 
   body::after {
-    background-image: radial-gradient(rgba(255, 255, 255, 0.08) 0.5px, transparent 0.5px);
-    background-size: 2px 2px;
-    opacity: 0.11;
-    animation: grain-shift 5s steps(10) infinite;
+    /* Film grain / noise texture */
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)' opacity='0.08'/%3E%3C/svg%3E");
+    background-size: 200px 200px;
+    opacity: 0.45;
+    animation: grain-shift 3s steps(8) infinite;
   }
 
   input,
@@ -181,31 +210,18 @@
 }
 
 @keyframes mesh-drift {
-  0% {
-    transform: translate3d(0, 0, 0) scale(1);
-  }
-  50% {
-    transform: translate3d(3%, -2%, 0) scale(1.04);
-  }
-  100% {
-    transform: translate3d(0, 0, 0) scale(1);
-  }
+  0%   { transform: translate3d(0,    0,    0) scale(1)    rotate(0deg);   }
+  25%  { transform: translate3d(2%,  -1.5%, 0) scale(1.03) rotate(0.4deg); }
+  50%  { transform: translate3d(3%,  -2.5%, 0) scale(1.05) rotate(0deg);   }
+  75%  { transform: translate3d(1%,  -1%,  0) scale(1.02) rotate(-0.3deg);}
+  100% { transform: translate3d(0,    0,    0) scale(1)    rotate(0deg);   }
 }
 
 @keyframes grain-shift {
-  0% {
-    transform: translate(0, 0);
-  }
-  25% {
-    transform: translate(-1%, 1%);
-  }
-  50% {
-    transform: translate(1%, -1%);
-  }
-  75% {
-    transform: translate(-1%, -1%);
-  }
-  100% {
-    transform: translate(0, 0);
-  }
+  0%   { transform: translate(0, 0)     rotate(0deg);   }
+  20%  { transform: translate(-2%, 1%)  rotate(0.5deg); }
+  40%  { transform: translate(2%, -1%)  rotate(-0.5deg);}
+  60%  { transform: translate(-1%, -2%) rotate(0.3deg); }
+  80%  { transform: translate(1%, 2%)   rotate(-0.2deg);}
+  100% { transform: translate(0, 0)     rotate(0deg);   }
 }
