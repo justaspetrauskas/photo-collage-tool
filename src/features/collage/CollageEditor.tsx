@@ -58,6 +58,9 @@ export function CollageEditor() {
           onUpdateImage={editor.updateImage}
           onDeleteImage={editor.deleteImage}
           onRemoveFromCanvas={editor.removeFromCanvas}
+          onEnhanceImage={editor.enhanceImage}
+          onEnhanceAll={editor.enhanceAllImages}
+          enhancingImageIds={editor.enhancingImageIds}
           onUploadFiles={editor.onUploadFiles}
           onUploadFileList={editor.uploadFileList}
           sceneControls={{

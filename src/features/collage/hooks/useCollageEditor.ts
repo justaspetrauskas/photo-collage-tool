@@ -1,3 +1,4 @@
+import { enhanceImageWithAI, type EnhanceOptions } from '../lib/openaiImageEdit';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, MouseEvent } from 'react';
 import {
@@ -86,6 +87,7 @@ export function useCollageEditor() {
   const [moveOutsideCanvas, setMoveOutsideCanvas] = useState<boolean>(false);
   const [moveCollisionImageIds, setMoveCollisionImageIds] = useState<string[]>([]);
   const [resizeCurrentDimensions, setResizeCurrentDimensions] = useState<{ width: number; height: number } | null>(null);
+  const [enhancingImageIds, setEnhancingImageIds] = useState<Set<string>>(new Set());
 
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const previewTransformRef = useRef<PreviewTransform | null>(null);
@@ -991,6 +993,41 @@ function rectanglesTouchOrOverlap(
     resetGeneratedLayoutState();
   }
 
+  async function enhanceImage(imageId: string, options: EnhanceOptions = {}): Promise<void> {
+    const image = images.find((img) => img.id === imageId);
+    if (!image) return;
+    setEnhancingImageIds((prev) => new Set(prev).add(imageId));
+    try {
+      const enhancedSrc = await enhanceImageWithAI(image.src, options);
+      // Load the result as an HTMLImageElement (matches ImageItem.bitmap type)
+      const htmlImg = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const el = new Image();
+        el.onload = () => resolve(el);
+        el.onerror = () => reject(new Error('Failed to load enhanced image'));
+        el.src = enhancedSrc;
+      });
+      setImages((prev) =>
+        prev.map((img) =>
+          img.id === imageId ? { ...img, src: enhancedSrc, bitmap: htmlImg } : img,
+        ),
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'AI enhancement failed');
+    } finally {
+      setEnhancingImageIds((prev) => {
+        const next = new Set(prev);
+        next.delete(imageId);
+        return next;
+      });
+    }
+  }
+
+  async function enhanceAllImages(options: EnhanceOptions = {}): Promise<void> {
+    for (const image of images) {
+      await enhanceImage(image.id, options);
+    }
+  }
+
   function deleteImage(imageId: string): void {
     const image = images.find((img) => img.id === imageId);
     if (image) {
@@ -1080,6 +1117,9 @@ function rectanglesTouchOrOverlap(
     updateImage,
     deleteImage,
     removeFromCanvas,
+    enhanceImage,
+    enhanceAllImages,
+    enhancingImageIds,
     onCanvasMouseDown,
     onCanvasMouseMove,
     onCanvasMouseUp,

@@ -2,7 +2,8 @@ import { Field } from '../../../shared/ui/Field';
 import type { ImageItem, PageLayout } from '../model/types';
 import { CANVAS_CM } from '../model/constants';
 import { useState, useRef } from 'react';
-import { ChevronRight, ChevronLeft, UploadCloud, ChevronDown, ChevronUp, Trash2, X } from 'lucide-react';
+import { ChevronRight, ChevronLeft, UploadCloud, ChevronDown, ChevronUp, Trash2, X, Sparkles, Loader2 } from 'lucide-react';
+import { type EnhancePreset, ENHANCE_PRESET_LABELS } from '../lib/openaiImageEdit';
 import { useEditorUIStore } from '../store/editorUIStore';
 import { useDrag } from '@use-gesture/react';
 import { CollageControls, type CollageControlsProps } from './CollageControls';
@@ -16,6 +17,9 @@ interface ImageDrawerProps {
   onUpdateImage: (id: string, patch: Partial<ImageItem>) => void;
   onDeleteImage: (id: string) => void;
   onRemoveFromCanvas: (id: string) => void;
+  onEnhanceImage: (id: string, preset: EnhancePreset) => Promise<void>;
+  onEnhanceAll: (preset: EnhancePreset) => Promise<void>;
+  enhancingImageIds: Set<string>;
   onUploadFiles: (event: ChangeEvent<HTMLInputElement>) => Promise<void>;
   onUploadFileList: (files: File[]) => Promise<void>;
   sceneControls: CollageControlsProps;
@@ -25,13 +29,16 @@ interface ImageDrawerCardProps {
   image: ImageItem;
   isUsed: boolean;
   isSelected: boolean;
+  isEnhancing: boolean;
   onSelect: () => void;
   onUpdateImage: (patch: Partial<ImageItem>) => void;
   onDelete: () => void;
   onRemoveFromCanvas: () => void;
+  onEnhance: (preset: EnhancePreset) => void;
 }
 
-function ImageDrawerCard({ image, isUsed, isSelected, onSelect, onUpdateImage, onDelete, onRemoveFromCanvas }: ImageDrawerCardProps) {
+function ImageDrawerCard({ image, isUsed, isSelected, isEnhancing, onSelect, onUpdateImage, onDelete, onRemoveFromCanvas, onEnhance }: ImageDrawerCardProps) {
+  const [enhancePreset, setEnhancePreset] = useState<EnhancePreset>('lighting');
   const { imageZoomLevels, setImageZoom, imagePanOffsets, setImagePan } = useEditorUIStore();
   const imgContainerRef = useRef<HTMLDivElement>(null);
 
@@ -158,14 +165,39 @@ function ImageDrawerCard({ image, isUsed, isSelected, onSelect, onUpdateImage, o
             Delete
           </button>
         </div>
+
+        {/* AI Enhancement */}
+        <div className="pt-1 border-t border-line/20 space-y-2" onClick={(e) => e.stopPropagation()}>
+          <p className="text-[0.65rem] font-semibold uppercase tracking-widest text-muted">AI Enhance</p>
+          <select
+            className="field-input py-0.5 text-xs w-full"
+            value={enhancePreset}
+            onChange={(e) => setEnhancePreset(e.target.value as EnhancePreset)}
+          >
+            {(Object.keys(ENHANCE_PRESET_LABELS) as EnhancePreset[]).map((key) => (
+              <option key={key} value={key}>{ENHANCE_PRESET_LABELS[key]}</option>
+            ))}
+          </select>
+          <button
+            disabled={isEnhancing}
+            className="w-full flex items-center justify-center gap-1.5 text-xs py-2 rounded-md bg-violet-500/15 hover:bg-violet-500/25 text-violet-300 transition disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={() => onEnhance(enhancePreset)}
+          >
+            {isEnhancing
+              ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Enhancing…</>
+              : <><Sparkles className="w-3.5 h-3.5" /> Enhance</>}
+          </button>
+        </div>
       </div>
     </div>
   );
 }
 
-export function ImageDrawer({ images, pages, onUpdateImage, onDeleteImage, onRemoveFromCanvas, onUploadFiles, onUploadFileList, sceneControls }: ImageDrawerProps) {
+export function ImageDrawer({ images, pages, onUpdateImage, onDeleteImage, onRemoveFromCanvas, onEnhanceImage, onEnhanceAll, enhancingImageIds, onUploadFiles, onUploadFileList, sceneControls }: ImageDrawerProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [sceneCollapsed, setSceneCollapsed] = useState(false);
+  const [globalPreset, setGlobalPreset] = useState<EnhancePreset>('consistent');
+  const [enhancingAll, setEnhancingAll] = useState(false);
   const { drawerSelectedImageId, setDrawerSelectedImageId } = useEditorUIStore();
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -229,11 +261,39 @@ export function ImageDrawer({ images, pages, onUpdateImage, onDeleteImage, onRem
             )}
           </div>
 
-          {/* Full-width divider label */}
-          <div className="flex-shrink-0 flex items-center gap-3 px-5 py-3 border-b border-line/20">
-            <h3 className="text-sm font-semibold">Images</h3>
-            <span className="text-xs text-muted">{images.length}/{MAX_IMAGES}</span>
-            {usedImageIds.size > 0 && <span className="text-xs text-amber-300 ml-auto">{usedImageIds.size} used</span>}
+          {/* Full-width divider label + Enhance All */}
+          <div className="flex-shrink-0 border-b border-line/20">
+            <div className="flex items-center gap-3 px-5 py-3">
+              <h3 className="text-sm font-semibold">Images</h3>
+              <span className="text-xs text-muted">{images.length}/{MAX_IMAGES}</span>
+              {usedImageIds.size > 0 && <span className="text-xs text-amber-300 ml-auto">{usedImageIds.size} used</span>}
+            </div>
+            {images.length > 0 && (
+              <div className="flex items-center gap-2 px-5 pb-3">
+                <select
+                  className="field-input py-0.5 text-xs flex-1"
+                  value={globalPreset}
+                  onChange={(e) => setGlobalPreset(e.target.value as EnhancePreset)}
+                >
+                  {(Object.keys(ENHANCE_PRESET_LABELS) as EnhancePreset[]).map((key) => (
+                    <option key={key} value={key}>{ENHANCE_PRESET_LABELS[key]}</option>
+                  ))}
+                </select>
+                <button
+                  disabled={enhancingAll || enhancingImageIds.size > 0}
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-violet-500/15 hover:bg-violet-500/25 text-violet-300 transition disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                  onClick={async () => {
+                    setEnhancingAll(true);
+                    await onEnhanceAll(globalPreset);
+                    setEnhancingAll(false);
+                  }}
+                >
+                  {enhancingAll
+                    ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Working…</>
+                    : <><Sparkles className="w-3.5 h-3.5" /> All</>}
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Images list */}
@@ -248,10 +308,12 @@ export function ImageDrawer({ images, pages, onUpdateImage, onDeleteImage, onRem
                     image={image}
                     isUsed={usedImageIds.has(image.id)}
                     isSelected={drawerSelectedImageId === image.id}
+                    isEnhancing={enhancingImageIds.has(image.id)}
                     onSelect={() => setDrawerSelectedImageId(image.id)}
                     onUpdateImage={(patch) => onUpdateImage(image.id, patch)}
                     onDelete={() => onDeleteImage(image.id)}
                     onRemoveFromCanvas={() => onRemoveFromCanvas(image.id)}
+                    onEnhance={(preset) => void onEnhanceImage(image.id, preset)}
                   />
                 ))
               )}
