@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import type { ChangeEvent, MouseEvent } from 'react';
 import {
   CANVAS_CM,
   CANVAS_SIZE_PX,
@@ -8,12 +9,23 @@ import {
 } from './constants';
 import { buildPaginatedLayout, clampOffsets } from './layoutEngine';
 import { drawPagePreview, renderPageToExportCanvas } from './renderEngine';
+import type { ImageItem, LoadedImage, PaginationMode, PositionedImage, PreviewTransform } from './types';
 
-function randomId(prefix = 'img') {
+interface DragState {
+  imageId: string;
+  startX: number;
+  startY: number;
+  baseOffsetX: number;
+  baseOffsetY: number;
+  maxOffsetX: number;
+  maxOffsetY: number;
+}
+
+function randomId(prefix = 'img'): string {
   return `${prefix}-${crypto.randomUUID()}`;
 }
 
-function fileToImage(file) {
+function fileToImage(file: File): Promise<LoadedImage> {
   return new Promise((resolve, reject) => {
     const src = URL.createObjectURL(file);
     const image = new Image();
@@ -25,34 +37,29 @@ function fileToImage(file) {
         naturalHeight: image.naturalHeight,
       });
     };
-    image.onerror = reject;
+    image.onerror = () => reject(new Error(`Failed to load image ${file.name}`));
     image.src = src;
   });
 }
 
 export default function App() {
-  const [images, setImages] = useState([]);
-  const [pages, setPages] = useState([]);
-  const [maxImageCm, setMaxImageCm] = useState(DEFAULT_MAX_IMAGE_CM);
-  const [frameMm, setFrameMm] = useState(DEFAULT_FRAME_MM);
-  const [paginationMode, setPaginationMode] = useState('auto');
-  const [assistedPageCount, setAssistedPageCount] = useState(1);
-  const [selectedPageIndex, setSelectedPageIndex] = useState(0);
-  const [overflowImageIds, setOverflowImageIds] = useState([]);
-  const [oversizedImageIds, setOversizedImageIds] = useState([]);
-  const [error, setError] = useState('');
+  const [images, setImages] = useState<ImageItem[]>([]);
+  const [pages, setPages] = useState<Array<{ id: string; widthPx: number; heightPx: number; items: PositionedImage[] }>>([]);
+  const [maxImageCm, setMaxImageCm] = useState<number>(DEFAULT_MAX_IMAGE_CM);
+  const [frameMm, setFrameMm] = useState<number>(DEFAULT_FRAME_MM);
+  const [paginationMode, setPaginationMode] = useState<PaginationMode>('auto');
+  const [assistedPageCount, setAssistedPageCount] = useState<number>(1);
+  const [selectedPageIndex, setSelectedPageIndex] = useState<number>(0);
+  const [overflowImageIds, setOverflowImageIds] = useState<string[]>([]);
+  const [oversizedImageIds, setOversizedImageIds] = useState<string[]>([]);
+  const [error, setError] = useState<string>('');
 
-  const previewCanvasRef = useRef(null);
-  const previewTransformRef = useRef(null);
-  const dragRef = useRef(null);
+  const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const previewTransformRef = useRef<PreviewTransform | null>(null);
+  const dragRef = useRef<DragState | null>(null);
 
-  const itemById = useMemo(() => {
-    return new Map(images.map((img) => [img.id, img]));
-  }, [images]);
-
-  const imageById = useMemo(() => {
-    return new Map(images.map((img) => [img.id, img.bitmap]));
-  }, [images]);
+  const itemById = useMemo(() => new Map(images.map((img) => [img.id, img])), [images]);
+  const imageById = useMemo(() => new Map(images.map((img) => [img.id, img.bitmap])), [images]);
 
   const selectedPage = pages[selectedPageIndex] ?? null;
 
@@ -73,7 +80,7 @@ export default function App() {
     };
   }, [images]);
 
-  async function onUploadFiles(event) {
+  async function onUploadFiles(event: ChangeEvent<HTMLInputElement>): Promise<void> {
     const files = Array.from(event.target.files ?? []);
     if (!files.length) {
       return;
@@ -81,7 +88,7 @@ export default function App() {
 
     try {
       const loaded = await Promise.all(files.map((file) => fileToImage(file)));
-      const next = loaded.map((entry, index) => ({
+      const next: ImageItem[] = loaded.map((entry, index) => ({
         id: randomId(`${Date.now()}-${index}`),
         fileName: files[index].name,
         src: entry.src,
@@ -107,7 +114,7 @@ export default function App() {
     }
   }
 
-  function applyGlobalSettings() {
+  function applyGlobalSettings(): void {
     setImages((current) =>
       current.map((image) => ({
         ...image,
@@ -118,11 +125,11 @@ export default function App() {
     );
   }
 
-  function updateImage(id, patch) {
+  function updateImage(id: string, patch: Partial<ImageItem>): void {
     setImages((current) => current.map((image) => (image.id === id ? { ...image, ...patch } : image)));
   }
 
-  function regenerateLayout(overrideAssistedCount) {
+  function regenerateLayout(overrideAssistedCount: number): void {
     if (!images.length) {
       setPages([]);
       setOverflowImageIds([]);
@@ -161,18 +168,18 @@ export default function App() {
     setSelectedPageIndex(0);
   }
 
-  function onGenerateLayout() {
+  function onGenerateLayout(): void {
     setAssistedPageCount(1);
     regenerateLayout(1);
   }
 
-  function onCreateNextPage() {
+  function onCreateNextPage(): void {
     const nextCount = assistedPageCount + 1;
     setAssistedPageCount(nextCount);
     regenerateLayout(nextCount);
   }
 
-  function pagePointFromMouse(event) {
+  function pagePointFromMouse(event: MouseEvent<HTMLCanvasElement>): { x: number; y: number } | null {
     const canvas = previewCanvasRef.current;
     const transform = previewTransformRef.current;
     if (!canvas || !transform || !selectedPage) {
@@ -193,7 +200,7 @@ export default function App() {
     return { x: pageX, y: pageY };
   }
 
-  function findHitItem(pagePoint) {
+  function findHitItem(pagePoint: { x: number; y: number }): PositionedImage | null {
     if (!selectedPage) {
       return null;
     }
@@ -216,7 +223,7 @@ export default function App() {
     return null;
   }
 
-  function onMouseDown(event) {
+  function onMouseDown(event: MouseEvent<HTMLCanvasElement>): void {
     const point = pagePointFromMouse(event);
     if (!point) {
       return;
@@ -243,7 +250,7 @@ export default function App() {
     };
   }
 
-  function onMouseMove(event) {
+  function onMouseMove(event: MouseEvent<HTMLCanvasElement>): void {
     if (!dragRef.current) {
       return;
     }
@@ -270,11 +277,11 @@ export default function App() {
     });
   }
 
-  function onMouseUp() {
+  function onMouseUp(): void {
     dragRef.current = null;
   }
 
-  function exportPagesAsPng() {
+  function exportPagesAsPng(): void {
     if (!pages.length) {
       return;
     }
@@ -330,7 +337,7 @@ export default function App() {
 
         <label>
           Pagination Mode
-          <select value={paginationMode} onChange={(e) => setPaginationMode(e.target.value)}>
+          <select value={paginationMode} onChange={(e) => setPaginationMode(e.target.value as PaginationMode)}>
             <option value="auto">Auto Pagination</option>
             <option value="assisted">Assisted Pagination</option>
           </select>

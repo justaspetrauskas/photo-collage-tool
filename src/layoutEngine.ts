@@ -1,11 +1,25 @@
 import { MaxRectsBin } from 'maxrects-packer';
 import { cmToPx } from './constants';
+import type { BuildLayoutResult, ImageItem, ImageMetrics, PageLayout } from './types';
 
-function clamp(value, min, max) {
+interface LayoutOptions {
+  canvasWidthPx: number;
+  canvasHeightPx: number;
+  allowUpscale?: boolean;
+  maxPages?: number;
+}
+
+function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-function getContentBox(naturalWidth, naturalHeight, maxWidthCm, maxHeightCm, allowUpscale = false) {
+function getContentBox(
+  naturalWidth: number,
+  naturalHeight: number,
+  maxWidthCm: number,
+  maxHeightCm: number,
+  allowUpscale = false,
+): { widthPx: number; heightPx: number } {
   const maxWidthPx = cmToPx(maxWidthCm);
   const maxHeightPx = cmToPx(maxHeightCm);
 
@@ -20,7 +34,12 @@ function getContentBox(naturalWidth, naturalHeight, maxWidthCm, maxHeightCm, all
   };
 }
 
-function getCropMetrics(naturalWidth, naturalHeight, frameWidth, frameHeight) {
+function getCropMetrics(
+  naturalWidth: number,
+  naturalHeight: number,
+  frameWidth: number,
+  frameHeight: number,
+): Pick<ImageMetrics, 'drawnImageWidthPx' | 'drawnImageHeightPx' | 'maxOffsetX' | 'maxOffsetY'> {
   const coverScale = Math.max(frameWidth / naturalWidth, frameHeight / naturalHeight);
   const drawnImageWidthPx = Math.round(naturalWidth * coverScale);
   const drawnImageHeightPx = Math.round(naturalHeight * coverScale);
@@ -33,7 +52,7 @@ function getCropMetrics(naturalWidth, naturalHeight, frameWidth, frameHeight) {
   };
 }
 
-export function buildPaginatedLayout(images, options) {
+export function buildPaginatedLayout(images: ImageItem[], options: LayoutOptions): BuildLayoutResult {
   const {
     canvasWidthPx,
     canvasHeightPx,
@@ -41,7 +60,7 @@ export function buildPaginatedLayout(images, options) {
     maxPages = Number.POSITIVE_INFINITY,
   } = options;
 
-  const sourceRects = images
+  const sourceRects: ImageMetrics[] = images
     .map((image) => {
       const content = getContentBox(
         image.naturalWidth,
@@ -74,12 +93,13 @@ export function buildPaginatedLayout(images, options) {
     })
     .sort((a, b) => b.packedWidth * b.packedHeight - a.packedWidth * a.packedHeight);
 
-  const pages = [];
+  const sourceById = new Map(sourceRects.map((rect) => [rect.id, rect]));
+  const pages: PageLayout[] = [];
   let remaining = sourceRects;
 
   while (remaining.length > 0 && pages.length < maxPages) {
     const bin = new MaxRectsBin(canvasWidthPx, canvasHeightPx, 0);
-    const nextRemaining = [];
+    const nextRemaining: ImageMetrics[] = [];
 
     for (const rect of remaining) {
       const placed = bin.add(rect.packedWidth, rect.packedHeight, { id: rect.id });
@@ -92,22 +112,27 @@ export function buildPaginatedLayout(images, options) {
       break;
     }
 
-    const positionedItems = bin.rects.map((rect) => {
-      const source = remaining.find((candidate) => candidate.id === rect.data.id);
-      return {
-        imageId: source.id,
-        x: rect.x,
-        y: rect.y,
-        width: source.packedWidth,
-        height: source.packedHeight,
-        contentWidthPx: source.contentWidthPx,
-        contentHeightPx: source.contentHeightPx,
-        frameThicknessPx: source.frameThicknessPx,
-        drawnImageWidthPx: source.drawnImageWidthPx,
-        drawnImageHeightPx: source.drawnImageHeightPx,
-        maxOffsetX: source.maxOffsetX,
-        maxOffsetY: source.maxOffsetY,
-      };
+    const positionedItems = bin.rects.flatMap((rect) => {
+      const source = sourceById.get((rect.data as { id: string }).id);
+      if (!source) {
+        return [];
+      }
+      return [
+        {
+          imageId: source.id,
+          x: rect.x,
+          y: rect.y,
+          width: source.packedWidth,
+          height: source.packedHeight,
+          contentWidthPx: source.contentWidthPx,
+          contentHeightPx: source.contentHeightPx,
+          frameThicknessPx: source.frameThicknessPx,
+          drawnImageWidthPx: source.drawnImageWidthPx,
+          drawnImageHeightPx: source.drawnImageHeightPx,
+          maxOffsetX: source.maxOffsetX,
+          maxOffsetY: source.maxOffsetY,
+        },
+      ];
     });
 
     pages.push({
@@ -134,7 +159,12 @@ export function buildPaginatedLayout(images, options) {
   };
 }
 
-export function clampOffsets(offsetX, offsetY, maxOffsetX, maxOffsetY) {
+export function clampOffsets(
+  offsetX: number,
+  offsetY: number,
+  maxOffsetX: number,
+  maxOffsetY: number,
+): { offsetX: number; offsetY: number } {
   return {
     offsetX: clamp(offsetX, 0, maxOffsetX),
     offsetY: clamp(offsetY, 0, maxOffsetY),

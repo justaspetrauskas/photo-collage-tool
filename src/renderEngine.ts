@@ -1,6 +1,12 @@
 import { clampOffsets } from './layoutEngine';
+import type { ImageItem, PageLayout, PreviewTransform } from './types';
 
-function drawPage(ctx, page, itemById, imageById) {
+function drawPage(
+  ctx: CanvasRenderingContext2D,
+  page: PageLayout,
+  itemById: Map<string, ImageItem>,
+  imageById: Map<string, HTMLImageElement>,
+): void {
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, page.widthPx, page.heightPx);
 
@@ -40,22 +46,17 @@ function drawPage(ctx, page, itemById, imageById) {
     ctx.beginPath();
     ctx.rect(innerX, innerY, innerWidth, innerHeight);
     ctx.clip();
-    ctx.drawImage(
-      img,
-      drawX,
-      drawY,
-      placed.drawnImageWidthPx,
-      placed.drawnImageHeightPx,
-    );
+    ctx.drawImage(img, drawX, drawY, placed.drawnImageWidthPx, placed.drawnImageHeightPx);
     ctx.restore();
   }
 }
 
-export function drawPagePreview(canvas, page, itemById, imageById) {
-  if (!canvas || !page) {
-    return;
-  }
-
+export function drawPagePreview(
+  canvas: HTMLCanvasElement,
+  page: PageLayout,
+  itemById: Map<string, ImageItem>,
+  imageById: Map<string, HTMLImageElement>,
+): PreviewTransform | null {
   const dpr = window.devicePixelRatio || 1;
   const logicalSize = Math.min(window.innerWidth * 0.9, 900);
   canvas.width = Math.round(logicalSize * dpr);
@@ -64,6 +65,10 @@ export function drawPagePreview(canvas, page, itemById, imageById) {
   canvas.style.height = `${Math.round(logicalSize)}px`;
 
   const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    return null;
+  }
+
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -91,13 +96,19 @@ export function drawPagePreview(canvas, page, itemById, imageById) {
   };
 }
 
-export function renderPageToExportCanvas(page, itemById, imageById) {
+export function renderPageToExportCanvas(
+  page: PageLayout,
+  itemById: Map<string, ImageItem>,
+  imageById: Map<string, HTMLImageElement>,
+): HTMLCanvasElement {
   const canvas = document.createElement('canvas');
   canvas.width = page.widthPx;
   canvas.height = page.heightPx;
 
   const ctx = canvas.getContext('2d');
-  drawPage(ctx, page, itemById, imageById);
+  if (ctx) {
+    drawPage(ctx, page, itemById, imageById);
+  }
 
   return canvas;
 }
