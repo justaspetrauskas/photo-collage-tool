@@ -1,6 +1,6 @@
 import { Field } from '../../../shared/ui/Field';
-import { Button } from '../../../shared/ui/Button';
 import type { ImageItem, PageLayout } from '../model/types';
+import { CANVAS_CM } from '../model/constants';
 import { useState, useRef } from 'react';
 import { ChevronRight, ChevronLeft, UploadCloud, ChevronDown, ChevronUp } from 'lucide-react';
 import { useEditorUIStore } from '../store/editorUIStore';
@@ -117,51 +117,23 @@ function ImageDrawerCard({ image, isUsed, isSelected, onSelect, onUpdateImage }:
         {/* Max W / H */}
         <div className="grid grid-cols-2 gap-2">
           <Field label="Max W" className="mb-0">
-            <input className="field-input py-0.5 text-xs" type="number" min="1" max="20" step="0.1"
+            <input className="field-input py-0.5 text-xs" type="number" min="1" max={CANVAS_CM} step="0.1"
               value={image.maxWidthCm}
-              onChange={(e) => onUpdateImage({ maxWidthCm: Number(e.target.value) })} />
+              onChange={(e) => onUpdateImage({ maxWidthCm: Math.min(CANVAS_CM, Number(e.target.value)) })} />
           </Field>
           <Field label="Max H" className="mb-0">
-            <input className="field-input py-0.5 text-xs" type="number" min="1" max="20" step="0.1"
+            <input className="field-input py-0.5 text-xs" type="number" min="1" max={CANVAS_CM} step="0.1"
               value={image.maxHeightCm}
-              onChange={(e) => onUpdateImage({ maxHeightCm: Number(e.target.value) })} />
+              onChange={(e) => onUpdateImage({ maxHeightCm: Math.min(CANVAS_CM, Number(e.target.value)) })} />
           </Field>
         </div>
 
-        <label className="flex items-center gap-2 text-xs text-ink/90 cursor-pointer pt-1">
-          <input className="h-3 w-3 rounded border-line text-accent focus:ring-accent/30" type="checkbox"
+        <label className="themed-checkbox flex items-center gap-2 text-xs text-ink/90 cursor-pointer pt-1">
+          <input type="checkbox"
             checked={image.frameEnabled}
             onChange={(e) => onUpdateImage({ frameEnabled: e.target.checked })} />
           <span>Frame</span>
         </label>
-
-        {/* Crop Sliders */}
-        {(image.cropMaxOffsetX > 0 || image.cropMaxOffsetY > 0) && (
-          <div className="space-y-2 pt-2.5 border-t border-line/10">
-            {image.cropMaxOffsetX > 0 && (
-              <div className="text-xs">
-                <label className="block text-muted mb-1.5">H: {Math.round(image.offsetX)} / {Math.round(image.cropMaxOffsetX)}</label>
-                <input className="w-full h-1 accent-amber-400" type="range"
-                  min={0} max={Math.max(0, Math.round(image.cropMaxOffsetX))} step={1}
-                  value={Math.round(image.offsetX)}
-                  onChange={(e) => onUpdateImage({ offsetX: Number(e.target.value) })} />
-              </div>
-            )}
-            {image.cropMaxOffsetY > 0 && (
-              <div className="text-xs">
-                <label className="block text-muted mb-1.5">V: {Math.round(image.offsetY)} / {Math.round(image.cropMaxOffsetY)}</label>
-                <input className="w-full h-1 accent-amber-400" type="range"
-                  min={0} max={Math.max(0, Math.round(image.cropMaxOffsetY))} step={1}
-                  value={Math.round(image.offsetY)}
-                  onChange={(e) => onUpdateImage({ offsetY: Number(e.target.value) })} />
-              </div>
-            )}
-            <Button variant="soft" className="w-full py-1.5 text-xs"
-              onClick={() => onUpdateImage({ offsetX: 0, offsetY: 0 })}>
-              Reset Crop
-            </Button>
-          </div>
-        )}
       </div>
     </div>
   );
@@ -203,7 +175,7 @@ export function ImageDrawer({ images, pages, onUpdateImage, onUploadFiles, onUpl
       </button>
 
       {!collapsed && (
-        <div className="flex-1 overflow-y-auto flex flex-col min-h-0">
+        <div className="flex-1 overflow-y-auto flex flex-col min-h-0 scrollbar-themed">
 
           {/* Scene Controls Section */}
           <div className="flex-shrink-0 border-b border-line/20">
@@ -229,7 +201,7 @@ export function ImageDrawer({ images, pages, onUpdateImage, onUploadFiles, onUpl
           </div>
 
           {/* Images list */}
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto scrollbar-themed">
             <div className="p-4 space-y-3">
               {images.length === 0 ? (
                 <p className="text-xs text-muted text-center py-8">No images yet — upload below</p>

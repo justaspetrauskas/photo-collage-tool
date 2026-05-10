@@ -1,6 +1,7 @@
 import { Button } from '../../../shared/ui/Button';
 import { Field } from '../../../shared/ui/Field';
 import type { PaginationMode } from '../model/types';
+import { CANVAS_CM } from '../model/constants';
 import { Check, Zap, Download, RotateCcw, Trash2, Plus } from 'lucide-react';
 
 export interface CollageControlsProps {
@@ -57,10 +58,10 @@ export function CollageControls({
                   className="field-input py-1 text-xs"
                   type="number"
                   min="1"
-                  max="20"
+                  max={CANVAS_CM}
                   step="0.1"
                   value={maxImageCm}
-                  onChange={(event) => setMaxImageCm(Number(event.target.value))}
+                  onChange={(event) => setMaxImageCm(Math.min(CANVAS_CM, Number(event.target.value)))}
                 />
               </Field>
 
@@ -76,12 +77,12 @@ export function CollageControls({
                 />
               </Field>
 
-              <Field label="Frame (mm)" className="mb-0">
+              <Field label={`Frame ${frameMm.toFixed(1)} mm`} className="mb-0">
                 <input
-                  className="field-input py-1 text-xs"
-                  type="number"
+                  className="w-full h-1 accent-amber-400 mt-2"
+                  type="range"
                   min="0"
-                  max="20"
+                  max="10"
                   step="0.1"
                   value={frameMm}
                   onChange={(event) => setFrameMm(Number(event.target.value))}
@@ -102,9 +103,8 @@ export function CollageControls({
 
             {/* Checkboxes - Compact Row */}
             <div className="flex flex-wrap gap-1.5">
-              <label className="flex items-center gap-1.5 rounded-lg bg-[#121a2b]/82 px-2.5 py-1 text-xs font-medium text-ink/90">
+              <label className="themed-checkbox flex items-center gap-1.5 rounded-lg bg-[#121a2b]/82 px-2.5 py-1 text-xs font-medium text-ink/90">
                 <input
-                  className="h-3 w-3 rounded border-line text-accent focus:ring-accent/30"
                   type="checkbox"
                   checked={gridModeEnabled}
                   onChange={(event) => setGridModeEnabled(event.target.checked)}
@@ -112,9 +112,8 @@ export function CollageControls({
                 <span>Grid</span>
               </label>
 
-              <label className="flex items-center gap-1.5 rounded-lg bg-[#121a2b]/82 px-2.5 py-1 text-xs font-medium text-ink/90">
+              <label className="themed-checkbox flex items-center gap-1.5 rounded-lg bg-[#121a2b]/82 px-2.5 py-1 text-xs font-medium text-ink/90">
                 <input
-                  className="h-3 w-3 rounded border-line text-accent focus:ring-accent/30"
                   type="checkbox"
                   checked={autoCompactPages}
                   onChange={(event) => setAutoCompactPages(event.target.checked)}

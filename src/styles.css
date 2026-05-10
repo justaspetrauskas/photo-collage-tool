@@ -90,6 +90,94 @@
   .btn-soft {
     @apply rounded-xl bg-accent-soft/70 px-3 py-2 text-sm font-semibold text-ink/90 transition duration-200 hover:-translate-y-0.5 hover:bg-accent-soft/90;
   }
+
+  /* Themed scrollbar — used on any scrollable container */
+  .scrollbar-themed,
+  .scrollbar-themed * {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(var(--color-line)) transparent;
+  }
+  .scrollbar-themed::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+  }
+  .scrollbar-themed::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scrollbar-themed::-webkit-scrollbar-thumb {
+    background: rgb(var(--color-line));
+    border-radius: 99px;
+  }
+  .scrollbar-themed::-webkit-scrollbar-thumb:hover {
+    background: rgba(var(--color-accent), 0.5);
+  }
+
+  /* Global scrollbar (body / html) */
+  ::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgb(var(--color-line));
+    border-radius: 99px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(var(--color-accent), 0.5);
+  }
+
+  /* Themed checkbox — amber accent, dark background */
+  .themed-checkbox input[type='checkbox'] {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 13px;
+    height: 13px;
+    border-radius: 4px;
+    border: 1.5px solid rgb(var(--color-line));
+    background: rgb(var(--color-paper));
+    display: inline-grid;
+    place-content: center;
+    flex-shrink: 0;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .themed-checkbox input[type='checkbox']::before {
+    content: '';
+    width: 7px;
+    height: 7px;
+    clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 10%, 80% 0%, 43% 62%);
+    background: rgb(var(--color-bg));
+    transform: scale(0);
+    transition: transform 0.1s ease-in-out;
+  }
+  .themed-checkbox input[type='checkbox']:checked {
+    background: rgb(var(--color-accent));
+    border-color: rgb(var(--color-accent));
+  }
+  .themed-checkbox input[type='checkbox']:checked::before {
+    transform: scale(1);
+  }
+  .themed-checkbox input[type='checkbox']:focus-visible {
+    outline: 2px solid rgba(var(--color-accent), 0.5);
+    outline-offset: 1px;
+  }
+
+  /* Themed select — matches field-input style with custom arrow */
+  select.field-input {
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238a99b7' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    padding-right: 28px;
+    cursor: pointer;
+  }
+  select.field-input option {
+    background: rgb(var(--color-paper));
+    color: rgb(var(--color-ink));
+  }
 }
 
 @keyframes mesh-drift {
