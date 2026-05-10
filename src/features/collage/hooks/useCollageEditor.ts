@@ -21,184 +21,28 @@ import type {
 } from '../model/types';
 import { blobToImage, fileToImage } from '../lib/fileToImage';
 import { clearSnapshot, loadSnapshot, saveSnapshot } from '../lib/persistence';
-
-interface CropDragState {
-  imageId: string;
-  startX: number;
-  startY: number;
-  baseOffsetX: number;
-  baseOffsetY: number;
-  maxOffsetX: number;
-  maxOffsetY: number;
-}
-
-interface ResizeDragState {
-  imageId: string;
-  startX: number;
-  startY: number;
-  baseMaxWidthCm: number;
-  baseMaxHeightCm: number;
-  baseX: number;
-  baseY: number;
-  baseWidth: number;
-  baseHeight: number;
-}
-
-interface ReplaceDragState {
-  sourceImageId: string;
-}
-
-interface MoveDragState {
-  imageId: string;
-  startX: number;
-  startY: number;
-  baseX: number;
-  baseY: number;
-}
-
-function overlaps(
-  a: { x: number; y: number; width: number; height: number },
-  b: { x: number; y: number; width: number; height: number },
-): boolean {
-  return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
-}
-
-function computeContentBox(
-  naturalWidth: number,
-  naturalHeight: number,
-  maxWidthCm: number,
-  maxHeightCm: number,
-): { widthPx: number; heightPx: number } {
-  const maxWidthPx = cmToPx(maxWidthCm);
-  const maxHeightPx = cmToPx(maxHeightCm);
-  const widthRatio = maxWidthPx / naturalWidth;
-  const heightRatio = maxHeightPx / naturalHeight;
-  const fitScale = Math.min(widthRatio, heightRatio);
-
-  return {
-    widthPx: Math.round(naturalWidth * fitScale),
-    heightPx: Math.round(naturalHeight * fitScale),
-  };
-}
-
-function computeCropMetrics(
-  naturalWidth: number,
-  naturalHeight: number,
-  frameWidth: number,
-  frameHeight: number,
-): { drawnImageWidthPx: number; drawnImageHeightPx: number; maxOffsetX: number; maxOffsetY: number } {
-  const coverScale = Math.max(frameWidth / naturalWidth, frameHeight / naturalHeight);
-  const drawnImageWidthPx = Math.round(naturalWidth * coverScale);
-  const drawnImageHeightPx = Math.round(naturalHeight * coverScale);
-
-  return {
-    drawnImageWidthPx,
-    drawnImageHeightPx,
-    maxOffsetX: Math.max(0, drawnImageWidthPx - frameWidth),
-    maxOffsetY: Math.max(0, drawnImageHeightPx - frameHeight),
-  };
-}
-
-function rectanglesOverlap(
-  a: { x: number; y: number; width: number; height: number },
-  b: { x: number; y: number; width: number; height: number },
-): boolean {
-  return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
-}
-
-function isInsideCanvas(rect: { x: number; y: number; width: number; height: number }): boolean {
-  return rect.x >= 0 && rect.y >= 0 && rect.x + rect.width <= CANVAS_SIZE_PX && rect.y + rect.height <= CANVAS_SIZE_PX;
-}
-
-function resolvePushLayout(
-  items: PositionedImage[],
-  anchorIndex: number,
-  anchorRect: { x: number; y: number; width: number; height: number },
-  preferredAxis: 'x' | 'y',
-): PositionedImage[] | null {
-  const nextItems = items.map((item, index) => {
-    if (index !== anchorIndex) {
-      return { ...item };
-    }
-
-    return {
-      ...item,
-      x: anchorRect.x,
-      y: anchorRect.y,
-      width: anchorRect.width,
-      height: anchorRect.height,
-    };
-  });
-
-  const queue: number[] = [anchorIndex];
-  const queued = new Set<number>([anchorIndex]);
-  let guard = 0;
-
-  while (queue.length) {
-    const currentIndex = queue.shift()!;
-    queued.delete(currentIndex);
-    const current = nextItems[currentIndex];
-
-    for (let otherIndex = 0; otherIndex < nextItems.length; otherIndex += 1) {
-      if (otherIndex === currentIndex) {
-        continue;
-      }
-
-      const other = nextItems[otherIndex];
-      if (!overlaps(current, other)) {
-        continue;
-      }
-
-      const pushRight = current.x + current.width - other.x;
-      const pushDown = current.y + current.height - other.y;
-
-      const rightCandidate = {
-        ...other,
-        x: other.x + pushRight,
-      };
-      const downCandidate = {
-        ...other,
-        y: other.y + pushDown,
-      };
-
-      const rightFits = isInsideCanvas(rightCandidate);
-      const downFits = isInsideCanvas(downCandidate);
-
-      if (!rightFits && !downFits) {
-        return null;
-      }
-
-      const useRight = preferredAxis === 'x'
-        ? rightFits || !downFits
-        : rightFits && !downFits;
-      nextItems[otherIndex] = useRight ? rightCandidate : downCandidate;
-
-      if (!queued.has(otherIndex)) {
-        queue.push(otherIndex);
-        queued.add(otherIndex);
-      }
-    }
-
-    guard += 1;
-    if (guard > 2000) {
-      return null;
-    }
-  }
-
-  for (let i = 0; i < nextItems.length; i += 1) {
-    if (!isInsideCanvas(nextItems[i])) {
-      return null;
-    }
-
-    for (let j = i + 1; j < nextItems.length; j += 1) {
-      if (overlaps(nextItems[i], nextItems[j])) {
-        return null;
-      }
-    }
-  }
-
-  return nextItems;
-}
+import {
+  type DragState,
+  isCropDrag,
+  isResizeDrag,
+  isReplaceDrag,
+  isMoveDrag,
+} from '../../../shared/drag';
+import {
+  rectanglesOverlap,
+  isInsideCanvas,
+  computeContentBox,
+  computeCropMetrics,
+  clampCropOffset,
+} from '../../../shared/math';
+import {
+  calculateCropOffsets,
+  calculateNewPosition,
+  isPositionOutsideCanvas,
+  resolvePushLayout,
+  getPreferredPushAxis,
+  canSwapImages,
+} from '../interactions';
 
 function pageHasOverlap(page: { items: Array<{ x: number; y: number; width: number; height: number }> }): boolean {
   for (let i = 0; i < page.items.length; i += 1) {
@@ -242,10 +86,7 @@ export function useCollageEditor() {
 
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const previewTransformRef = useRef<PreviewTransform | null>(null);
-  const cropDragRef = useRef<CropDragState | null>(null);
-  const resizeDragRef = useRef<ResizeDragState | null>(null);
-  const replaceDragRef = useRef<ReplaceDragState | null>(null);
-  const moveDragRef = useRef<MoveDragState | null>(null);
+  const dragStateRef = useRef<DragState | null>(null);
   const knownImageSrcsRef = useRef<Set<string>>(new Set());
 
   const itemById = useMemo(() => new Map(images.map((img) => [img.id, img])), [images]);
@@ -518,23 +359,9 @@ export function useCollageEditor() {
 
     const sourceSlot = selectedPage.items[sourceIndex];
     const targetSlot = selectedPage.items[targetIndex];
-
-    const sourceCandidate = {
-      ...sourceSlot,
-      x: targetSlot.x,
-      y: targetSlot.y,
-    };
-    const targetCandidate = {
-      ...targetSlot,
-      x: sourceSlot.x,
-      y: sourceSlot.y,
-    };
-
     const otherItems = selectedPage.items.filter((_, index) => index !== sourceIndex && index !== targetIndex);
-    const overlapsOthers = otherItems.some((item) => overlaps(sourceCandidate, item) || overlaps(targetCandidate, item));
-    const overlapsEachOther = overlaps(sourceCandidate, targetCandidate);
 
-    if (overlapsOthers || overlapsEachOther) {
+    if (!canSwapImages(sourceSlot, targetSlot, otherItems)) {
       setError('Cannot replace these two images because their constrained sizes would overlap nearby images.');
       return;
     }
@@ -713,7 +540,8 @@ export function useCollageEditor() {
 
     if (interactionMode === 'crop') {
       setDragActive(true);
-      cropDragRef.current = {
+      dragStateRef.current = {
+        type: 'crop',
         imageId: hit.imageId,
         startX: point.x,
         startY: point.y,
@@ -722,40 +550,34 @@ export function useCollageEditor() {
         maxOffsetX: hit.maxOffsetX,
         maxOffsetY: hit.maxOffsetY,
       };
-      resizeDragRef.current = null;
-      replaceDragRef.current = null;
-      moveDragRef.current = null;
       return;
     }
 
     if (interactionMode === 'replace') {
-      replaceDragRef.current = {
+      dragStateRef.current = {
+        type: 'replace',
         sourceImageId: hit.imageId,
       };
-      cropDragRef.current = null;
-      resizeDragRef.current = null;
-      moveDragRef.current = null;
       setDragActive(true);
       return;
     }
 
     if (interactionMode === 'move') {
-      moveDragRef.current = {
+      dragStateRef.current = {
+        type: 'move',
         imageId: hit.imageId,
         startX: point.x,
         startY: point.y,
         baseX: hit.x,
         baseY: hit.y,
       };
-      cropDragRef.current = null;
-      resizeDragRef.current = null;
-      replaceDragRef.current = null;
       setDragActive(true);
       setMoveOutsideCanvas(false);
       return;
     }
 
-    resizeDragRef.current = {
+    dragStateRef.current = {
+      type: 'resize',
       imageId: hit.imageId,
       startX: point.x,
       startY: point.y,
@@ -766,9 +588,6 @@ export function useCollageEditor() {
       baseWidth: hit.width,
       baseHeight: hit.height,
     };
-    cropDragRef.current = null;
-    replaceDragRef.current = null;
-    moveDragRef.current = null;
     setDragActive(true);
   }
 
@@ -786,36 +605,41 @@ export function useCollageEditor() {
       setHoveredImageId(hit?.imageId ?? null);
     }
 
-    if (interactionMode === 'crop' && cropDragRef.current) {
-      const drag = cropDragRef.current;
-      const deltaX = point.x - drag.startX;
-      const deltaY = point.y - drag.startY;
-
-      const clamped = clampOffsets(
-        drag.baseOffsetX - deltaX,
-        drag.baseOffsetY - deltaY,
+    if (interactionMode === 'crop' && isCropDrag(dragStateRef.current)) {
+      const drag = dragStateRef.current;
+      const offsets = calculateCropOffsets(
+        drag.startX,
+        drag.startY,
+        point.x,
+        point.y,
+        drag.baseOffsetX,
+        drag.baseOffsetY,
         drag.maxOffsetX,
         drag.maxOffsetY,
       );
 
       updateImage(drag.imageId, {
-        offsetX: Math.round(clamped.offsetX),
-        offsetY: Math.round(clamped.offsetY),
+        offsetX: Math.round(offsets.offsetX),
+        offsetY: Math.round(offsets.offsetY),
       });
       return;
     }
 
-    if (interactionMode === 'replace' && replaceDragRef.current) {
+    if (interactionMode === 'replace' && isReplaceDrag(dragStateRef.current)) {
       setHoveredImageId(hit?.imageId ?? null);
       return;
     }
 
-    if (interactionMode === 'move' && moveDragRef.current) {
-      const drag = moveDragRef.current;
-      const deltaX = point.x - drag.startX;
-      const deltaY = point.y - drag.startY;
-      const nextX = drag.baseX + deltaX;
-      const nextY = drag.baseY + deltaY;
+    if (interactionMode === 'move' && isMoveDrag(dragStateRef.current)) {
+      const drag = dragStateRef.current;
+      const position = calculateNewPosition(
+        drag.startX,
+        drag.startY,
+        point.x,
+        point.y,
+        drag.baseX,
+        drag.baseY,
+      );
 
       const pageIndex = pages.findIndex((page) => page.items.some((item) => item.imageId === drag.imageId));
       if (pageIndex === -1) {
@@ -829,8 +653,7 @@ export function useCollageEditor() {
       }
 
       const item = page.items[itemIndex];
-      const isOutsideCanvas =
-        nextX < 0 || nextY < 0 || nextX + item.width > CANVAS_SIZE_PX || nextY + item.height > CANVAS_SIZE_PX;
+      const isOutsideCanvas = isPositionOutsideCanvas(position.x, position.y, item.width, item.height);
 
       setMoveOutsideCanvas(isOutsideCanvas);
 
@@ -844,8 +667,8 @@ export function useCollageEditor() {
             const nextItems = [...currentPage.items];
             nextItems[itemIndex] = {
               ...nextItems[itemIndex],
-              x: nextX,
-              y: nextY,
+              x: position.x,
+              y: position.y,
             };
 
             return {
@@ -858,11 +681,11 @@ export function useCollageEditor() {
       return;
     }
 
-    if (interactionMode === 'resize' && resizeDragRef.current) {
-      const drag = resizeDragRef.current;
+    if (interactionMode === 'resize' && isResizeDrag(dragStateRef.current)) {
+      const drag = dragStateRef.current;
       const deltaX = point.x - drag.startX;
       const deltaY = point.y - drag.startY;
-      const preferredPushAxis: 'x' | 'y' = Math.abs(deltaX) >= Math.abs(deltaY) ? 'x' : 'y';
+      const preferredPushAxis = getPreferredPushAxis(deltaX, deltaY);
 
       // Convert deltas from pixels to cm and lock scaling to preserve aspect ratio.
       const deltaXCm = deltaX / cmToPx(1);
@@ -1025,16 +848,16 @@ export function useCollageEditor() {
   }
 
   function onCanvasMouseUp(event?: MouseEvent<HTMLCanvasElement>): void {
-    if (interactionMode === 'replace' && replaceDragRef.current && event) {
+    if (interactionMode === 'replace' && isReplaceDrag(dragStateRef.current) && event) {
       const point = pagePointFromMouse(event);
       const hit = point ? findHitItem(point) : null;
-      if (hit && hit.imageId !== replaceDragRef.current.sourceImageId) {
-        swapImagesOnSelectedPage(replaceDragRef.current.sourceImageId, hit.imageId);
+      if (hit && hit.imageId !== dragStateRef.current.sourceImageId) {
+        swapImagesOnSelectedPage(dragStateRef.current.sourceImageId, hit.imageId);
       }
     }
 
-    if (interactionMode === 'move' && moveDragRef.current && moveOutsideCanvas) {
-      const imageIdToRemove = moveDragRef.current.imageId;
+    if (interactionMode === 'move' && isMoveDrag(dragStateRef.current) && moveOutsideCanvas) {
+      const imageIdToRemove = dragStateRef.current.imageId;
       setPages((currentPages) =>
         currentPages.map((page) => ({
           ...page,
@@ -1045,10 +868,7 @@ export function useCollageEditor() {
       setHoveredImageId(null);
     }
 
-    cropDragRef.current = null;
-    resizeDragRef.current = null;
-    replaceDragRef.current = null;
-    moveDragRef.current = null;
+    dragStateRef.current = null;
     setDragActive(false);
     setMoveOutsideCanvas(false);
     setResizeCurrentDimensions(null);
@@ -1124,10 +944,7 @@ export function useCollageEditor() {
     setResizeLimitNotice('');
     setError('');
     setResizeCurrentDimensions(null);
-    cropDragRef.current = null;
-    resizeDragRef.current = null;
-    replaceDragRef.current = null;
-    moveDragRef.current = null;
+    dragStateRef.current = null;
   }
 
   function startFromScratch(): void {
@@ -1158,10 +975,7 @@ export function useCollageEditor() {
     setResizeLimitNotice('');
     setError('');
     setResizeCurrentDimensions(null);
-    cropDragRef.current = null;
-    resizeDragRef.current = null;
-    replaceDragRef.current = null;
-    moveDragRef.current = null;
+    dragStateRef.current = null;
     setMoveOutsideCanvas(false);
     void clearSnapshot();
   }
