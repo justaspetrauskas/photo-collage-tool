@@ -1,8 +1,4 @@
-export type EnhancePreset = 'lighting' | 'contrast' | 'cinematic' | 'consistent';
-
-export interface EnhanceOptions {
-  preset?: EnhancePreset;
-}
+type EnhancePreset = 'lighting' | 'contrast' | 'cinematic' | 'consistent';
 
 interface WorkerRequest {
   id: string;
@@ -15,102 +11,15 @@ interface WorkerResponse {
   imageData: ImageData;
 }
 
-let enhancementWorker: Worker | null = null;
-const pendingWorkerRequests = new Map<
-  string,
-  { resolve: (value: ImageData) => void; reject: (reason?: unknown) => void }
->();
-
-function getEnhancementWorker(): Worker | null {
-  if (typeof Worker === 'undefined') {
-    return null;
-  }
-
-  if (enhancementWorker) {
-    return enhancementWorker;
-  }
-
-  enhancementWorker = new Worker(new URL('./enhanceImage.worker.ts', import.meta.url), { type: 'module' });
-  enhancementWorker.onmessage = (event: MessageEvent<WorkerResponse>) => {
-    const pending = pendingWorkerRequests.get(event.data.id);
-    if (!pending) {
-      return;
-    }
-    pendingWorkerRequests.delete(event.data.id);
-    pending.resolve(event.data.imageData);
-  };
-  enhancementWorker.onerror = (error) => {
-    for (const pending of pendingWorkerRequests.values()) {
-      pending.reject(error);
-    }
-    pendingWorkerRequests.clear();
-  };
-
-  return enhancementWorker;
-}
-
-async function runEnhancementInWorker(
-  imageData: ImageData,
-  preset: EnhancePreset,
-): Promise<ImageData | null> {
-  const worker = getEnhancementWorker();
-  if (!worker) {
-    return null;
-  }
-
-  const id =
-    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-      ? crypto.randomUUID()
-      : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-
-  return await new Promise<ImageData | null>((resolve, reject) => {
-    const timeoutId = window.setTimeout(() => {
-      pendingWorkerRequests.delete(id);
-      resolve(null);
-    }, 15000);
-
-    pendingWorkerRequests.set(id, {
-      resolve: (value) => {
-        window.clearTimeout(timeoutId);
-        resolve(value);
-      },
-      reject: (reason) => {
-        window.clearTimeout(timeoutId);
-        reject(reason);
-      },
-    });
-
-    const payload: WorkerRequest = { id, preset, imageData };
-    worker.postMessage(payload);
-  }).catch(() => null);
-}
-
-/**
- * Deterministic, content-preserving enhancement using canvas pixels only.
- * Uses subtle adaptive adjustments to avoid altering scene identity.
- */
-export async function enhanceImageWithAI(
-  imageSrc: string,
-  options: EnhanceOptions = {},
-): Promise<string> {
-  const preset = options.preset ?? 'lighting';
-  const source = await loadImage(imageSrc);
-  const canvas = document.createElement('canvas');
-  canvas.width = source.naturalWidth;
-  canvas.height = source.naturalHeight;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) throw new Error('Could not get canvas 2D context');
-  ctx.drawImage(source, 0, 0);
-
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const workerResult = await runEnhancementInWorker(imageData, preset);
-  const processed = workerResult ?? applyEnhancement(imageData, preset);
-  ctx.putImageData(processed, 0, 0);
-  return canvas.toDataURL('image/png');
-}
+self.onmessage = (event: MessageEvent<WorkerRequest>) => {
+  const { id, preset, imageData } = event.data;
+  const processed = applyEnhancement(imageData, preset);
+  const response: WorkerResponse = { id, imageData: processed };
+  self.postMessage(response);
+};
 
 function applyEnhancement(imageData: ImageData, preset: EnhancePreset): ImageData {
-  const data = imageData.data;
+  const data = new Uint8ClampedArray(imageData.data);
   const stats = analyzeImage(data);
   const settings = resolveSettings(preset, stats);
 
@@ -172,7 +81,7 @@ function applyEnhancement(imageData: ImageData, preset: EnhancePreset): ImageDat
     data[i + 2] = clampByte(b);
   }
 
-  return imageData;
+  return new ImageData(data, imageData.width, imageData.height);
 }
 
 interface ImageStats {
@@ -296,7 +205,6 @@ function adjustSaturation(r: number, g: number, b: number, factor: number): { r:
 }
 
 function isLikelySkinPixel(r: number, g: number, b: number): boolean {
-  // YCbCr thresholding tuned conservative to avoid changing non-skin regions.
   const cb = 128 - 0.168736 * r - 0.331264 * g + 0.5 * b;
   const cr = 128 + 0.5 * r - 0.418688 * g - 0.081312 * b;
   const max = Math.max(r, g, b);
@@ -316,20 +224,3 @@ function clamp(value: number, min: number, max: number): number {
 function clampByte(value: number): number {
   return Math.round(clamp(value, 0, 255));
 }
-
-function loadImage(src: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error('Failed to load image'));
-    img.src = src;
-  });
-}
-
-export const ENHANCE_PRESET_LABELS: Record<EnhancePreset, string> = {
-  lighting: 'Lighting fix',
-  contrast: 'Color & contrast',
-  cinematic: 'Cinematic warm',
-  consistent: 'Normalize (global)',
-};

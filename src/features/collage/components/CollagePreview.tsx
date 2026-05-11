@@ -173,10 +173,6 @@ export function CollagePreview({
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      if (!hasSelection) {
-        return;
-      }
-
       const tag = (event.target as HTMLElement | null)?.tagName?.toLowerCase();
       const isEditable =
         tag === 'input' ||
@@ -188,6 +184,30 @@ export function CollagePreview({
       }
 
       const key = event.key.toLowerCase();
+      if (key === 'arrowdown') {
+        const nextIndex = Math.min(pages.length - 1, selectedPageIndex + 1);
+        if (nextIndex !== selectedPageIndex) {
+          onSelectPage(nextIndex);
+          pageContainerRefs.current[nextIndex]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        event.preventDefault();
+        return;
+      }
+
+      if (key === 'arrowup') {
+        const nextIndex = Math.max(0, selectedPageIndex - 1);
+        if (nextIndex !== selectedPageIndex) {
+          onSelectPage(nextIndex);
+          pageContainerRefs.current[nextIndex]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        event.preventDefault();
+        return;
+      }
+
+      if (!hasSelection) {
+        return;
+      }
+
       if (key === 'escape') {
         onCloseSelectionControls();
         event.preventDefault();
@@ -213,8 +233,11 @@ export function CollagePreview({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [
     hasSelection,
+    pages.length,
+    selectedPageIndex,
     onCloseSelectionControls,
     onExpandSelectedImage,
+    onSelectPage,
     onSetInteractionMode,
   ]);
 
@@ -334,7 +357,11 @@ export function CollagePreview({
     <Panel className="animate-fade-up [animation-delay:130ms] bg-transparent shadow-none backdrop-blur-0">
       <h2 className="m-0 text-xl font-semibold text-ink">Canvas Pages</h2>
       <p className="m-0 text-sm text-muted">{helperText}</p>
-      {resizeLimitNotice ? <p className="m-0 mt-1 text-xs font-semibold text-warn">{resizeLimitNotice}</p> : null}
+      {resizeLimitNotice ? (
+        <p className="m-0 mt-1 text-xs font-semibold text-warn" role="status" aria-live="polite">
+          {resizeLimitNotice}
+        </p>
+      ) : null}
 
       <div ref={previewBodyRef} className="mt-3 p-4">
         <p className="mb-4 text-xs font-semibold uppercase tracking-[0.08em] text-amber-200/90">

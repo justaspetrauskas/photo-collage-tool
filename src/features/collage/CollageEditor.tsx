@@ -31,15 +31,19 @@ export function CollageEditor() {
       <CollageHeader />
 
       {toastError ? (
-        <div className="pointer-events-none fixed left-1/2 top-4 z-[70] -translate-x-1/2">
+        <div
+          className="pointer-events-none fixed left-1/2 top-4 z-[70] -translate-x-1/2"
+          role="status"
+          aria-live="polite"
+        >
           <div className="pointer-events-auto flex max-w-[min(92vw,680px)] items-start gap-3 rounded-lg border border-danger/45 bg-[#2a0f12]/95 px-4 py-3 text-sm text-[#ffd9de] shadow-[0_14px_36px_rgba(0,0,0,0.42)] backdrop-blur-sm">
             <p className="m-0 leading-5">{toastError}</p>
-            <button
-              type="button"
-              className="rounded-md border border-danger/35 px-2 py-0.5 text-xs text-[#ffd9de] hover:bg-white/10"
-              onClick={() => setToastError(null)}
-            >
-              Dismiss
+              <button
+                type="button"
+                className="rounded-md border border-danger/35 px-2 py-0.5 text-xs text-[#ffd9de] hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70"
+                onClick={() => setToastError(null)}
+              >
+                Dismiss
             </button>
           </div>
         </div>
@@ -186,7 +190,7 @@ export function CollageEditor() {
               {/* Close button - circle outlined */}
               <button
                 onClick={() => editor.setShowSelectionControls(false)}
-                className="ml-1 flex-shrink-0 rounded-full border border-muted/40 p-1 hover:border-muted/60 hover:bg-white/5 transition-colors"
+                className="ml-1 flex-shrink-0 rounded-full border border-muted/40 p-1 hover:border-muted/60 hover:bg-white/5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70"
                 aria-label="Close controls"
                 title="Close (Esc)"
               >

@@ -15,10 +15,10 @@ import { drawPagePreview, renderPageToExportCanvas } from '../model/renderEngine
 import { useEditorUIStore } from '../store/editorUIStore';
 import type {
   ImageItem,
-  ImageMetrics,
   InteractionMode,
   PaginationMode,
   PersistedEditorSnapshot,
+  PersistedImageItem,
   PositionedImage,
   PreviewTransform,
 } from '../model/types';
@@ -36,7 +36,6 @@ import {
   isInsideCanvas,
   computeContentBox,
   computeCropMetrics,
-  clampCropOffset,
 } from '../../../shared/math';
 import {
   calculateCropOffsets,
@@ -48,6 +47,7 @@ import {
   getPreferredPushAxis,
   canSwapImages,
 } from '../interactions';
+import { computeSmartDropSize, resolveSmartFraming } from '../lib/editorLayoutUtils';
 
 function pageHasOverlap(page: { items: Array<{ x: number; y: number; width: number; height: number }> }): boolean {
   for (let i = 0; i < page.items.length; i += 1) {
@@ -180,26 +180,30 @@ export function useCollageEditor() {
       return;
     }
 
-    previewTransformRef.current = drawPagePreview(canvas, selectedPage, itemById, imageById, {
-      gridEnabled: gridModeEnabled,
-      gridSpacingPx: cmToPx(DEFAULT_GRID_SPACING_CM),
-      selectedImageId,
-      hoveredImageId,
-      drawerSelectedImageId,
-      imageZoomLevels,
-      imagePanOffsets,
-      interactionMode,
-      dragActive,
-      moveOutsideCanvas,
-      moveCollisionImageIds,
-      resizeCurrentDimensions,
-      resizeFeedback,
-      swapAnimation,
-      replacePointer,
-      swapTargetInvalid,
-      placementPreview: canvasPlacementPreview,
-      animationTimeMs: replaceAnimationTick,
+    const frameId = window.requestAnimationFrame(() => {
+      previewTransformRef.current = drawPagePreview(canvas, selectedPage, itemById, imageById, {
+        gridEnabled: gridModeEnabled,
+        gridSpacingPx: cmToPx(DEFAULT_GRID_SPACING_CM),
+        selectedImageId,
+        hoveredImageId,
+        drawerSelectedImageId,
+        imageZoomLevels,
+        imagePanOffsets,
+        interactionMode,
+        dragActive,
+        moveOutsideCanvas,
+        moveCollisionImageIds,
+        resizeCurrentDimensions,
+        resizeFeedback,
+        swapAnimation,
+        replacePointer,
+        swapTargetInvalid,
+        placementPreview: canvasPlacementPreview,
+        animationTimeMs: replaceAnimationTick,
+      });
     });
+
+    return () => window.cancelAnimationFrame(frameId);
   }, [selectedPage, itemById, imageById, gridModeEnabled, selectedImageId, hoveredImageId, drawerSelectedImageId, imageZoomLevels, imagePanOffsets, interactionMode, dragActive, moveOutsideCanvas, moveCollisionImageIds, resizeCurrentDimensions, resizeFeedback, swapAnimation, replacePointer, swapTargetInvalid, canvasPlacementPreview, replaceAnimationTick]);
 
 function rectanglesTouchOrOverlap(
@@ -321,9 +325,9 @@ function rectanglesTouchOrOverlap(
     }
 
     const timeoutId = window.setTimeout(async () => {
-      const persistedImages = await Promise.all(
+      const persistedImages: PersistedImageItem[] = await Promise.all(
         images.map(async (image) => {
-          const persisted = {
+          const persisted: PersistedImageItem = {
             id: image.id,
             fileName: image.fileName,
             sourceBlob: image.sourceBlob,
@@ -339,7 +343,7 @@ function rectanglesTouchOrOverlap(
             offsetY: image.offsetY,
             cropMaxOffsetX: image.cropMaxOffsetX,
             cropMaxOffsetY: image.cropMaxOffsetY,
-          } as Record<string, unknown>;
+          };
 
           // If image has been enhanced, convert the data URL to blob and store it
           if (image.src !== image.originalSrc && image.src.startsWith('data:')) {
@@ -374,7 +378,7 @@ function rectanglesTouchOrOverlap(
         pages,
         overflowImageIds,
         oversizedImageIds,
-        images: persistedImages as any,
+        images: persistedImages,
       };
 
       void saveSnapshot(snapshot);
@@ -580,89 +584,6 @@ function rectanglesTouchOrOverlap(
       return Number.POSITIVE_INFINITY;
     }
     return overrideAssistedCount ?? assistedPageCount;
-  }
-
-  function analyzeImageSaliency(image: ImageItem): { x: number; y: number; spread: number } {
-    const sampleSize = 80;
-    const canvas = document.createElement('canvas');
-    canvas.width = sampleSize;
-    canvas.height = sampleSize;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) {
-      return { x: 0.5, y: 0.5, spread: 0.3 };
-    }
-
-    ctx.drawImage(image.bitmap, 0, 0, sampleSize, sampleSize);
-    const { data } = ctx.getImageData(0, 0, sampleSize, sampleSize);
-
-    let totalWeight = 0;
-    let weightedX = 0;
-    let weightedY = 0;
-    let weightedX2 = 0;
-    let weightedY2 = 0;
-
-    for (let y = 1; y < sampleSize - 1; y += 1) {
-      for (let x = 1; x < sampleSize - 1; x += 1) {
-        const i = (y * sampleSize + x) * 4;
-        const ix = (y * sampleSize + (x + 1)) * 4;
-        const iy = ((y + 1) * sampleSize + x) * 4;
-
-        const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-        const lumX = 0.299 * data[ix] + 0.587 * data[ix + 1] + 0.114 * data[ix + 2];
-        const lumY = 0.299 * data[iy] + 0.587 * data[iy + 1] + 0.114 * data[iy + 2];
-
-        const edge = Math.abs(lumX - lum) + Math.abs(lumY - lum);
-        const weight = edge + 1;
-
-        const nx = x / sampleSize;
-        const ny = y / sampleSize;
-
-        totalWeight += weight;
-        weightedX += nx * weight;
-        weightedY += ny * weight;
-        weightedX2 += nx * nx * weight;
-        weightedY2 += ny * ny * weight;
-      }
-    }
-
-    if (totalWeight <= 0) {
-      return { x: 0.5, y: 0.5, spread: 0.3 };
-    }
-
-    const cx = weightedX / totalWeight;
-    const cy = weightedY / totalWeight;
-    const varX = Math.max(0, weightedX2 / totalWeight - cx * cx);
-    const varY = Math.max(0, weightedY2 / totalWeight - cy * cy);
-    const spread = Math.sqrt((varX + varY) / 2);
-
-    return { x: cx, y: cy, spread };
-  }
-
-  function resolveSmartFraming(
-    image: ImageItem,
-    metrics: ImageMetrics,
-  ): { offsetX: number; offsetY: number; zoom: number } {
-    const saliency = analyzeImageSaliency(image);
-
-    const targetOffsetX =
-      saliency.x * metrics.drawnImageWidthPx - metrics.contentWidthPx / 2;
-    const targetOffsetY =
-      saliency.y * metrics.drawnImageHeightPx - metrics.contentHeightPx / 2;
-
-    const clamped = clampOffsets(
-      targetOffsetX,
-      targetOffsetY,
-      metrics.maxOffsetX,
-      metrics.maxOffsetY,
-    );
-
-    const zoom = saliency.spread < 0.16 ? 1.14 : saliency.spread < 0.22 ? 1.08 : 1;
-
-    return {
-      offsetX: clamped.offsetX,
-      offsetY: clamped.offsetY,
-      zoom,
-    };
   }
 
   function regenerateLayout(
@@ -1406,6 +1327,7 @@ function rectanglesTouchOrOverlap(
       selectedPage.widthPx,
       selectedPage.heightPx,
       existingItems,
+      minImageCm,
     );
 
     const x = Math.max(0, Math.min(selectedPage.widthPx - smartSize.width, point.x - smartSize.width / 2));
@@ -1419,101 +1341,6 @@ function rectanglesTouchOrOverlap(
       height: smartSize.height,
       valid: true,
     });
-  }
-
-  function onCanvasDragLeave(): void {
-    setCanvasPlacementPreview(null);
-  }
-
-  /**
-   * Compute smart sizing for dropped images: fit to available space while respecting minimums.
-   */
-  function computeSmartDropSize(
-    image: ImageItem,
-    proposedSize: ReturnType<typeof resolveManualPlacementSize>,
-    dropX: number,
-    dropY: number,
-    canvasWidthPx: number,
-    canvasHeightPx: number,
-    existingItems: PositionedImage[],
-  ): ReturnType<typeof resolveManualPlacementSize> {
-    const minContentPx = cmToPx(minImageCm);
-    const frameThicknessPx = proposedSize.frameThicknessPx;
-    const aspectRatio = image.naturalWidth / image.naturalHeight;
-
-    // Calculate available width from drop point to right edge (accounting for existing items)
-    let availableWidth = canvasWidthPx - dropX;
-
-    for (const existing of existingItems) {
-      // Check if there's an item in the path below/at/above this drop location
-      const existingRight = existing.x + existing.width;
-      const existingBottom = existing.y + existing.height;
-      const dropBottom = dropY + proposedSize.height;
-
-      // If item overlaps vertically with potential drop area, reduce available width
-      if (existingRight > dropX && existing.y < dropBottom && existingBottom > dropY) {
-        const rightmostConflict = existingRight;
-        availableWidth = Math.min(availableWidth, rightmostConflict - dropX);
-      }
-    }
-
-    // Also consider available height from drop point
-    let availableHeight = canvasHeightPx - dropY;
-
-    for (const existing of existingItems) {
-      const existingRight = existing.x + existing.width;
-      const existingBottom = existing.y + existing.height;
-      const dropRight = dropX + proposedSize.width;
-
-      // If item overlaps horizontally, reduce available height
-      if (existingBottom > dropY && existing.x < dropRight && existingRight > dropX) {
-        const bottomMostConflict = existingBottom;
-        availableHeight = Math.min(availableHeight, bottomMostConflict - dropY);
-      }
-    }
-
-    // Calculate scaled dimensions respecting both available space and aspect ratio
-    let finalWidth = proposedSize.width;
-    let finalHeight = proposedSize.height;
-
-    // If either dimension exceeds available space, scale down proportionally
-    if (finalWidth > availableWidth || finalHeight > availableHeight) {
-      const scaleX = finalWidth > availableWidth ? availableWidth / finalWidth : 1;
-      const scaleY = finalHeight > availableHeight ? availableHeight / finalHeight : 1;
-      const scale = Math.min(scaleX, scaleY);
-
-      finalWidth = Math.round(proposedSize.width * scale);
-      finalHeight = Math.round(proposedSize.height * scale);
-    }
-
-    // Ensure minimum size is respected
-    const minTotalPx = minContentPx + frameThicknessPx * 2;
-    if (finalWidth < minTotalPx || finalHeight < minTotalPx) {
-      return proposedSize; // Keep original size if scaling would violate minimum
-    }
-
-    // Recalculate content dimensions and crop metrics based on final size
-    const finalContentWidthPx = finalWidth - frameThicknessPx * 2;
-    const finalContentHeightPx = finalHeight - frameThicknessPx * 2;
-
-    const crop = computeCropMetrics(
-      image.naturalWidth,
-      image.naturalHeight,
-      finalContentWidthPx,
-      finalContentHeightPx,
-    );
-
-    return {
-      width: finalWidth,
-      height: finalHeight,
-      contentWidthPx: finalContentWidthPx,
-      contentHeightPx: finalContentHeightPx,
-      frameThicknessPx,
-      drawnImageWidthPx: crop.drawnImageWidthPx,
-      drawnImageHeightPx: crop.drawnImageHeightPx,
-      maxOffsetX: crop.maxOffsetX,
-      maxOffsetY: crop.maxOffsetY,
-    };
   }
 
   function onCanvasDrop(event: DragEvent<HTMLCanvasElement>): void {
@@ -1538,6 +1365,7 @@ function rectanglesTouchOrOverlap(
       selectedPage.widthPx,
       selectedPage.heightPx,
       existingItems,
+      minImageCm,
     );
 
     // Position the image (centering on drop point, clamped to canvas bounds)
@@ -1658,13 +1486,24 @@ function rectanglesTouchOrOverlap(
 
     pages.forEach((page, index) => {
       const canvas = renderPageToExportCanvas(page, itemById, imageById);
-      const link = document.createElement('a');
-      link.download = `photo-grid-${exportId}-page-${index + 1}.${extension}`;
-      link.href =
-        normalizedFormat === 'png'
-          ? canvas.toDataURL(mimeType)
-          : canvas.toDataURL(mimeType, 0.92);
-      link.click();
+
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            setError('Failed to export image. Please try again.');
+            return;
+          }
+
+          const link = document.createElement('a');
+          const objectUrl = URL.createObjectURL(blob);
+          link.download = `photo-grid-${exportId}-page-${index + 1}.${extension}`;
+          link.href = objectUrl;
+          link.click();
+          window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+        },
+        mimeType,
+        normalizedFormat === 'png' ? undefined : 0.92,
+      );
     });
   }
 

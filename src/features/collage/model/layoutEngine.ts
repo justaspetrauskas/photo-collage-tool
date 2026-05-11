@@ -1,6 +1,7 @@
 import { MaxRectsBin } from 'maxrects-packer';
 import { cmToPx } from './constants';
 import type { BuildLayoutResult, ImageItem, ImageMetrics, PageLayout } from './types';
+import { clampCropOffset, computeContentBox, computeCropMetrics } from '../../../shared/math';
 
 interface LayoutOptions {
   canvasWidthPx: number;
@@ -154,49 +155,6 @@ function enforceNoOverlap(pages: PageLayout[]): PageLayout[] {
   return normalizedPages;
 }
 
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
-
-function getContentBox(
-  naturalWidth: number,
-  naturalHeight: number,
-  maxWidthCm: number,
-  maxHeightCm: number,
-  allowUpscale = false,
-): { widthPx: number; heightPx: number } {
-  const maxWidthPx = cmToPx(maxWidthCm);
-  const maxHeightPx = cmToPx(maxHeightCm);
-
-  const widthRatio = maxWidthPx / naturalWidth;
-  const heightRatio = maxHeightPx / naturalHeight;
-  const fitScale = Math.min(widthRatio, heightRatio);
-  const scale = allowUpscale ? fitScale : Math.min(1, fitScale);
-
-  return {
-    widthPx: Math.round(naturalWidth * scale),
-    heightPx: Math.round(naturalHeight * scale),
-  };
-}
-
-function getCropMetrics(
-  naturalWidth: number,
-  naturalHeight: number,
-  frameWidth: number,
-  frameHeight: number,
-): Pick<ImageMetrics, 'drawnImageWidthPx' | 'drawnImageHeightPx' | 'maxOffsetX' | 'maxOffsetY'> {
-  const coverScale = Math.max(frameWidth / naturalWidth, frameHeight / naturalHeight);
-  const drawnImageWidthPx = Math.round(naturalWidth * coverScale);
-  const drawnImageHeightPx = Math.round(naturalHeight * coverScale);
-
-  return {
-    drawnImageWidthPx,
-    drawnImageHeightPx,
-    maxOffsetX: Math.max(0, drawnImageWidthPx - frameWidth),
-    maxOffsetY: Math.max(0, drawnImageHeightPx - frameHeight),
-  };
-}
-
 export function buildPaginatedLayout(images: ImageItem[], options: LayoutOptions): BuildLayoutResult {
   const {
     canvasWidthPx,
@@ -210,7 +168,7 @@ export function buildPaginatedLayout(images: ImageItem[], options: LayoutOptions
 
   const baseRects: BaseRect[] = images
     .map((image) => {
-      const content = getContentBox(
+      const content = computeContentBox(
         image.naturalWidth,
         image.naturalHeight,
         image.maxWidthCm,
@@ -242,11 +200,11 @@ export function buildPaginatedLayout(images: ImageItem[], options: LayoutOptions
         const contentHeightPx = Math.max(minHeightFloorPx, Math.round(rect.baseContentHeightPx * scale));
         const packedWidth = contentWidthPx + rect.frameThicknessPx * 2;
         const packedHeight = contentHeightPx + rect.frameThicknessPx * 2;
-        const crop = getCropMetrics(
-          rect.naturalWidth,
-          rect.naturalHeight,
-          contentWidthPx,
-          contentHeightPx,
+          const crop = computeCropMetrics(
+            rect.naturalWidth,
+            rect.naturalHeight,
+            contentWidthPx,
+            contentHeightPx,
         );
 
         return {
@@ -364,8 +322,5 @@ export function clampOffsets(
   maxOffsetX: number,
   maxOffsetY: number,
 ): { offsetX: number; offsetY: number } {
-  return {
-    offsetX: clamp(offsetX, 0, maxOffsetX),
-    offsetY: clamp(offsetY, 0, maxOffsetY),
-  };
+  return clampCropOffset(offsetX, offsetY, maxOffsetX, maxOffsetY);
 }

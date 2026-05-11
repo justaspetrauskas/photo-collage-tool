@@ -294,7 +294,8 @@ export function ImageDrawer({ images, pages, onUpdateImage, onDeleteImage, onRem
       {/* Drawer toggle button */}
       <button
         onClick={() => setCollapsed((v) => !v)}
-        className="flex-shrink-0 h-12 border-b border-line/20 flex items-center justify-center hover:bg-amber-500/10 transition"
+        className="flex-shrink-0 h-12 border-b border-line/20 flex items-center justify-center hover:bg-amber-500/10 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70"
+        aria-label={collapsed ? 'Expand settings drawer' : 'Collapse settings drawer'}
       >
         {collapsed ? <ChevronLeft className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
       </button>
@@ -411,13 +412,14 @@ export function ImageDrawer({ images, pages, onUpdateImage, onDeleteImage, onRem
               onDragOver={(e) => { e.preventDefault(); if (!atLimit) setDragOver(true); }}
               onDragLeave={() => setDragOver(false)}
               onDrop={handleDrop}
-              className={`w-full rounded-xl border-2 border-dashed py-6 flex flex-col items-center gap-2 transition select-none ${
+              className={`w-full rounded-xl border-2 border-dashed py-6 flex flex-col items-center gap-2 transition select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70 ${
                 atLimit
                   ? 'border-line/20 opacity-40 cursor-not-allowed'
-                  : dragOver
+                : dragOver
                   ? 'border-amber-400 bg-amber-400/10 cursor-copy'
                   : 'border-line/30 hover:border-amber-400/60 hover:bg-amber-400/5 cursor-pointer'
               }`}
+              aria-label="Upload photos"
             >
               <UploadCloud className={`w-7 h-7 ${dragOver ? 'text-amber-400' : 'text-muted'}`} />
               <div className="text-center">
