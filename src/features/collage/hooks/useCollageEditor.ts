@@ -1543,7 +1543,7 @@ function rectanglesTouchOrOverlap(
       link.click();
       window.setTimeout(() => URL.revokeObjectURL(objectUrl), 30_000);
     } catch (err) {
-      setError(err instanceof Error ? `Failed to export zip file: ${err.message}` : 'Failed to export zip file. Please try again.');
+      setError(err instanceof Error ? `Failed to export ZIP file: ${err.message}` : 'Failed to export ZIP file. Please try again.');
     }
   }
 

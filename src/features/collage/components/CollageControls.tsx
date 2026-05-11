@@ -161,7 +161,7 @@ export function CollageControls({
                     Export ZIP
                   </Button>
                 </div>
-                <p className="mt-1 text-[10px] text-amber-100/90">ZIP: photo-grid-&lt;id&gt;.zip with photo-grid-&lt;id&gt;-page-&lt;n&gt;.{exportFormat} files inside</p>
+                <p className="mt-1 text-[10px] text-amber-100/90">ZIP archive: photo-grid-&lt;id&gt;.zip containing photo-grid-&lt;id&gt;-page-&lt;n&gt;.{exportFormat} files</p>
               </div>
 
               <div className="h-px bg-line/20 my-1"></div>
