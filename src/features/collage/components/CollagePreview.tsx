@@ -419,7 +419,7 @@ export function CollagePreview({
                 </div>
               </div>
               <p className="mb-0 mt-4 flex items-center justify-center gap-1 text-xs font-semibold uppercase tracking-[0.08em] text-amber-200/80">
-                Drawer is on the right <ArrowRight className="h-3.5 w-3.5" />
+                Drawer is on the right <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
               </p>
             </div>
           ) : (
