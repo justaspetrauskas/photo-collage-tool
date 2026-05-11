@@ -489,7 +489,7 @@ function drawPage(
     imagePanOffsets?: Record<string, { x: number; y: number }>;
     swapAnimation?: {
       progress: number;
-      transitions: PreviewOptions['swapAnimation']['transitions'];
+      transitions: NonNullable<PreviewOptions['swapAnimation']>['transitions'];
     } | null;
   },
 ): void {

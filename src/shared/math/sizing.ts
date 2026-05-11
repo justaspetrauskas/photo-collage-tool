@@ -12,16 +12,18 @@ export function computeContentBox(
   naturalHeight: number,
   maxWidthCm: number,
   maxHeightCm: number,
+  allowUpscale = false,
 ): { widthPx: number; heightPx: number } {
   const maxWidthPx = cmToPx(maxWidthCm);
   const maxHeightPx = cmToPx(maxHeightCm);
   const widthRatio = maxWidthPx / naturalWidth;
   const heightRatio = maxHeightPx / naturalHeight;
   const fitScale = Math.min(widthRatio, heightRatio);
+  const scale = allowUpscale ? fitScale : Math.min(1, fitScale);
 
   return {
-    widthPx: Math.round(naturalWidth * fitScale),
-    heightPx: Math.round(naturalHeight * fitScale),
+    widthPx: Math.round(naturalWidth * scale),
+    heightPx: Math.round(naturalHeight * scale),
   };
 }
 
