@@ -87,6 +87,9 @@ function randomId(prefix = 'img'): string {
   return `${prefix}-${crypto.randomUUID()}`;
 }
 
+/**
+ * Promisified wrapper around canvas.toBlob for export flows.
+ */
 function canvasToBlob(canvas: HTMLCanvasElement, mimeType: string, quality?: number): Promise<Blob> {
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => {
@@ -1504,6 +1507,7 @@ function rectanglesTouchOrOverlap(
     const normalizedFormat = format === 'png' ? 'png' : 'jpeg';
     const extension = format === 'jpg' ? 'jpg' : format;
     const mimeType = normalizedFormat === 'png' ? 'image/png' : 'image/jpeg';
+    const exportZipErrorMessage = 'Failed to export ZIP file';
     const exportId =
       typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
         ? crypto.randomUUID().slice(0, 8)
@@ -1543,7 +1547,7 @@ function rectanglesTouchOrOverlap(
       link.click();
       window.setTimeout(() => URL.revokeObjectURL(objectUrl), 30_000);
     } catch (err) {
-      setError(err instanceof Error ? `Failed to export ZIP file: ${err.message}` : 'Failed to export ZIP file. Please try again.');
+      setError(err instanceof Error ? `${exportZipErrorMessage}: ${err.message}` : `${exportZipErrorMessage}. Please try again.`);
     }
   }
 
