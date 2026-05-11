@@ -24,7 +24,7 @@ export interface CollageControlsProps {
   overflowCount: number;
   onApplyGlobalSettings: () => void;
   onGenerateLayout: () => void;
-  onExportPages: (format: ExportFormat) => void;
+  onExportPages: (format: ExportFormat) => Promise<void> | void;
   onCreateNextPage: () => void;
   onStartFromScratch: () => void;
   onClearEverything: () => void;
@@ -151,15 +151,17 @@ export function CollageControls({
                     <option value="jpeg">JPEG</option>
                   </select>
                   <Button
-                    onClick={() => onExportPages(exportFormat)}
+                    onClick={async () => {
+                      await onExportPages(exportFormat);
+                    }}
                     disabled={!pagesCount}
                     className="flex-1 min-w-0 flex items-center justify-center gap-2 py-2 px-3 text-sm font-semibold disabled:opacity-50"
                   >
                     <Download className="w-4 h-4" />
-                    Export All Pages
+                    Export ZIP
                   </Button>
                 </div>
-                <p className="mt-1 text-[10px] text-amber-100/90">Files: photo-grid-&lt;id&gt;-page-&lt;n&gt;.{exportFormat}</p>
+                <p className="mt-1 text-[10px] text-amber-100/90">ZIP archive: photo-grid-&lt;id&gt;.zip containing photo-grid-&lt;id&gt;-page-&lt;n&gt;.{exportFormat} files</p>
               </div>
 
               <div className="h-px bg-line/20 my-1"></div>
