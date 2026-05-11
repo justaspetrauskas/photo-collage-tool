@@ -41,7 +41,6 @@ interface CollagePreviewProps {
   onDragOver: DragEventHandler<HTMLCanvasElement>;
   onDrop: DragEventHandler<HTMLCanvasElement>;
   onDragLeave: DragEventHandler<HTMLCanvasElement>;
-  showPlacementHints: boolean;
 }
 
 interface PageCanvasCardProps {
@@ -60,6 +59,7 @@ interface PageCanvasCardProps {
   onDragOver: DragEventHandler<HTMLCanvasElement>;
   onDrop: DragEventHandler<HTMLCanvasElement>;
   onDragLeave: DragEventHandler<HTMLCanvasElement>;
+  showPlacementHints: boolean;
 }
 
 function PageCanvasCard({
