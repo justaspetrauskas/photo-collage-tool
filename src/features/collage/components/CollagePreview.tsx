@@ -11,6 +11,7 @@ import { Panel } from '../../../shared/ui/Panel';
 import { CANVAS_CM, CANVAS_SIZE_PX, cmToPx } from '../model/constants';
 import { drawPagePreview } from '../model/renderEngine';
 import type { ImageItem, InteractionMode, PageLayout } from '../model/types';
+import { ArrowRight, MousePointerClick, UploadCloud } from 'lucide-react';
 
 interface CollagePreviewProps {
   pages: PageLayout[];
@@ -40,6 +41,7 @@ interface CollagePreviewProps {
   onDragOver: DragEventHandler<HTMLCanvasElement>;
   onDrop: DragEventHandler<HTMLCanvasElement>;
   onDragLeave: DragEventHandler<HTMLCanvasElement>;
+  showPlacementHints: boolean;
 }
 
 interface PageCanvasCardProps {
@@ -76,6 +78,7 @@ function PageCanvasCard({
   onDragOver,
   onDrop,
   onDragLeave,
+  showPlacementHints,
 }: PageCanvasCardProps) {
   const { ref: inViewRef, inView } = useInView({
     threshold: 0.62,
@@ -110,18 +113,27 @@ function PageCanvasCard({
         Page {index + 1}
       </button>
       <div className="rounded-2xl p-2 backdrop-blur-md">
-        <canvas
-          className={`h-auto max-w-full rounded-xl ${isActive ? 'cursor-default' : 'pointer-events-none'} `}
-          ref={(node) => registerCanvasRef(index, node)}
-          onMouseDown={isActive ? onMouseDown : undefined}
-          onMouseMove={isActive ? onMouseMove : undefined}
-          onMouseUp={isActive ? onMouseUp : undefined}
-          onMouseLeave={isActive ? onMouseLeave : undefined}
-          onDragOver={isActive ? onDragOver : undefined}
-          onDrop={isActive ? onDrop : undefined}
-          onDragLeave={isActive ? onDragLeave : undefined}
-          aria-label={`Collage page ${page.id}`}
-        />
+        <div className="relative inline-block">
+          <canvas
+            className={`h-auto max-w-full rounded-xl ${isActive ? 'cursor-default' : 'pointer-events-none'} `}
+            ref={(node) => registerCanvasRef(index, node)}
+            onMouseDown={isActive ? onMouseDown : undefined}
+            onMouseMove={isActive ? onMouseMove : undefined}
+            onMouseUp={isActive ? onMouseUp : undefined}
+            onMouseLeave={isActive ? onMouseLeave : undefined}
+            onDragOver={isActive ? onDragOver : undefined}
+            onDrop={isActive ? onDrop : undefined}
+            onDragLeave={isActive ? onDragLeave : undefined}
+            aria-label={`Collage page ${page.id}`}
+          />
+          {showPlacementHints ? (
+            <div className="pointer-events-none absolute inset-2 flex items-center justify-center rounded-xl border-2 border-dashed border-amber-300/70 bg-amber-300/10 animate-pulse">
+              <span className="rounded-md bg-black/55 px-2 py-1 text-xs font-semibold uppercase tracking-[0.06em] text-amber-100">
+                Drop here
+              </span>
+            </div>
+          ) : null}
+        </div>
       </div>
     </motion.section>
   );
@@ -161,6 +173,8 @@ export function CollagePreview({
   const previewBodyRef = useRef<HTMLDivElement | null>(null);
   const [scrollRoot, setScrollRoot] = useState<Element | null>(null);
   const hasSelection = Boolean(selectedImageId);
+  const hasPlacedItems = pages.some((page) => page.items.length > 0);
+  const showOnboardingHints = !hasPlacedItems;
 
   useEffect(() => {
     if (!previewBodyRef.current) {
@@ -387,35 +401,59 @@ export function CollagePreview({
             </div>
           </aside>
 
-          <div className="space-y-8">
-            {pages.map((page, index) => (
-              <PageCanvasCard
-                key={page.id}
-                index={index}
-                page={page}
-                scrollRoot={scrollRoot}
-                isActive={index === selectedPageIndex}
-                onVisible={handleVisiblePage}
-                onJumpToPage={jumpToPage}
-                registerContainerRef={(pageIndex, node) => {
-                  pageContainerRefs.current[pageIndex] = node;
-                }}
-                registerCanvasRef={(pageIndex, node) => {
-                  pageCanvasRefs.current[pageIndex] = node;
-                  if (pageIndex === selectedPageIndex) {
-                    previewCanvasRef.current = node;
-                  }
-                }}
-                onMouseDown={onMouseDown}
-                onMouseMove={onMouseMove}
-                onMouseUp={onMouseUp}
-                onMouseLeave={onMouseLeave}
-                onDragOver={onDragOver}
-                onDrop={onDrop}
-                onDragLeave={onDragLeave}
-              />
-            ))}
-          </div>
+          {showOnboardingHints ? (
+            <div className="rounded-2xl border border-amber-300/30 bg-[#0b1220]/80 px-6 py-10 text-center backdrop-blur-md">
+              <h3 className="m-0 text-lg font-semibold text-amber-100">Start your collage in 2 quick steps</h3>
+              <div className="mx-auto mt-5 max-w-xl space-y-3 text-left">
+                <div className="flex items-start gap-3 rounded-xl border border-line/30 bg-white/5 px-4 py-3">
+                  <UploadCloud className="mt-0.5 h-4 w-4 text-amber-300" />
+                  <p className="m-0 text-sm text-ink/90">
+                    <strong className="text-amber-100">Step 1:</strong> Upload photos in the right-side drawer.
+                  </p>
+                </div>
+                <div className="flex items-start gap-3 rounded-xl border border-line/30 bg-white/5 px-4 py-3">
+                  <MousePointerClick className="mt-0.5 h-4 w-4 text-amber-300" />
+                  <p className="m-0 text-sm text-ink/90">
+                    <strong className="text-amber-100">Step 2:</strong> Click <strong>Generate Layout</strong> or drag uploaded images onto the canvas.
+                  </p>
+                </div>
+              </div>
+              <p className="mb-0 mt-4 flex items-center justify-center gap-1 text-xs font-semibold uppercase tracking-[0.08em] text-amber-200/80">
+                Drawer is on the right <ArrowRight className="h-3.5 w-3.5" />
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-8">
+              {pages.map((page, index) => (
+                <PageCanvasCard
+                  key={page.id}
+                  index={index}
+                  page={page}
+                  scrollRoot={scrollRoot}
+                  isActive={index === selectedPageIndex}
+                  onVisible={handleVisiblePage}
+                  onJumpToPage={jumpToPage}
+                  registerContainerRef={(pageIndex, node) => {
+                    pageContainerRefs.current[pageIndex] = node;
+                  }}
+                  registerCanvasRef={(pageIndex, node) => {
+                    pageCanvasRefs.current[pageIndex] = node;
+                    if (pageIndex === selectedPageIndex) {
+                      previewCanvasRef.current = node;
+                    }
+                  }}
+                  onMouseDown={onMouseDown}
+                  onMouseMove={onMouseMove}
+                  onMouseUp={onMouseUp}
+                  onMouseLeave={onMouseLeave}
+                  onDragOver={onDragOver}
+                  onDrop={onDrop}
+                  onDragLeave={onDragLeave}
+                  showPlacementHints={dragActive}
+                />
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </Panel>

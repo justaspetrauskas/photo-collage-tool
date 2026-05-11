@@ -22,6 +22,7 @@ export interface CollageControlsProps {
   setPaginationMode: (value: PaginationMode) => void;
   pagesCount: number;
   overflowCount: number;
+  hasUnplacedImages: boolean;
   onApplyGlobalSettings: () => void;
   onGenerateLayout: () => void;
   onExportPages: (format: ExportFormat) => Promise<void> | void;
@@ -45,6 +46,7 @@ export function CollageControls({
   setPaginationMode,
   pagesCount,
   overflowCount,
+  hasUnplacedImages,
   onApplyGlobalSettings,
   onGenerateLayout,
   onExportPages,
@@ -133,7 +135,12 @@ export function CollageControls({
                 <Check className="w-4 h-4" />
                 Apply Constraints
               </Button>
-              <Button onClick={onGenerateLayout} className="w-full flex items-center justify-start gap-2 py-1.5 px-3 text-sm">
+              <Button
+                onClick={onGenerateLayout}
+                className={`w-full flex items-center justify-start gap-2 py-1.5 px-3 text-sm ${
+                  hasUnplacedImages ? 'animate-pulse ring-2 ring-amber-300/70 ring-offset-2 ring-offset-[#0a0f1a]' : ''
+                }`}
+              >
                 <Zap className="w-4 h-4" />
                 Generate Layout
               </Button>

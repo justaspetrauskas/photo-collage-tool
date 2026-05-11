@@ -12,6 +12,8 @@ export function CollageEditor() {
   const selectedPage = editor.pages[editor.selectedPageIndex];
   const selectedImageOnPage = selectedPage?.items.find((item) => item.imageId === editor.selectedImageId);
   const hasSelection = Boolean(editor.selectedImageId);
+  const hasPlacedItems = editor.pages.some((page) => page.items.length > 0);
+  const hasUnplacedImages = editor.images.length > 0 && !hasPlacedItems;
 
   useEffect(() => {
     if (!editor.error) {
@@ -119,12 +121,13 @@ export function CollageEditor() {
             setGridModeEnabled: editor.setGridModeEnabled,
             autoCompactPages: editor.autoCompactPages,
             setAutoCompactPages: editor.setAutoCompactPages,
-            paginationMode: editor.paginationMode,
-            setPaginationMode: editor.setPaginationMode,
-            pagesCount: editor.pages.length,
-            overflowCount: editor.overflowImageIds.length,
-            onApplyGlobalSettings: editor.applyGlobalSettings,
-            onGenerateLayout: editor.onGenerateLayout,
+             paginationMode: editor.paginationMode,
+             setPaginationMode: editor.setPaginationMode,
+             pagesCount: editor.pages.length,
+             overflowCount: editor.overflowImageIds.length,
+             hasUnplacedImages,
+             onApplyGlobalSettings: editor.applyGlobalSettings,
+             onGenerateLayout: editor.onGenerateLayout,
             onExportPages: editor.exportPages,
             onCreateNextPage: editor.onCreateNextPage,
             onStartFromScratch: editor.startFromScratch,
