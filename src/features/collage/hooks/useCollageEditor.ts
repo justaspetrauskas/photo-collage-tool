@@ -1,4 +1,3 @@
-import JSZip from 'jszip';
 import { enhanceImageWithAI, type EnhanceOptions } from '../lib/openaiImageEdit';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, DragEvent, MouseEvent } from 'react';
@@ -1511,6 +1510,7 @@ function rectanglesTouchOrOverlap(
         : Math.random().toString(36).slice(2, 10);
 
     try {
+      const { default: JSZip } = await import('jszip');
       const zip = new JSZip();
       const quality = normalizedFormat === 'png' ? undefined : 0.92;
 
