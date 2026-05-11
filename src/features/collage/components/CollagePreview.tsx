@@ -127,7 +127,11 @@ function PageCanvasCard({
             aria-label={`Collage page ${page.id}`}
           />
           {showPlacementHints ? (
-            <div className="pointer-events-none absolute inset-2 flex items-center justify-center rounded-xl border-2 border-dashed border-amber-300/70 bg-amber-300/10 animate-pulse motion-reduce:animate-none">
+            <div
+              className="pointer-events-none absolute inset-2 flex items-center justify-center rounded-xl border-2 border-dashed border-amber-300/70 bg-amber-300/10 animate-pulse motion-reduce:animate-none"
+              role="status"
+              aria-live="polite"
+            >
               <span className="rounded-md bg-black/55 px-2 py-1 text-xs font-semibold uppercase tracking-[0.06em] text-amber-100">
                 Drop here
               </span>

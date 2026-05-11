@@ -118,6 +118,8 @@ function ImageDrawerCard({ image, isUsed, isSelected, isEnhancing, cardRef, onSe
           <div
             className="absolute left-2 top-2 flex items-center gap-1 rounded-md border border-amber-300/35 bg-black/55 px-2 py-1 text-[10px] font-semibold text-amber-100"
             title="Drag to canvas"
+            role="status"
+            aria-label="Drag to canvas"
           >
             <GripVertical className="h-3 w-3" aria-hidden="true" />
             Drag to canvas
