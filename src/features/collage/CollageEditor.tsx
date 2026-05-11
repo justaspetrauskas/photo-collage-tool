@@ -100,9 +100,9 @@ export function CollageEditor() {
           onUpdateImage={editor.updateImage}
           onDeleteImage={editor.deleteImage}
           onRemoveFromCanvas={editor.removeFromCanvas}
-          onEnhanceImage={editor.enhanceImage}
+          onEnhanceImage={(id, preset) => editor.enhanceImage(id, { preset })}
           onRestoreOriginalImage={editor.restoreOriginalImage}
-          onEnhanceAll={editor.enhanceAllImages}
+          onEnhanceAll={(preset) => editor.enhanceAllImages({ preset })}
           enhancingImageIds={editor.enhancingImageIds}
           onBeginManualPlacementDrag={editor.onBeginManualPlacementDrag}
           onEndManualPlacementDrag={editor.onEndManualPlacementDrag}

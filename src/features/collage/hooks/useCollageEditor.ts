@@ -932,13 +932,14 @@ function rectanglesTouchOrOverlap(
     }
 
     if (interactionMode === 'replace' && isReplaceDrag(dragStateRef.current)) {
+      const drag = dragStateRef.current;
       setReplacePointer(point);
       const target = point
-        ? findClosestSwapTarget(point, dragStateRef.current.sourceImageId)
+        ? findClosestSwapTarget(point, drag.sourceImageId)
         : null;
       setHoveredImageId(target?.imageId ?? null);
       if (target && selectedPage) {
-        const sourceIndex = selectedPage.items.findIndex((item) => item.imageId === dragStateRef.current!.sourceImageId);
+        const sourceIndex = selectedPage.items.findIndex((item) => item.imageId === drag.sourceImageId);
         const targetIndex = selectedPage.items.findIndex((item) => item.imageId === target.imageId);
         if (sourceIndex !== -1 && targetIndex !== -1) {
           const otherItems = selectedPage.items.filter((_, i) => i !== sourceIndex && i !== targetIndex);

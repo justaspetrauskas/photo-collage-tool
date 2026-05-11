@@ -44,7 +44,7 @@ function normalizeSnapshot(raw: unknown): PersistedEditorSnapshot | null {
     return null;
   }
 
-  const settings = snapshot.settings ?? {};
+  const settings: Partial<PersistedEditorSnapshot['settings']> = snapshot.settings ?? {};
   const paginationMode = settings.paginationMode === 'assisted' ? 'assisted' : 'auto';
   const interactionMode =
     settings.interactionMode === 'resize' ||

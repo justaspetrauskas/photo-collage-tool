@@ -49,7 +49,7 @@ interface PageCanvasCardProps {
   isActive: boolean;
   onVisible: (index: number) => void;
   onJumpToPage: (index: number) => void;
-  registerContainerRef: (index: number, node: HTMLDivElement | null) => void;
+  registerContainerRef: (index: number, node: HTMLElement | null) => void;
   registerCanvasRef: (index: number, node: HTMLCanvasElement | null) => void;
   onMouseDown: MouseEventHandler<HTMLCanvasElement>;
   onMouseMove: MouseEventHandler<HTMLCanvasElement>;
@@ -157,7 +157,7 @@ export function CollagePreview({
   onDragLeave,
 }: CollagePreviewProps) {
   const pageCanvasRefs = useRef<Array<HTMLCanvasElement | null>>([]);
-  const pageContainerRefs = useRef<Array<HTMLDivElement | null>>([]);
+  const pageContainerRefs = useRef<Array<HTMLElement | null>>([]);
   const previewBodyRef = useRef<HTMLDivElement | null>(null);
   const [scrollRoot, setScrollRoot] = useState<Element | null>(null);
   const hasSelection = Boolean(selectedImageId);

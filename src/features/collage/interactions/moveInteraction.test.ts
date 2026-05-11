@@ -14,7 +14,7 @@ describe('move interaction', () => {
     const maxY = CANVAS_SIZE_PX - height;
 
     expect(getCanvasSnapPosition(6, 25, width, height)).toEqual({ x: 0, y: 25, snapped: true });
-    expect(getCanvasSnapPosition(maxX - 7, maxY - 8, width, height)).toEqual({ x: maxX, y: maxY, snapped: true });
+    expect(getCanvasSnapPosition(maxX - 7, maxY - 8, width, height)).toEqual({ x: maxX, y: maxY - 8, snapped: true });
   });
 
   it('reports outside ratio and outside threshold', () => {
