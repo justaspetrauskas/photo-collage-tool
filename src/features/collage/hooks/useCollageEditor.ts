@@ -1,3 +1,4 @@
+import JSZip from 'jszip';
 import { enhanceImageWithAI, type EnhanceOptions } from '../lib/openaiImageEdit';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, DragEvent, MouseEvent } from 'react';
@@ -85,6 +86,19 @@ function elapsedTicks(currentTick: number, startTick: number): number {
 
 function randomId(prefix = 'img'): string {
   return `${prefix}-${crypto.randomUUID()}`;
+}
+
+function canvasToBlob(canvas: HTMLCanvasElement, mimeType: string, quality?: number): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        reject(new Error('Canvas export failed'));
+        return;
+      }
+
+      resolve(blob);
+    }, mimeType, quality);
+  });
 }
 
 interface CanvasPlacementPreview {
@@ -1483,7 +1497,7 @@ function rectanglesTouchOrOverlap(
     updateImage(selectedImageId, { offsetX: 0, offsetY: 0 });
   }
 
-  function exportPages(format: 'png' | 'jpg' | 'jpeg' = 'png'): void {
+  async function exportPages(format: 'png' | 'jpg' | 'jpeg' = 'png'): Promise<void> {
     if (!pages.length) {
       return;
     }
@@ -1496,27 +1510,41 @@ function rectanglesTouchOrOverlap(
         ? crypto.randomUUID().slice(0, 8)
         : Math.random().toString(36).slice(2, 10);
 
-    pages.forEach((page, index) => {
-      const canvas = renderPageToExportCanvas(page, itemById, imageById);
+    try {
+      const zip = new JSZip();
+      const quality = normalizedFormat === 'png' ? undefined : 0.92;
 
-      canvas.toBlob(
-        (blob) => {
-          if (!blob) {
-            setError('Failed to export image. Please try again.');
-            return;
-          }
+      const pageFiles = await Promise.all(
+        pages.map(async (page, index) => {
+          const canvas = renderPageToExportCanvas(page, itemById, imageById);
+          const blob = await canvasToBlob(canvas, mimeType, quality);
 
-          const link = document.createElement('a');
-          const objectUrl = URL.createObjectURL(blob);
-          link.download = `photo-grid-${exportId}-page-${index + 1}.${extension}`;
-          link.href = objectUrl;
-          link.click();
-          window.setTimeout(() => URL.revokeObjectURL(objectUrl), 30_000);
-        },
-        mimeType,
-        normalizedFormat === 'png' ? undefined : 0.92,
+          return {
+            blob,
+            fileName: `photo-grid-${exportId}-page-${index + 1}.${extension}`,
+          };
+        }),
       );
-    });
+
+      pageFiles.forEach(({ blob, fileName }) => {
+        zip.file(fileName, blob);
+      });
+
+      const zipBlob = await zip.generateAsync({
+        type: 'blob',
+        compression: 'DEFLATE',
+        compressionOptions: { level: 6 },
+      });
+
+      const link = document.createElement('a');
+      const objectUrl = URL.createObjectURL(zipBlob);
+      link.download = `photo-grid-${exportId}.zip`;
+      link.href = objectUrl;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 30_000);
+    } catch {
+      setError('Failed to export zip file. Please try again.');
+    }
   }
 
   function resetGeneratedLayoutState(): void {
