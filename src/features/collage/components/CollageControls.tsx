@@ -151,7 +151,9 @@ export function CollageControls({
                     <option value="jpeg">JPEG</option>
                   </select>
                   <Button
-                    onClick={() => void onExportPages(exportFormat)}
+                    onClick={async () => {
+                      await onExportPages(exportFormat);
+                    }}
                     disabled={!pagesCount}
                     className="flex-1 min-w-0 flex items-center justify-center gap-2 py-2 px-3 text-sm font-semibold disabled:opacity-50"
                   >
@@ -159,7 +161,7 @@ export function CollageControls({
                     Export ZIP
                   </Button>
                 </div>
-                <p className="mt-1 text-[10px] text-amber-100/90">ZIP: photo-grid-&lt;id&gt;.zip with page-&lt;n&gt;.{exportFormat} files inside</p>
+                <p className="mt-1 text-[10px] text-amber-100/90">ZIP: photo-grid-&lt;id&gt;.zip with photo-grid-&lt;id&gt;-page-&lt;n&gt;.{exportFormat} files inside</p>
               </div>
 
               <div className="h-px bg-line/20 my-1"></div>
