@@ -139,6 +139,7 @@ export function useCollageEditor() {
 
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const previewTransformRef = useRef<PreviewTransform | null>(null);
+  const previewRenderFrameRef = useRef<number | null>(null);
   const dragStateRef = useRef<DragState | null>(null);
   const knownImageSrcsRef = useRef<Set<string>>(new Set());
 
@@ -180,7 +181,11 @@ export function useCollageEditor() {
       return;
     }
 
-    const frameId = window.requestAnimationFrame(() => {
+    if (previewRenderFrameRef.current !== null) {
+      window.cancelAnimationFrame(previewRenderFrameRef.current);
+    }
+
+    previewRenderFrameRef.current = window.requestAnimationFrame(() => {
       previewTransformRef.current = drawPagePreview(canvas, selectedPage, itemById, imageById, {
         gridEnabled: gridModeEnabled,
         gridSpacingPx: cmToPx(DEFAULT_GRID_SPACING_CM),
@@ -201,9 +206,15 @@ export function useCollageEditor() {
         placementPreview: canvasPlacementPreview,
         animationTimeMs: replaceAnimationTick,
       });
+      previewRenderFrameRef.current = null;
     });
 
-    return () => window.cancelAnimationFrame(frameId);
+    return () => {
+      if (previewRenderFrameRef.current !== null) {
+        window.cancelAnimationFrame(previewRenderFrameRef.current);
+        previewRenderFrameRef.current = null;
+      }
+    };
   }, [selectedPage, itemById, imageById, gridModeEnabled, selectedImageId, hoveredImageId, drawerSelectedImageId, imageZoomLevels, imagePanOffsets, interactionMode, dragActive, moveOutsideCanvas, moveCollisionImageIds, resizeCurrentDimensions, resizeFeedback, swapAnimation, replacePointer, swapTargetInvalid, canvasPlacementPreview, replaceAnimationTick]);
 
 function rectanglesTouchOrOverlap(
@@ -1500,7 +1511,7 @@ function rectanglesTouchOrOverlap(
           link.download = `photo-grid-${exportId}-page-${index + 1}.${extension}`;
           link.href = objectUrl;
           link.click();
-          window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+          window.setTimeout(() => URL.revokeObjectURL(objectUrl), 30_000);
         },
         mimeType,
         normalizedFormat === 'png' ? undefined : 0.92,

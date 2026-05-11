@@ -20,6 +20,7 @@ const pendingWorkerRequests = new Map<
   string,
   { resolve: (value: ImageData) => void; reject: (reason?: unknown) => void }
 >();
+const WORKER_TIMEOUT_MS = 15000;
 
 function getEnhancementWorker(): Worker | null {
   if (typeof Worker === 'undefined') {
@@ -67,7 +68,7 @@ async function runEnhancementInWorker(
     const timeoutId = window.setTimeout(() => {
       pendingWorkerRequests.delete(id);
       resolve(null);
-    }, 15000);
+    }, WORKER_TIMEOUT_MS);
 
     pendingWorkerRequests.set(id, {
       resolve: (value) => {

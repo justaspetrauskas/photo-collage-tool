@@ -96,6 +96,11 @@ export function resolveSmartFraming(
   };
 }
 
+/**
+ * Computes a drop size that prefers fitting within local free space around the drop point.
+ * The function shrinks the proposed slot when nearby placed items or page bounds constrain
+ * available width/height, while preserving minimum content size and recalculating crop metrics.
+ */
 export function computeSmartDropSize(
   image: ImageItem,
   proposedSize: PlacementSize,
