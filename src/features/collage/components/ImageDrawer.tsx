@@ -2,7 +2,7 @@ import { Field } from '../../../shared/ui/Field';
 import type { ImageItem, PageLayout } from '../model/types';
 import { CANVAS_CM } from '../model/constants';
 import { useState, useRef, useEffect } from 'react';
-import { ChevronRight, ChevronLeft, UploadCloud, ChevronDown, ChevronUp, Trash2, X, Sparkles, Loader2 } from 'lucide-react';
+import { ChevronRight, ChevronLeft, UploadCloud, ChevronDown, ChevronUp, Trash2, X, Sparkles, Loader2, GripVertical } from 'lucide-react';
 import { type EnhancePreset, ENHANCE_PRESET_LABELS } from '../lib/openaiImageEdit';
 import { useEditorUIStore } from '../store/editorUIStore';
 import { useDrag } from '@use-gesture/react';
@@ -42,9 +42,10 @@ interface ImageDrawerCardProps {
   onRestoreOriginal: () => void;
   onBeginManualPlacementDrag: (id: string) => void;
   onEndManualPlacementDrag: () => void;
+  showPlacementHints: boolean;
 }
 
-function ImageDrawerCard({ image, isUsed, isSelected, isEnhancing, cardRef, onSelect, onUpdateImage, onDelete, onRemoveFromCanvas, onEnhance, onRestoreOriginal, onBeginManualPlacementDrag, onEndManualPlacementDrag }: ImageDrawerCardProps) {
+function ImageDrawerCard({ image, isUsed, isSelected, isEnhancing, cardRef, onSelect, onUpdateImage, onDelete, onRemoveFromCanvas, onEnhance, onRestoreOriginal, onBeginManualPlacementDrag, onEndManualPlacementDrag, showPlacementHints }: ImageDrawerCardProps) {
   const [enhancePreset, setEnhancePreset] = useState<EnhancePreset>('lighting');
   const [showBefore, setShowBefore] = useState(false);
   const { imageZoomLevels, setImageZoom, imagePanOffsets, setImagePan } = useEditorUIStore();
@@ -111,6 +112,17 @@ function ImageDrawerCard({ image, isUsed, isSelected, isEnhancing, cardRef, onSe
         {zoom > 1 && (
           <div className="absolute bottom-2 left-2 bg-black/60 text-white text-xs px-2 py-1 rounded-md pointer-events-none">
             {zoom.toFixed(1)}×
+          </div>
+        )}
+        {showPlacementHints && !isUsed && (
+          <div
+            className="absolute left-2 top-2 flex items-center gap-1 rounded-md border border-amber-300/35 bg-black/55 px-2 py-1 text-[10px] font-semibold text-amber-100"
+            title="Drag to canvas"
+            role="status"
+            aria-label="Drag to canvas"
+          >
+            <GripVertical className="h-3 w-3" aria-hidden="true" />
+            Drag to canvas
           </div>
         )}
         {hasEnhancedVersion && (
@@ -273,6 +285,7 @@ export function ImageDrawer({ images, pages, onUpdateImage, onDeleteImage, onRem
 
   const usedImageIds = new Set<string>();
   pages.forEach((page) => page.items.forEach((item) => usedImageIds.add(item.imageId)));
+  const hasPlacedItems = pages.some((page) => page.items.length > 0);
 
   const atLimit = images.length >= MAX_IMAGES;
 
@@ -387,6 +400,7 @@ export function ImageDrawer({ images, pages, onUpdateImage, onDeleteImage, onRem
                     onRestoreOriginal={() => void onRestoreOriginalImage(image.id)}
                     onBeginManualPlacementDrag={onBeginManualPlacementDrag}
                     onEndManualPlacementDrag={onEndManualPlacementDrag}
+                    showPlacementHints={!hasPlacedItems}
                     cardRef={(node: HTMLDivElement | null) => { cardRefs.current[image.id] = node; }}
                   />
                 ))
