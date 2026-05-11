@@ -139,7 +139,7 @@ export function CollageControls({
                 onClick={onGenerateLayout}
                 aria-label={hasUnplacedImages ? 'Generate Layout (recommended action)' : 'Generate Layout'}
                 className={`w-full flex items-center justify-start gap-2 py-1.5 px-3 text-sm ${
-                  hasUnplacedImages ? 'animate-pulse ring-2 ring-amber-300/70 ring-offset-2 ring-offset-[#0a0f1a]' : ''
+                  hasUnplacedImages ? 'animate-pulse motion-reduce:animate-none ring-2 ring-amber-300/70 ring-offset-2 ring-offset-[#0a0f1a]' : ''
                 }`}
               >
                 <Zap className="w-4 h-4" />
