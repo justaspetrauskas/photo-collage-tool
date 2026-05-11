@@ -406,13 +406,13 @@ export function CollagePreview({
               <h3 className="m-0 text-lg font-semibold text-amber-100">Start your collage in 2 quick steps</h3>
               <div className="mx-auto mt-5 max-w-xl space-y-3 text-left">
                 <div className="flex items-start gap-3 rounded-xl border border-line/30 bg-white/5 px-4 py-3">
-                  <UploadCloud className="mt-0.5 h-4 w-4 text-amber-300" />
+                  <UploadCloud className="mt-0.5 h-4 w-4 text-amber-300" aria-hidden="true" />
                   <p className="m-0 text-sm text-ink/90">
                     <strong className="text-amber-100">Step 1:</strong> Upload photos in the right-side drawer.
                   </p>
                 </div>
                 <div className="flex items-start gap-3 rounded-xl border border-line/30 bg-white/5 px-4 py-3">
-                  <MousePointerClick className="mt-0.5 h-4 w-4 text-amber-300" />
+                  <MousePointerClick className="mt-0.5 h-4 w-4 text-amber-300" aria-hidden="true" />
                   <p className="m-0 text-sm text-ink/90">
                     <strong className="text-amber-100">Step 2:</strong> Click <strong>Generate Layout</strong> or drag uploaded images onto the canvas.
                   </p>
