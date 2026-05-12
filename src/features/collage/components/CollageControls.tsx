@@ -57,12 +57,12 @@ export function CollageControls({
   const [exportFormat, setExportFormat] = useState<ExportFormat>('png');
 
   return (
-    <div className="space-y-2">
+      <div className="space-y-2">
       {/* Sizing Controls - Compact Grid */}
-            <div className="grid gap-2 grid-cols-3 sm:grid-cols-4">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               <Field label="Max (cm)" className="mb-0">
                 <input
-                  className="field-input py-1 text-xs"
+                  className="field-input min-h-11 py-1 text-sm"
                   type="number"
                   min="1"
                   max={CANVAS_CM}
@@ -74,7 +74,7 @@ export function CollageControls({
 
               <Field label="Min (cm)" className="mb-0">
                 <input
-                  className="field-input py-1 text-xs"
+                  className="field-input min-h-11 py-1 text-sm"
                   type="number"
                   min="0.5"
                   max="20"
@@ -86,7 +86,7 @@ export function CollageControls({
 
               <Field label={`Frame ${frameMm.toFixed(1)} mm`} className="mb-0">
                 <input
-                  className="w-full h-1 accent-amber-400 mt-2"
+                  className="mt-2 h-2 w-full accent-amber-400"
                   type="range"
                   min="0"
                   max="10"
@@ -98,7 +98,7 @@ export function CollageControls({
 
               <Field label="Pagination" className="mb-0">
                 <select
-                  className="field-input py-1 text-xs"
+                  className="field-input min-h-11 py-1 text-sm"
                   value={paginationMode}
                   onChange={(event) => setPaginationMode(event.target.value as PaginationMode)}
                 >
@@ -110,7 +110,7 @@ export function CollageControls({
 
             {/* Checkboxes - Compact Row */}
             <div className="flex flex-wrap gap-1.5">
-              <label className="themed-checkbox flex items-center gap-1.5 rounded-lg bg-[#121a2b]/82 px-2.5 py-1 text-xs font-medium text-ink/90">
+               <label className="themed-checkbox flex min-h-11 items-center gap-1.5 rounded-lg bg-[#121a2b]/82 px-2.5 py-1 text-sm font-medium text-ink/90">
                 <input
                   type="checkbox"
                   checked={gridModeEnabled}
@@ -119,7 +119,7 @@ export function CollageControls({
                 <span>Grid</span>
               </label>
 
-              <label className="themed-checkbox flex items-center gap-1.5 rounded-lg bg-[#121a2b]/82 px-2.5 py-1 text-xs font-medium text-ink/90">
+               <label className="themed-checkbox flex min-h-11 items-center gap-1.5 rounded-lg bg-[#121a2b]/82 px-2.5 py-1 text-sm font-medium text-ink/90">
                 <input
                   type="checkbox"
                   checked={autoCompactPages}
@@ -131,14 +131,14 @@ export function CollageControls({
 
             {/* Action Buttons - Column with Icons */}
             <div className="space-y-1.5">
-              <Button onClick={onApplyGlobalSettings} className="w-full flex items-center justify-start gap-2 py-1.5 px-3 text-sm">
+              <Button onClick={onApplyGlobalSettings} className="flex min-h-11 w-full items-center justify-start gap-2 px-3 py-1.5 text-sm">
                 <Check className="w-4 h-4" />
                 Apply Constraints
               </Button>
               <Button
                 onClick={onGenerateLayout}
                 aria-label={hasUnplacedImages ? 'Generate Layout (recommended action)' : 'Generate Layout'}
-                className={`w-full flex items-center justify-start gap-2 py-1.5 px-3 text-sm ${
+                className={`flex min-h-11 w-full items-center justify-start gap-2 px-3 py-1.5 text-sm ${
                   hasUnplacedImages ? 'animate-pulse motion-reduce:animate-none ring-2 ring-amber-300/70 ring-offset-2 ring-offset-[#0a0f1a]' : ''
                 }`}
               >
@@ -149,7 +149,7 @@ export function CollageControls({
               <div className="rounded-lg border border-amber-300/35 bg-amber-400/10 p-2">
                 <div className="flex items-center gap-2">
                   <select
-                    className="field-input py-1 text-xs flex-1"
+                    className="field-input min-h-11 flex-1 py-1 text-sm"
                     value={exportFormat}
                     onChange={(event) => setExportFormat(event.target.value as ExportFormat)}
                     aria-label="Export format"
@@ -163,7 +163,7 @@ export function CollageControls({
                       await onExportPages(exportFormat);
                     }}
                     disabled={!pagesCount}
-                    className="flex-1 min-w-0 flex items-center justify-center gap-2 py-2 px-3 text-sm font-semibold disabled:opacity-50"
+                    className="flex min-h-11 min-w-0 flex-1 items-center justify-center gap-2 px-3 py-2 text-sm font-semibold disabled:opacity-50"
                   >
                     <Download className="w-4 h-4" />
                     Export ZIP
@@ -174,17 +174,17 @@ export function CollageControls({
 
               <div className="h-px bg-line/20 my-1"></div>
 
-              <Button variant="soft" onClick={onStartFromScratch} className="w-full flex items-center justify-start gap-2 py-1.5 px-3 text-sm">
+              <Button variant="soft" onClick={onStartFromScratch} className="flex min-h-11 w-full items-center justify-start gap-2 px-3 py-1.5 text-sm">
                 <RotateCcw className="w-4 h-4" />
                 Start Fresh
               </Button>
-              <Button variant="soft" onClick={onClearEverything} className="w-full flex items-center justify-start gap-2 py-1.5 px-3 text-sm">
+              <Button variant="soft" onClick={onClearEverything} className="flex min-h-11 w-full items-center justify-start gap-2 px-3 py-1.5 text-sm">
                 <Trash2 className="w-4 h-4" />
                 Clear All
               </Button>
 
               {paginationMode === 'assisted' && overflowCount > 0 ? (
-                <Button onClick={onCreateNextPage} className="w-full flex items-center justify-start gap-2 py-1.5 px-3 text-sm">
+                <Button onClick={onCreateNextPage} className="flex min-h-11 w-full items-center justify-start gap-2 px-3 py-1.5 text-sm">
                   <Plus className="w-4 h-4" />
                   Next Page ({overflowCount})
                 </Button>

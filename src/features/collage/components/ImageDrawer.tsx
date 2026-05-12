@@ -25,6 +25,8 @@ interface ImageDrawerProps {
   onEndManualPlacementDrag: () => void;
   onUploadFiles: (event: ChangeEvent<HTMLInputElement>) => Promise<void>;
   onUploadFileList: (files: File[]) => Promise<void>;
+  onPlaceImageOnCanvas: (id: string) => void;
+  onReplaceSelectedImage: (id: string) => void;
   sceneControls: CollageControlsProps;
 }
 
@@ -42,10 +44,12 @@ interface ImageDrawerCardProps {
   onRestoreOriginal: () => void;
   onBeginManualPlacementDrag: (id: string) => void;
   onEndManualPlacementDrag: () => void;
+  onPlaceOnCanvas: () => void;
+  onReplaceSelected: () => void;
   showPlacementHints: boolean;
 }
 
-function ImageDrawerCard({ image, isUsed, isSelected, isEnhancing, cardRef, onSelect, onUpdateImage, onDelete, onRemoveFromCanvas, onEnhance, onRestoreOriginal, onBeginManualPlacementDrag, onEndManualPlacementDrag, showPlacementHints }: ImageDrawerCardProps) {
+function ImageDrawerCard({ image, isUsed, isSelected, isEnhancing, cardRef, onSelect, onUpdateImage, onDelete, onRemoveFromCanvas, onEnhance, onRestoreOriginal, onBeginManualPlacementDrag, onEndManualPlacementDrag, onPlaceOnCanvas, onReplaceSelected, showPlacementHints }: ImageDrawerCardProps) {
   const [enhancePreset, setEnhancePreset] = useState<EnhancePreset>('lighting');
   const [showBefore, setShowBefore] = useState(false);
   const { imageZoomLevels, setImageZoom, imagePanOffsets, setImagePan } = useEditorUIStore();
@@ -163,7 +167,7 @@ function ImageDrawerCard({ image, isUsed, isSelected, isEnhancing, cardRef, onSe
       </div>
 
       {/* Info & Controls */}
-      <div className="p-3.5 space-y-2">
+         <div className="space-y-2 p-3.5">
         <div>
           <p className="text-xs font-semibold text-white truncate">{image.fileName}</p>
           <p className="text-xs text-muted">{image.naturalWidth} × {image.naturalHeight}</p>
@@ -218,24 +222,46 @@ function ImageDrawerCard({ image, isUsed, isSelected, isEnhancing, cardRef, onSe
         </label>
 
         {/* Action buttons */}
-        <div className="flex gap-2 pt-1 border-t border-line/20">
-          <button
-            className="flex-1 flex items-center justify-center gap-1.5 text-xs py-1.5 rounded-md bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 transition"
-            title="Remove from canvas"
-            onClick={(e) => { e.stopPropagation(); onRemoveFromCanvas(); }}
-          >
+         <div className="border-t border-line/20 pt-1">
+           <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+             <button
+               className="min-h-11 rounded-md border border-amber-300/35 bg-amber-500/12 px-2 py-2 text-sm text-amber-200 transition hover:bg-amber-500/20"
+               onClick={(e) => {
+                 e.stopPropagation();
+                 onPlaceOnCanvas();
+               }}
+             >
+               Place on canvas
+             </button>
+             <button
+               className="min-h-11 rounded-md border border-cyan-300/30 bg-cyan-500/10 px-2 py-2 text-sm text-cyan-200 transition hover:bg-cyan-500/20"
+               onClick={(e) => {
+                 e.stopPropagation();
+                 onReplaceSelected();
+               }}
+             >
+               Replace selected
+             </button>
+           </div>
+           <div className="flex gap-2">
+           <button
+             className="flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-md bg-amber-500/10 py-1.5 text-xs text-amber-300 transition hover:bg-amber-500/20"
+             title="Remove from canvas"
+             onClick={(e) => { e.stopPropagation(); onRemoveFromCanvas(); }}
+           >
             <X className="w-3.5 h-3.5" />
             Remove
-          </button>
-          <button
-            className="flex-1 flex items-center justify-center gap-1.5 text-xs py-1.5 rounded-md bg-red-500/10 hover:bg-red-500/20 text-red-400 transition"
-            title="Delete image"
-            onClick={(e) => { e.stopPropagation(); onDelete(); }}
-          >
+           </button>
+           <button
+             className="flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-md bg-red-500/10 py-1.5 text-xs text-red-400 transition hover:bg-red-500/20"
+             title="Delete image"
+             onClick={(e) => { e.stopPropagation(); onDelete(); }}
+           >
             <Trash2 className="w-3.5 h-3.5" />
-            Delete
-          </button>
-        </div>
+             Delete
+           </button>
+           </div>
+         </div>
 
         {/* Auto Enhancement */}
         <div className="pt-1 border-t border-line/20 space-y-2" onClick={(e) => e.stopPropagation()}>
@@ -277,7 +303,7 @@ function ImageDrawerCard({ image, isUsed, isSelected, isEnhancing, cardRef, onSe
   );
 }
 
-export function ImageDrawer({ images, pages, onUpdateImage, onDeleteImage, onRemoveFromCanvas, onEnhanceImage, onRestoreOriginalImage, onEnhanceAll, enhancingImageIds, onBeginManualPlacementDrag, onEndManualPlacementDrag, onUploadFiles, onUploadFileList, sceneControls }: ImageDrawerProps) {
+export function ImageDrawer({ images, pages, onUpdateImage, onDeleteImage, onRemoveFromCanvas, onEnhanceImage, onRestoreOriginalImage, onEnhanceAll, enhancingImageIds, onBeginManualPlacementDrag, onEndManualPlacementDrag, onUploadFiles, onUploadFileList, onPlaceImageOnCanvas, onReplaceSelectedImage, sceneControls }: ImageDrawerProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [sceneCollapsed, setSceneCollapsed] = useState(false);
   const [globalPreset, setGlobalPreset] = useState<EnhancePreset>('consistent');
@@ -319,22 +345,25 @@ export function ImageDrawer({ images, pages, onUpdateImage, onDeleteImage, onRem
 
   return (
     <div
-      className={`fixed right-0 top-0 bottom-0 bg-[#0a0f1a]/95 backdrop-blur-sm border-l border-line/20 transition-all duration-300 z-40 overflow-hidden flex flex-col shadow-[-8px_0_24px_rgba(0,0,0,0.4)] ${
-        collapsed ? 'w-12' : 'w-[28vw] min-w-[400px]'
+      className={`fixed bottom-0 left-0 right-0 z-40 flex overflow-hidden border-t border-line/20 bg-[#0a0f1a]/95 shadow-[0_-8px_24px_rgba(0,0,0,0.4)] backdrop-blur-sm transition-all duration-300 md:bottom-0 md:left-auto md:right-0 md:top-0 md:border-l md:border-t-0 md:shadow-[-8px_0_24px_rgba(0,0,0,0.4)] ${
+        collapsed
+          ? 'h-14 md:h-auto md:w-12'
+          : 'h-[72dvh] md:h-auto md:w-[28vw] md:min-w-[360px]'
       }`}
     >
       {/* Drawer toggle button */}
       <button
         onClick={() => setCollapsed((v) => !v)}
-        className="flex-shrink-0 h-12 border-b border-line/20 flex items-center justify-center hover:bg-amber-500/10 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70"
+        className="flex h-14 flex-shrink-0 items-center justify-center border-b border-line/20 transition hover:bg-amber-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70 md:h-12"
         aria-label={collapsed ? 'Expand settings drawer' : 'Collapse settings drawer'}
       >
-        {collapsed ? <ChevronLeft className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
+        <span className="md:hidden">{collapsed ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}</span>
+        <span className="hidden md:block">{collapsed ? <ChevronLeft className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}</span>
       </button>
 
       {/* Vertical label shown only when collapsed */}
       {collapsed && (
-        <div className="flex-1 flex items-center justify-center">
+        <div className="hidden flex-1 items-center justify-center md:flex">
           <span
             className="text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-muted select-none"
             style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
@@ -345,7 +374,7 @@ export function ImageDrawer({ images, pages, onUpdateImage, onDeleteImage, onRem
       )}
 
       {!collapsed && (
-        <div className="flex-1 overflow-y-auto flex flex-col min-h-0 scrollbar-themed">
+          <div className="scrollbar-themed flex min-h-0 flex-1 flex-col overflow-y-auto pb-[env(safe-area-inset-bottom)]">
 
           {/* Scene Controls Section */}
           <div className="flex-shrink-0 border-b border-line/20">
@@ -373,7 +402,7 @@ export function ImageDrawer({ images, pages, onUpdateImage, onDeleteImage, onRem
             {images.length > 0 && (
               <div className="flex items-center gap-2 px-5 pb-3">
                 <select
-                  className="field-input py-0.5 text-xs flex-1"
+                  className="field-input flex-1 py-1 text-sm"
                   value={globalPreset}
                   onChange={(e) => setGlobalPreset(e.target.value as EnhancePreset)}
                 >
@@ -383,7 +412,7 @@ export function ImageDrawer({ images, pages, onUpdateImage, onDeleteImage, onRem
                 </select>
                 <button
                   disabled={enhancingAll || enhancingImageIds.size > 0}
-                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-violet-500/15 hover:bg-violet-500/25 text-violet-300 transition disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                  className="flex min-h-11 items-center gap-1.5 whitespace-nowrap rounded-md bg-violet-500/15 px-3 py-1.5 text-sm text-violet-300 transition hover:bg-violet-500/25 disabled:cursor-not-allowed disabled:opacity-50"
                   onClick={async () => {
                     setEnhancingAll(true);
                     await onEnhanceAll(globalPreset);
@@ -419,6 +448,8 @@ export function ImageDrawer({ images, pages, onUpdateImage, onDeleteImage, onRem
                     onRestoreOriginal={() => void onRestoreOriginalImage(image.id)}
                     onBeginManualPlacementDrag={onBeginManualPlacementDrag}
                     onEndManualPlacementDrag={onEndManualPlacementDrag}
+                    onPlaceOnCanvas={() => onPlaceImageOnCanvas(image.id)}
+                    onReplaceSelected={() => onReplaceSelectedImage(image.id)}
                     showPlacementHints={!hasPlacedItems}
                     cardRef={(node: HTMLDivElement | null) => { cardRefs.current[image.id] = node; }}
                   />
@@ -445,7 +476,7 @@ export function ImageDrawer({ images, pages, onUpdateImage, onDeleteImage, onRem
               onDragOver={(e) => { e.preventDefault(); if (!atLimit) setDragOver(true); }}
               onDragLeave={() => setDragOver(false)}
               onDrop={handleDrop}
-              className={`w-full rounded-xl border-2 border-dashed py-6 flex flex-col items-center gap-2 transition select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70 ${
+              className={`flex w-full select-none flex-col items-center gap-2 rounded-xl border-2 border-dashed py-6 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70 ${
                 atLimit
                   ? 'border-line/20 opacity-40 cursor-not-allowed'
                 : dragOver
@@ -460,8 +491,8 @@ export function ImageDrawer({ images, pages, onUpdateImage, onDeleteImage, onRem
                   <p className="text-xs font-medium text-muted">Limit reached ({MAX_IMAGES} photos)</p>
                 ) : (
                   <>
-                    <p className="text-xs font-medium text-ink/80">
-                      {images.length === 0 ? 'Upload Photos' : 'Add More Photos'}
+                    <p className="text-sm font-medium text-ink/80">
+                       {images.length === 0 ? 'Upload from gallery' : 'Add from gallery'}
                     </p>
                     <p className="text-xs text-muted mt-0.5">Click or drag &amp; drop · {MAX_IMAGES - images.length} remaining</p>
                   </>
