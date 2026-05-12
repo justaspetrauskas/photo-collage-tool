@@ -29,7 +29,7 @@ export function CollageEditor() {
   }, [editor.error]);
 
   return (
-    <div className="relative w-screen pb-10 flex flex-col h-screen">
+    <div className="relative flex h-[100dvh] w-screen flex-col pb-10">
       <CollageHeader />
 
       {toastError ? (
@@ -55,7 +55,7 @@ export function CollageEditor() {
         {/* Main Content Area — canvas only */}
         <div className="flex-1 overflow-y-auto relative" data-collage-scroll-root>
           <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-16 bg-gradient-to-l from-[#000000]/20 via-transparent to-transparent z-20" />
-          <div className="mx-auto w-full max-w-[1440px] px-6 pt-4 sm:px-8">
+          <div className="mx-auto w-full max-w-[1440px] px-4 pt-4 sm:px-8">
             <main>
               {editor.oversizedImageIds.length ? (
                 <p className="mb-2 mt-0 text-sm text-warn">
@@ -87,6 +87,10 @@ export function CollageEditor() {
                 onMouseMove={editor.onCanvasMouseMove}
                 onMouseUp={editor.onCanvasMouseUp}
                 onMouseLeave={editor.onCanvasMouseLeave}
+                onPointerDown={editor.onCanvasPointerDown}
+                onPointerMove={editor.onCanvasPointerMove}
+                onPointerUp={editor.onCanvasPointerUp}
+                onPointerCancel={editor.onCanvasPointerCancel}
                 onDragOver={editor.onCanvasDragOver}
                 onDrop={editor.onCanvasDrop}
                 onDragLeave={editor.onCanvasDragLeave}
@@ -112,6 +116,8 @@ export function CollageEditor() {
           onEndManualPlacementDrag={editor.onEndManualPlacementDrag}
           onUploadFiles={editor.onUploadFiles}
           onUploadFileList={editor.uploadFileList}
+          onPlaceImageOnCanvas={(imageId) => editor.placeImageOnSelectedPage(imageId, false)}
+          onReplaceSelectedImage={(imageId) => editor.placeImageOnSelectedPage(imageId, true)}
           sceneControls={{
             maxImageCm: editor.maxImageCm,
             setMaxImageCm: editor.setMaxImageCm,
@@ -140,8 +146,8 @@ export function CollageEditor() {
 
       {/* Selection Controls Overlay — fixed at root level */}
       {hasSelection && editor.showSelectionControls && (
-        <div className="fixed bottom-4 left-1/2 z-50 w-[min(95vw,680px)] -translate-x-1/2 rounded-xl border border-line/30 bg-[#0a0f1a]/95 p-2.5 shadow-[0_14px_40px_rgba(0,0,0,0.45)] backdrop-blur-md">
-          <div className="flex items-center justify-between gap-2">
+        <div className="fixed bottom-3 left-1/2 z-50 w-[min(95vw,680px)] -translate-x-1/2 rounded-xl border border-line/30 bg-[#0a0f1a]/95 p-2.5 pb-[calc(0.625rem+env(safe-area-inset-bottom))] shadow-[0_14px_40px_rgba(0,0,0,0.45)] backdrop-blur-md">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             {/* Image info */}
             <div className="min-w-0 flex-1">
               <p className="m-0 text-xs font-semibold uppercase tracking-[0.05em] text-amber-200/90 truncate">
@@ -155,54 +161,52 @@ export function CollageEditor() {
             </div>
 
             {/* Control buttons */}
-            <div className="flex flex-nowrap items-center gap-1">
+            <div className="flex flex-wrap items-center gap-1.5">
               <Button
                 variant={editor.interactionMode === 'resize' ? 'primary' : 'soft'}
                 onClick={() => editor.setInteractionMode('resize')}
-                className="px-2.5 py-1 text-xs whitespace-nowrap"
+                className="min-h-11 px-3 py-2 text-sm whitespace-nowrap"
               >
-                Resize (R)
+                Resize
               </Button>
               <Button
                 variant={editor.interactionMode === 'move' ? 'primary' : 'soft'}
                 onClick={() => editor.setInteractionMode('move')}
-                className="px-2.5 py-1 text-xs whitespace-nowrap"
+                className="min-h-11 px-3 py-2 text-sm whitespace-nowrap"
               >
-                Move (M)
+                Move
               </Button>
               <Button
                 variant={editor.interactionMode === 'replace' ? 'primary' : 'soft'}
                 onClick={() => editor.setInteractionMode('replace')}
-                className="px-2.5 py-1 text-xs whitespace-nowrap"
+                className="min-h-11 px-3 py-2 text-sm whitespace-nowrap"
               >
-                Swap (P)
+                Swap
               </Button>
-              <Button
-                variant="soft"
-                onClick={() => editor.expandSelectedImage(1.1)}
-                className="px-2.5 py-1 text-xs whitespace-nowrap"
-              >
-                + Size
-              </Button>
-              <Button
-                variant="soft"
-                onClick={() => editor.expandSelectedImage(0.9)}
-                className="px-2.5 py-1 text-xs whitespace-nowrap"
-              >
-                − Size
-              </Button>
-
-              {/* Close button - circle outlined */}
-              <button
-                onClick={() => editor.setShowSelectionControls(false)}
-                className="ml-1 flex-shrink-0 rounded-full border border-muted/40 p-1 hover:border-muted/60 hover:bg-white/5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70"
-                aria-label="Close controls"
-                title="Close (Esc)"
-              >
-                <svg className="w-4 h-4 text-muted hover:text-ink" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
+              <details className="sm:hidden">
+                <summary className="flex min-h-11 cursor-pointer list-none items-center rounded-xl bg-accent-soft/70 px-3 py-2 text-sm font-semibold text-ink/90">
+                  More
+                </summary>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  <Button variant="soft" onClick={() => editor.expandSelectedImage(1.1)} className="min-h-11 px-3 py-2 text-sm">+ Size</Button>
+                  <Button variant="soft" onClick={() => editor.expandSelectedImage(0.9)} className="min-h-11 px-3 py-2 text-sm">− Size</Button>
+                  <Button variant="soft" onClick={() => editor.setShowSelectionControls(false)} className="min-h-11 px-3 py-2 text-sm">Close</Button>
+                </div>
+              </details>
+              <div className="hidden items-center gap-1.5 sm:flex">
+                <Button variant="soft" onClick={() => editor.expandSelectedImage(1.1)} className="min-h-11 px-3 py-2 text-sm">+ Size</Button>
+                <Button variant="soft" onClick={() => editor.expandSelectedImage(0.9)} className="min-h-11 px-3 py-2 text-sm">− Size</Button>
+                <button
+                  onClick={() => editor.setShowSelectionControls(false)}
+                  className="flex min-h-11 min-w-11 flex-shrink-0 items-center justify-center rounded-full border border-muted/40 p-1.5 transition-colors hover:border-muted/60 hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70"
+                  aria-label="Close controls"
+                  title="Close (Esc)"
+                >
+                  <svg className="w-4 h-4 text-muted hover:text-ink" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
             </div>
           </div>
         </div>

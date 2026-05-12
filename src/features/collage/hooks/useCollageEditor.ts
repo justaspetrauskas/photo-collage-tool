@@ -1,6 +1,6 @@
 import { enhanceImageWithAI, type EnhanceOptions } from '../lib/openaiImageEdit';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { ChangeEvent, DragEvent, MouseEvent } from 'react';
+import type { ChangeEvent, DragEvent, MouseEvent, PointerEvent } from 'react';
 import {
   CANVAS_SIZE_PX,
   DEFAULT_FRAME_MM,
@@ -828,8 +828,8 @@ function rectanglesTouchOrOverlap(
     return bestDistance <= maxSnapDistancePx ? bestTarget : null;
   }
 
-  function onCanvasMouseDown(event: MouseEvent<HTMLCanvasElement>): void {
-    const point = pagePointFromMouse(event);
+  function handleCanvasInteractionStart(clientX: number, clientY: number): void {
+    const point = pagePointFromClient(clientX, clientY);
     if (!point) {
       setSelectedImageId(null);
       setDrawerSelectedImageId(null);
@@ -924,8 +924,8 @@ function rectanglesTouchOrOverlap(
     });
   }
 
-  function onCanvasMouseMove(event: MouseEvent<HTMLCanvasElement>): void {
-    const point = pagePointFromMouse(event);
+  function handleCanvasInteractionMove(clientX: number, clientY: number): void {
+    const point = pagePointFromClient(clientX, clientY);
     if (!point) {
       if (!dragActive && hoveredImageId !== null) {
         setHoveredImageId(null);
@@ -1239,9 +1239,14 @@ function rectanglesTouchOrOverlap(
     }
   }
 
-  function onCanvasMouseUp(event?: MouseEvent<HTMLCanvasElement>): void {
-    if (interactionMode === 'replace' && isReplaceDrag(dragStateRef.current) && event) {
-      const point = pagePointFromMouse(event);
+  function handleCanvasInteractionEnd(clientX?: number, clientY?: number): void {
+    if (
+      interactionMode === 'replace' &&
+      isReplaceDrag(dragStateRef.current) &&
+      typeof clientX === 'number' &&
+      typeof clientY === 'number'
+    ) {
+      const point = pagePointFromClient(clientX, clientY);
       const target = point
         ? findClosestSwapTarget(point, dragStateRef.current.sourceImageId)
         : null;
@@ -1326,7 +1331,57 @@ function rectanglesTouchOrOverlap(
   }
 
   function onCanvasMouseLeave(): void {
-    onCanvasMouseUp();
+    handleCanvasInteractionEnd();
+    setHoveredImageId(null);
+  }
+
+  function onCanvasMouseDown(event: MouseEvent<HTMLCanvasElement>): void {
+    handleCanvasInteractionStart(event.clientX, event.clientY);
+  }
+
+  function onCanvasMouseMove(event: MouseEvent<HTMLCanvasElement>): void {
+    handleCanvasInteractionMove(event.clientX, event.clientY);
+  }
+
+  function onCanvasMouseUp(event?: MouseEvent<HTMLCanvasElement>): void {
+    handleCanvasInteractionEnd(event?.clientX, event?.clientY);
+  }
+
+  function onCanvasPointerDown(event: PointerEvent<HTMLCanvasElement>): void {
+    if (event.pointerType === 'mouse') {
+      return;
+    }
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    handleCanvasInteractionStart(event.clientX, event.clientY);
+  }
+
+  function onCanvasPointerMove(event: PointerEvent<HTMLCanvasElement>): void {
+    if (event.pointerType === 'mouse') {
+      return;
+    }
+    event.preventDefault();
+    handleCanvasInteractionMove(event.clientX, event.clientY);
+  }
+
+  function onCanvasPointerUp(event: PointerEvent<HTMLCanvasElement>): void {
+    if (event.pointerType === 'mouse') {
+      return;
+    }
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    handleCanvasInteractionEnd(event.clientX, event.clientY);
+  }
+
+  function onCanvasPointerCancel(event: PointerEvent<HTMLCanvasElement>): void {
+    if (event.pointerType === 'mouse') {
+      return;
+    }
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    handleCanvasInteractionEnd();
     setHoveredImageId(null);
   }
 
@@ -1468,6 +1523,98 @@ function rectanglesTouchOrOverlap(
   function onEndManualPlacementDrag(): void {
     setManualPlacementDragImageId(null);
     setCanvasPlacementPreview(null);
+  }
+
+  function placeImageOnSelectedPage(imageId: string, replaceSelected = false): void {
+    const image = itemById.get(imageId);
+    if (!image || !selectedPage) {
+      return;
+    }
+
+    const proposedSize = resolveManualPlacementSize(image);
+    const replaceTargetIndex =
+      replaceSelected && selectedImageId
+        ? selectedPage.items.findIndex((item) => item.imageId === selectedImageId)
+        : -1;
+    const replaceTarget = replaceTargetIndex >= 0 ? selectedPage.items[replaceTargetIndex] : null;
+
+    const centerX = replaceTarget ? replaceTarget.x + replaceTarget.width / 2 : selectedPage.widthPx / 2;
+    const centerY = replaceTarget ? replaceTarget.y + replaceTarget.height / 2 : selectedPage.heightPx / 2;
+    const existingItems = selectedPage.items
+      .filter((item) => item.imageId !== imageId)
+      .filter((item) => item.imageId !== replaceTarget?.imageId);
+
+    const smartSize = computeSmartDropSize(
+      image,
+      proposedSize,
+      centerX - proposedSize.width / 2,
+      centerY - proposedSize.height / 2,
+      selectedPage.widthPx,
+      selectedPage.heightPx,
+      existingItems,
+      minImageCm,
+    );
+
+    const x = Math.max(0, Math.min(selectedPage.widthPx - smartSize.width, centerX - smartSize.width / 2));
+    const y = Math.max(0, Math.min(selectedPage.heightPx - smartSize.height, centerY - smartSize.height / 2));
+
+    setPages((currentPages) =>
+      currentPages.map((page, pageIndex) => {
+        const withoutImage = page.items.filter((item) => item.imageId !== imageId);
+        if (pageIndex !== selectedPageIndex) {
+          return {
+            ...page,
+            items: replaceSelected
+              ? withoutImage.filter((item) => item.imageId !== replaceTarget?.imageId)
+              : withoutImage,
+          };
+        }
+
+        const nextItems = withoutImage.filter((item) => item.imageId !== replaceTarget?.imageId);
+        nextItems.push({
+          imageId,
+          x,
+          y,
+          width: smartSize.width,
+          height: smartSize.height,
+          contentWidthPx: smartSize.contentWidthPx,
+          contentHeightPx: smartSize.contentHeightPx,
+          frameThicknessPx: smartSize.frameThicknessPx,
+          drawnImageWidthPx: smartSize.drawnImageWidthPx,
+          drawnImageHeightPx: smartSize.drawnImageHeightPx,
+          maxOffsetX: smartSize.maxOffsetX,
+          maxOffsetY: smartSize.maxOffsetY,
+        });
+
+        return {
+          ...page,
+          items: nextItems,
+        };
+      }),
+    );
+
+    const clamped = clampOffsets(image.offsetX, image.offsetY, smartSize.maxOffsetX, smartSize.maxOffsetY);
+    setImages((current) =>
+      current.map((entry) =>
+        entry.id === imageId
+          ? {
+              ...entry,
+              renderWidthPx: smartSize.contentWidthPx,
+              renderHeightPx: smartSize.contentHeightPx,
+              cropMaxOffsetX: smartSize.maxOffsetX,
+              cropMaxOffsetY: smartSize.maxOffsetY,
+              offsetX: clamped.offsetX,
+              offsetY: clamped.offsetY,
+            }
+          : entry,
+      ),
+    );
+
+    setSelectedImageId(imageId);
+    setDrawerSelectedImageId(imageId);
+    setHoveredImageId(imageId);
+    setShowSelectionControls(true);
+    setError('');
   }
 
   function expandSelectedImage(scaleFactor: number): void {
@@ -1777,11 +1924,16 @@ function rectanglesTouchOrOverlap(
     onCanvasMouseMove,
     onCanvasMouseUp,
     onCanvasMouseLeave,
+    onCanvasPointerDown,
+    onCanvasPointerMove,
+    onCanvasPointerUp,
+    onCanvasPointerCancel,
     onCanvasDragOver,
     onCanvasDrop,
     onCanvasDragLeave,
     onBeginManualPlacementDrag,
     onEndManualPlacementDrag,
+    placeImageOnSelectedPage,
     expandSelectedImage,
     resetSelectedCrop,
     setShowSelectionControls,

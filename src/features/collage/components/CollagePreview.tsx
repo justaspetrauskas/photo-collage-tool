@@ -4,6 +4,7 @@ import type {
   DragEventHandler,
   MouseEventHandler,
   MutableRefObject,
+  PointerEventHandler,
 } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../../shared/ui/Button';
@@ -40,6 +41,10 @@ interface CollagePreviewProps {
   onMouseMove: MouseEventHandler<HTMLCanvasElement>;
   onMouseUp: MouseEventHandler<HTMLCanvasElement>;
   onMouseLeave: MouseEventHandler<HTMLCanvasElement>;
+  onPointerDown: PointerEventHandler<HTMLCanvasElement>;
+  onPointerMove: PointerEventHandler<HTMLCanvasElement>;
+  onPointerUp: PointerEventHandler<HTMLCanvasElement>;
+  onPointerCancel: PointerEventHandler<HTMLCanvasElement>;
   onDragOver: DragEventHandler<HTMLCanvasElement>;
   onDrop: DragEventHandler<HTMLCanvasElement>;
   onDragLeave: DragEventHandler<HTMLCanvasElement>;
@@ -60,6 +65,10 @@ interface PageCanvasCardProps {
   onMouseMove: MouseEventHandler<HTMLCanvasElement>;
   onMouseUp: MouseEventHandler<HTMLCanvasElement>;
   onMouseLeave: MouseEventHandler<HTMLCanvasElement>;
+  onPointerDown: PointerEventHandler<HTMLCanvasElement>;
+  onPointerMove: PointerEventHandler<HTMLCanvasElement>;
+  onPointerUp: PointerEventHandler<HTMLCanvasElement>;
+  onPointerCancel: PointerEventHandler<HTMLCanvasElement>;
   onDragOver: DragEventHandler<HTMLCanvasElement>;
   onDrop: DragEventHandler<HTMLCanvasElement>;
   onDragLeave: DragEventHandler<HTMLCanvasElement>;
@@ -79,6 +88,10 @@ function PageCanvasCard({
   onMouseMove,
   onMouseUp,
   onMouseLeave,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+  onPointerCancel,
   onDragOver,
   onDrop,
   onDragLeave,
@@ -119,12 +132,16 @@ function PageCanvasCard({
       <div className="rounded-2xl p-2 backdrop-blur-md">
         <div className="relative inline-block">
           <canvas
-            className={`h-auto max-w-full rounded-xl ${isActive ? 'cursor-default' : 'pointer-events-none'} `}
+            className={`h-auto max-w-full touch-none rounded-xl ${isActive ? 'cursor-default' : 'pointer-events-none'} `}
             ref={(node) => registerCanvasRef(index, node)}
             onMouseDown={isActive ? onMouseDown : undefined}
             onMouseMove={isActive ? onMouseMove : undefined}
             onMouseUp={isActive ? onMouseUp : undefined}
             onMouseLeave={isActive ? onMouseLeave : undefined}
+            onPointerDown={isActive ? onPointerDown : undefined}
+            onPointerMove={isActive ? onPointerMove : undefined}
+            onPointerUp={isActive ? onPointerUp : undefined}
+            onPointerCancel={isActive ? onPointerCancel : undefined}
             onDragOver={isActive ? onDragOver : undefined}
             onDrop={isActive ? onDrop : undefined}
             onDragLeave={isActive ? onDragLeave : undefined}
@@ -172,6 +189,10 @@ export function CollagePreview({
   onMouseMove,
   onMouseUp,
   onMouseLeave,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+  onPointerCancel,
   onDragOver,
   onDrop,
   onDragLeave,
@@ -395,8 +416,23 @@ export function CollagePreview({
           Printable Area: {CANVAS_CM} x {CANVAS_CM} cm ({CANVAS_SIZE_PX} x {CANVAS_SIZE_PX} px)
         </p>
 
-        <div className="grid grid-cols-[76px_minmax(0,1fr)] gap-4">
-          <aside className="sticky top-5 self-start rounded-xl border border-line/30 bg-[#0b1220]/80 p-2 backdrop-blur-md">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-[76px_minmax(0,1fr)]">
+          <div className="md:hidden">
+            <div className="scrollbar-themed flex gap-2 overflow-x-auto pb-1">
+              {pages.map((page, index) => (
+                <Button
+                  key={page.id}
+                  variant={index === selectedPageIndex ? 'primary' : 'soft'}
+                  onClick={() => jumpToPage(index)}
+                  className="min-h-11 shrink-0 px-3 text-sm"
+                >
+                  Page {index + 1}
+                </Button>
+              ))}
+            </div>
+          </div>
+
+          <aside className="sticky top-5 hidden self-start rounded-xl border border-line/30 bg-[#0b1220]/80 p-2 backdrop-blur-md md:block">
             <p className="mb-2 px-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-amber-200/70">
               Quick access
             </p>
@@ -406,7 +442,7 @@ export function CollagePreview({
                   key={page.id}
                   variant={index === selectedPageIndex ? 'primary' : 'soft'}
                   onClick={() => jumpToPage(index)}
-                  className="justify-start px-2 text-xs"
+                  className="min-h-10 justify-start px-2 text-xs"
                 >
                   {index === selectedPageIndex ? '● ' : ''}P{index + 1}
                 </Button>
@@ -457,13 +493,13 @@ export function CollagePreview({
                 >
                   <UploadCloud className={`h-14 w-14 ${uploadDragOver ? 'text-amber-400' : 'text-amber-300/60'}`} />
                   <div className="text-center">
-                    <p className="text-base font-semibold text-ink/90">
-                      {imagesAtLimit ? `Limit reached (${MAX_IMAGES} photos)` : 'Drop photos here, or click to browse'}
-                    </p>
-                    {!imagesAtLimit && (
-                      <p className="mt-1 text-sm text-muted">PNG, JPEG, WebP · up to {MAX_IMAGES} photos</p>
-                    )}
-                  </div>
+                     <p className="text-base font-semibold text-ink/90">
+                       {imagesAtLimit ? `Limit reached (${MAX_IMAGES} photos)` : 'Drop photos here, or click to browse'}
+                     </p>
+                     {!imagesAtLimit && (
+                       <p className="mt-1 text-sm text-muted">Upload from gallery · PNG, JPEG, WebP · up to {MAX_IMAGES} photos</p>
+                     )}
+                   </div>
 
                 </button>
               </div>
@@ -492,6 +528,10 @@ export function CollagePreview({
                   onMouseMove={onMouseMove}
                   onMouseUp={onMouseUp}
                   onMouseLeave={onMouseLeave}
+                  onPointerDown={onPointerDown}
+                  onPointerMove={onPointerMove}
+                  onPointerUp={onPointerUp}
+                  onPointerCancel={onPointerCancel}
                   onDragOver={onDragOver}
                   onDrop={onDrop}
                   onDragLeave={onDragLeave}
