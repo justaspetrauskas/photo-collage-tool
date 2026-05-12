@@ -1563,7 +1563,18 @@ function rectanglesTouchOrOverlap(
         cropMaxOffsetY: 0,
       })),
     );
-    setPages([]);
+    setPages(
+      images.length
+        ? [
+            {
+              id: randomId('page'),
+              widthPx: CANVAS_SIZE_PX,
+              heightPx: CANVAS_SIZE_PX,
+              items: [],
+            },
+          ]
+        : [],
+    );
     setSelectedImageId(null);
     setShowSelectionControls(false);
     setDragActive(false);
