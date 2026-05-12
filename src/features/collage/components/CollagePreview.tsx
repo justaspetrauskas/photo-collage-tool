@@ -464,11 +464,7 @@ export function CollagePreview({
                       <p className="mt-1 text-sm text-muted">PNG, JPEG, WebP · up to {MAX_IMAGES} photos</p>
                     )}
                   </div>
-                  {imagesCount > 0 && !imagesAtLimit && (
-                    <p className="text-xs text-amber-200/70">
-                      {imagesCount} photo{imagesCount !== 1 ? 's' : ''} ready — drag cards to canvas or click Generate Layout in the panel
-                    </p>
-                  )}
+
                 </button>
               </div>
             </div>
