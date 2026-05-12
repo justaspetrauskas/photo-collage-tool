@@ -11,7 +11,9 @@ import { Panel } from '../../../shared/ui/Panel';
 import { CANVAS_CM, CANVAS_SIZE_PX, cmToPx } from '../model/constants';
 import { drawPagePreview } from '../model/renderEngine';
 import type { ImageItem, InteractionMode, PageLayout } from '../model/types';
-import { ArrowRight, MousePointerClick, UploadCloud } from 'lucide-react';
+import { UploadCloud } from 'lucide-react';
+
+const MAX_IMAGES = 24;
 
 interface CollagePreviewProps {
   pages: PageLayout[];
@@ -41,6 +43,8 @@ interface CollagePreviewProps {
   onDragOver: DragEventHandler<HTMLCanvasElement>;
   onDrop: DragEventHandler<HTMLCanvasElement>;
   onDragLeave: DragEventHandler<HTMLCanvasElement>;
+  onUploadFileList: (files: File[]) => Promise<void>;
+  imagesCount: number;
 }
 
 interface PageCanvasCardProps {
@@ -133,7 +137,7 @@ function PageCanvasCard({
               aria-live="polite"
             >
               <span className="rounded-md bg-black/55 px-2 py-1 text-xs font-semibold uppercase tracking-[0.06em] text-amber-100">
-                Drop here
+                Drop to place
               </span>
             </div>
           ) : null}
@@ -171,14 +175,19 @@ export function CollagePreview({
   onDragOver,
   onDrop,
   onDragLeave,
+  onUploadFileList,
+  imagesCount,
 }: CollagePreviewProps) {
   const pageCanvasRefs = useRef<Array<HTMLCanvasElement | null>>([]);
   const pageContainerRefs = useRef<Array<HTMLElement | null>>([]);
   const previewBodyRef = useRef<HTMLDivElement | null>(null);
+  const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const [scrollRoot, setScrollRoot] = useState<Element | null>(null);
+  const [uploadDragOver, setUploadDragOver] = useState(false);
   const hasSelection = Boolean(selectedImageId);
   const hasPlacedItems = pages.some((page) => page.items.length > 0);
   const showOnboardingHints = !hasPlacedItems;
+  const imagesAtLimit = imagesCount >= MAX_IMAGES;
 
   useEffect(() => {
     if (!previewBodyRef.current) {
@@ -406,25 +415,62 @@ export function CollagePreview({
           </aside>
 
           {showOnboardingHints ? (
-            <div className="rounded-2xl border border-amber-300/30 bg-[#0b1220]/80 px-6 py-10 text-center backdrop-blur-md">
-              <h3 className="m-0 text-lg font-semibold text-amber-100">Start your collage in 2 quick steps</h3>
-              <div className="mx-auto mt-5 max-w-xl space-y-3 text-left">
-                <div className="flex items-start gap-3 rounded-xl border border-line/30 bg-white/5 px-4 py-3">
-                  <UploadCloud className="mt-0.5 h-4 w-4 text-amber-300" aria-hidden="true" />
-                  <p className="m-0 text-sm text-ink/90">
-                    <strong className="text-amber-100">Step 1:</strong> Upload photos in the right-side drawer.
-                  </p>
-                </div>
-                <div className="flex items-start gap-3 rounded-xl border border-line/30 bg-white/5 px-4 py-3">
-                  <MousePointerClick className="mt-0.5 h-4 w-4 text-amber-300" aria-hidden="true" />
-                  <p className="m-0 text-sm text-ink/90">
-                    <strong className="text-amber-100">Step 2:</strong> Click <strong>Generate Layout</strong> or drag uploaded images onto the canvas.
-                  </p>
-                </div>
+            <div className="flex min-h-[400px] items-center justify-center rounded-2xl border border-line/30 bg-[#0b1220]/80 backdrop-blur-md">
+              <div className="w-full px-8 py-12 text-center">
+                <input
+                  ref={uploadInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  multiple
+                  className="hidden"
+                  disabled={imagesAtLimit}
+                  onChange={(e) => {
+                    const files = Array.from(e.target.files ?? []);
+                    if (files.length > 0) void onUploadFileList(files);
+                    e.target.value = '';
+                  }}
+                />
+                <button
+                  type="button"
+                  disabled={imagesAtLimit}
+                  onClick={() => !imagesAtLimit && uploadInputRef.current?.click()}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    if (!imagesAtLimit) setUploadDragOver(true);
+                  }}
+                  onDragLeave={() => setUploadDragOver(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setUploadDragOver(false);
+                    if (imagesAtLimit) return;
+                    const files = Array.from(e.dataTransfer.files);
+                    if (files.length > 0) void onUploadFileList(files);
+                  }}
+                  className={`mx-auto flex w-full max-w-md flex-col items-center gap-4 rounded-2xl border-2 border-dashed px-8 py-14 transition select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70 ${
+                    imagesAtLimit
+                      ? 'cursor-not-allowed border-line/20 opacity-40'
+                      : uploadDragOver
+                        ? 'cursor-copy border-amber-400 bg-amber-400/10'
+                        : 'cursor-pointer border-amber-300/40 hover:border-amber-400/70 hover:bg-amber-400/5'
+                  }`}
+                  aria-label="Upload photos"
+                >
+                  <UploadCloud className={`h-14 w-14 ${uploadDragOver ? 'text-amber-400' : 'text-amber-300/60'}`} />
+                  <div className="text-center">
+                    <p className="text-base font-semibold text-ink/90">
+                      {imagesAtLimit ? `Limit reached (${MAX_IMAGES} photos)` : 'Drop photos here, or click to browse'}
+                    </p>
+                    {!imagesAtLimit && (
+                      <p className="mt-1 text-sm text-muted">PNG, JPEG, WebP · up to {MAX_IMAGES} photos</p>
+                    )}
+                  </div>
+                  {imagesCount > 0 && !imagesAtLimit && (
+                    <p className="text-xs text-amber-200/70">
+                      {imagesCount} photo{imagesCount !== 1 ? 's' : ''} ready — drag cards to canvas or click Generate Layout in the panel
+                    </p>
+                  )}
+                </button>
               </div>
-              <p className="mb-0 mt-4 flex items-center justify-center gap-1 text-xs font-semibold uppercase tracking-[0.08em] text-amber-200/80">
-                Drawer is on the right <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
-              </p>
             </div>
           ) : (
             <div className="space-y-8">
