@@ -137,6 +137,8 @@ interface ResizeSnapCandidate {
   guide?: ResizeSnapGuide;
 }
 
+const SNAP_DELTA_EPSILON_CM = 0.0001;
+
 interface ResizeAssistSnapInput {
   baseRect: { x: number; y: number; width: number; height: number };
   fixedHorizontal: 'left' | 'right';
@@ -249,13 +251,18 @@ export function getResizeAssistSnap({
     return currentBest;
   });
 
+  const seenGuideKeys = new Set<string>();
   const guides = candidates
-    .filter((candidate) => candidate.guide && Math.abs(candidate.deltaCm - best.deltaCm) < 0.0001)
+    .filter((candidate) => candidate.guide && Math.abs(candidate.deltaCm - best.deltaCm) < SNAP_DELTA_EPSILON_CM)
     .map((candidate) => candidate.guide!)
-    .filter((guide, index, all) =>
-      all.findIndex((entry) => entry.orientation === guide.orientation && entry.value === guide.value && entry.kind === guide.kind) ===
-      index,
-    );
+    .filter((guide) => {
+      const key = `${guide.orientation}:${guide.kind}:${guide.value}`;
+      if (seenGuideKeys.has(key)) {
+        return false;
+      }
+      seenGuideKeys.add(key);
+      return true;
+    });
 
   return {
     deltaCm: best.deltaCm,
