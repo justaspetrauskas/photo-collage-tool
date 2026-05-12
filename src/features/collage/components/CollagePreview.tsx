@@ -186,7 +186,7 @@ export function CollagePreview({
   const [uploadDragOver, setUploadDragOver] = useState(false);
   const hasSelection = Boolean(selectedImageId);
   const hasPlacedItems = pages.some((page) => page.items.length > 0);
-  const showOnboardingHints = !hasPlacedItems;
+  const showOnboardingHints = !hasPlacedItems && imagesCount === 0;
   const imagesAtLimit = imagesCount >= MAX_IMAGES;
 
   useEffect(() => {
