@@ -90,6 +90,8 @@ export function CollageEditor() {
                 onDragOver={editor.onCanvasDragOver}
                 onDrop={editor.onCanvasDrop}
                 onDragLeave={editor.onCanvasDragLeave}
+                onUploadFileList={editor.uploadFileList}
+                imagesCount={editor.images.length}
               />
             </main>
           </div>

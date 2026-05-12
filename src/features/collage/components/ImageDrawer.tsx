@@ -441,7 +441,9 @@ export function ImageDrawer({ images, pages, onUpdateImage, onDeleteImage, onRem
                   <p className="text-xs font-medium text-muted">Limit reached ({MAX_IMAGES} photos)</p>
                 ) : (
                   <>
-                    <p className="text-xs font-medium text-ink/80">Upload Photos</p>
+                    <p className="text-xs font-medium text-ink/80">
+                      {images.length === 0 ? 'Upload Photos' : 'Add More Photos'}
+                    </p>
                     <p className="text-xs text-muted mt-0.5">Click or drag &amp; drop · {MAX_IMAGES - images.length} remaining</p>
                   </>
                 )}
