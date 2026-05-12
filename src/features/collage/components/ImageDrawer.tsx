@@ -1,7 +1,7 @@
 import { Field } from '../../../shared/ui/Field';
 import type { ImageItem, PageLayout } from '../model/types';
 import { CANVAS_CM } from '../model/constants';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, type DragEvent } from 'react';
 import { ChevronRight, ChevronLeft, UploadCloud, ChevronDown, ChevronUp, Trash2, X, Sparkles, Loader2, GripVertical } from 'lucide-react';
 import { type EnhancePreset, ENHANCE_PRESET_LABELS } from '../lib/openaiImageEdit';
 import { useEditorUIStore } from '../store/editorUIStore';
@@ -70,6 +70,19 @@ function ImageDrawerCard({ image, isUsed, isSelected, isEnhancing, cardRef, onSe
     },
   );
 
+  const handleDragStart = (e: DragEvent) => {
+    e.stopPropagation();
+    onBeginManualPlacementDrag(image.id);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('application/x-collage-image-id', image.id);
+    e.dataTransfer.setData('text/plain', image.id);
+  };
+
+  const handleDragEnd = (e: DragEvent) => {
+    e.stopPropagation();
+    onEndManualPlacementDrag();
+  };
+
   return (
     <div
       ref={cardRef}
@@ -83,15 +96,9 @@ function ImageDrawerCard({ image, isUsed, isSelected, isEnhancing, cardRef, onSe
       <div
         ref={imgContainerRef}
         className="relative overflow-hidden bg-[#000000]/40 aspect-square select-none"
-        draggable
-        onDragStart={(e) => {
-          e.stopPropagation();
-          onBeginManualPlacementDrag(image.id);
-          e.dataTransfer.effectAllowed = 'move';
-          e.dataTransfer.setData('application/x-collage-image-id', image.id);
-          e.dataTransfer.setData('text/plain', image.id);
-        }}
-        onDragEnd={(e) => { e.stopPropagation(); onEndManualPlacementDrag(); }}
+        draggable={zoom === 1}
+        onDragStart={zoom === 1 ? handleDragStart : undefined}
+        onDragEnd={zoom === 1 ? handleDragEnd : undefined}
       >
         <img
           {...bind()}
@@ -114,7 +121,19 @@ function ImageDrawerCard({ image, isUsed, isSelected, isEnhancing, cardRef, onSe
             {zoom.toFixed(1)}×
           </div>
         )}
-        {showPlacementHints && !isUsed && (
+        {zoom > 1 ? (
+          <div
+            draggable
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+            className="absolute left-2 top-2 z-10 flex cursor-grab items-center gap-1 rounded-md border border-amber-300/60 bg-black/70 px-2 py-1 text-[10px] font-semibold text-amber-100 active:cursor-grabbing"
+            title="Drag to canvas"
+            aria-label="Drag to canvas"
+          >
+            <GripVertical className="h-3 w-3" aria-hidden="true" />
+            Drag to canvas
+          </div>
+        ) : showPlacementHints && !isUsed ? (
           <div
             className="absolute left-2 top-2 flex items-center gap-1 rounded-md border border-amber-300/35 bg-black/55 px-2 py-1 text-[10px] font-semibold text-amber-100"
             title="Drag to canvas"
@@ -124,7 +143,7 @@ function ImageDrawerCard({ image, isUsed, isSelected, isEnhancing, cardRef, onSe
             <GripVertical className="h-3 w-3" aria-hidden="true" />
             Drag to canvas
           </div>
-        )}
+        ) : null}
         {hasEnhancedVersion && (
           <div className="absolute bottom-2 right-2 flex items-center rounded-md border border-white/20 bg-black/50 text-[10px] text-white overflow-hidden">
             <button
