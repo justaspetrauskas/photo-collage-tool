@@ -1,5 +1,5 @@
 import { clampOffsets } from './layoutEngine';
-import type { ImageItem, InteractionMode, PageLayout, PreviewTransform } from './types';
+import type { ImageItem, InteractionMode, PageLayout, PreviewTransform, ResizeSnapGuide } from './types';
 
 interface PreviewOptions {
   gridEnabled?: boolean;
@@ -19,6 +19,8 @@ interface PreviewOptions {
     currentRect: { x: number; y: number; width: number; height: number };
     intent: 'expand' | 'shrink' | 'steady';
   } | null;
+  resizeSnapGuides?: ResizeSnapGuide[];
+  resizeSnapActive?: boolean;
   swapAnimation?: {
     startedTick: number;
     durationTicks: number;
@@ -39,6 +41,10 @@ interface PreviewOptions {
 const RESIZE_ACCENT_STROKE = 'rgba(252, 197, 21, 0.92)';
 const RESIZE_ACCENT_FILL = 'rgba(252, 197, 21, 0.12)';
 const RESIZE_ACCENT_FILL_STRONG = 'rgba(252, 197, 21, 0.22)';
+
+export function shouldShowResizeSnapGuides(options: Pick<PreviewOptions, 'interactionMode' | 'dragActive' | 'resizeSnapGuides'>): boolean {
+  return options.interactionMode === 'resize' && Boolean(options.dragActive) && (options.resizeSnapGuides?.length ?? 0) > 0;
+}
 
 function drawPlacementPreview(
   ctx: CanvasRenderingContext2D,
@@ -357,6 +363,53 @@ function drawResizeFeedback(
   ctx.fillRect(labelX, labelY, labelWidth, labelHeight);
   ctx.fillStyle = '#fff7db';
   ctx.fillText(label, labelX + labelPaddingX, labelY + labelHeight / 2 + 0.4 / scale);
+  ctx.restore();
+}
+
+function drawResizeSnapGuides(
+  ctx: CanvasRenderingContext2D,
+  page: PageLayout,
+  guides: ResizeSnapGuide[],
+  scale: number,
+  snapActive: boolean,
+): void {
+  if (!guides.length) {
+    return;
+  }
+
+  ctx.save();
+  ctx.lineWidth = (snapActive ? 2.2 : 1.5) / scale;
+  ctx.strokeStyle = snapActive ? 'rgba(45, 212, 191, 0.95)' : 'rgba(45, 212, 191, 0.7)';
+  ctx.setLineDash([8 / scale, 6 / scale]);
+
+  for (const guide of guides) {
+    ctx.beginPath();
+    if (guide.orientation === 'vertical') {
+      ctx.moveTo(guide.value, 0);
+      ctx.lineTo(guide.value, page.heightPx);
+    } else {
+      ctx.moveTo(0, guide.value);
+      ctx.lineTo(page.widthPx, guide.value);
+    }
+    ctx.stroke();
+  }
+
+  if (snapActive) {
+    const label = 'Snap';
+    const padX = 6 / scale;
+    const height = 18 / scale;
+    const x = 8 / scale;
+    const y = 8 / scale;
+    ctx.setLineDash([]);
+    ctx.font = `600 ${11 / scale}px ui-sans-serif, system-ui, sans-serif`;
+    const width = ctx.measureText(label).width + padX * 2;
+    ctx.fillStyle = 'rgba(13, 49, 44, 0.9)';
+    ctx.fillRect(x, y, width, height);
+    ctx.fillStyle = '#a7f3d0';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, x + padX, y + height / 2);
+  }
+
   ctx.restore();
 }
 
@@ -735,6 +788,16 @@ export function drawPagePreview(
 
     if (options.resizeFeedback && options.interactionMode === 'resize') {
       drawResizeFeedback(ctx, options.resizeFeedback, scale);
+    }
+
+    if (shouldShowResizeSnapGuides(options)) {
+      drawResizeSnapGuides(
+        ctx,
+        page,
+        options.resizeSnapGuides ?? [],
+        scale,
+        options.resizeSnapActive ?? false,
+      );
     }
 
     if (options.moveOutsideCanvas && options.interactionMode === 'move') {

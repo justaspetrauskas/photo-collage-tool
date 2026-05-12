@@ -6,6 +6,7 @@
 import { CANVAS_SIZE_PX } from '../model/constants';
 import { rectanglesOverlap, isInsideCanvas } from '../../../shared/math';
 import type { PositionedImage } from '../model/types';
+import type { ResizeSnapGuide } from '../model/types';
 
 export interface ResizeInteractionState {
   imageId: string;
@@ -127,4 +128,138 @@ export function resolvePushLayout(
  */
 export function getPreferredPushAxis(deltaX: number, deltaY: number): 'x' | 'y' {
   return Math.abs(deltaX) >= Math.abs(deltaY) ? 'x' : 'y';
+}
+
+interface ResizeSnapCandidate {
+  deltaCm: number;
+  distancePx: number;
+  priority: number;
+  guide?: ResizeSnapGuide;
+}
+
+interface ResizeAssistSnapInput {
+  baseRect: { x: number; y: number; width: number; height: number };
+  fixedHorizontal: 'left' | 'right';
+  fixedVertical: 'top' | 'bottom';
+  requestedDeltaCm: number;
+  neighbors: PositionedImage[];
+  pxPerCm: number;
+  thresholdPx: number;
+  includeDimensionMatches?: boolean;
+}
+
+export interface ResizeAssistSnapResult {
+  deltaCm: number;
+  snapped: boolean;
+  guides: ResizeSnapGuide[];
+}
+
+function pushCandidate(
+  candidates: ResizeSnapCandidate[],
+  requestedDeltaCm: number,
+  pxPerCm: number,
+  thresholdPx: number,
+  candidate: Omit<ResizeSnapCandidate, 'distancePx'>,
+): void {
+  const distancePx = Math.abs((candidate.deltaCm - requestedDeltaCm) * pxPerCm);
+  if (distancePx > thresholdPx) {
+    return;
+  }
+  candidates.push({
+    ...candidate,
+    distancePx,
+  });
+}
+
+export function getResizeAssistSnap({
+  baseRect,
+  fixedHorizontal,
+  fixedVertical,
+  requestedDeltaCm,
+  neighbors,
+  pxPerCm,
+  thresholdPx,
+  includeDimensionMatches = true,
+}: ResizeAssistSnapInput): ResizeAssistSnapResult {
+  if (pxPerCm <= 0 || thresholdPx <= 0 || neighbors.length === 0) {
+    return { deltaCm: requestedDeltaCm, snapped: false, guides: [] };
+  }
+
+  const movingVerticalEdge = fixedHorizontal === 'left' ? baseRect.x + baseRect.width : baseRect.x;
+  const movingHorizontalEdge = fixedVertical === 'top' ? baseRect.y + baseRect.height : baseRect.y;
+  const candidates: ResizeSnapCandidate[] = [];
+
+  for (const neighbor of neighbors) {
+    const edgeTargetsX = [neighbor.x, neighbor.x + neighbor.width];
+    for (const targetX of edgeTargetsX) {
+      const deltaPx = fixedHorizontal === 'left' ? targetX - movingVerticalEdge : movingVerticalEdge - targetX;
+      pushCandidate(candidates, requestedDeltaCm, pxPerCm, thresholdPx, {
+        deltaCm: deltaPx / pxPerCm,
+        priority: 0,
+        guide: { orientation: 'vertical', value: targetX, kind: 'edge' },
+      });
+    }
+
+    const edgeTargetsY = [neighbor.y, neighbor.y + neighbor.height];
+    for (const targetY of edgeTargetsY) {
+      const deltaPx = fixedVertical === 'top' ? targetY - movingHorizontalEdge : movingHorizontalEdge - targetY;
+      pushCandidate(candidates, requestedDeltaCm, pxPerCm, thresholdPx, {
+        deltaCm: deltaPx / pxPerCm,
+        priority: 0,
+        guide: { orientation: 'horizontal', value: targetY, kind: 'edge' },
+      });
+    }
+
+    if (!includeDimensionMatches) {
+      continue;
+    }
+
+    pushCandidate(candidates, requestedDeltaCm, pxPerCm, thresholdPx, {
+      deltaCm: (neighbor.width - baseRect.width) / pxPerCm,
+      priority: 1,
+      guide: {
+        orientation: 'vertical',
+        value: fixedHorizontal === 'left' ? baseRect.x + neighbor.width : baseRect.x + baseRect.width - neighbor.width,
+        kind: 'size',
+      },
+    });
+
+    pushCandidate(candidates, requestedDeltaCm, pxPerCm, thresholdPx, {
+      deltaCm: (neighbor.height - baseRect.height) / pxPerCm,
+      priority: 1,
+      guide: {
+        orientation: 'horizontal',
+        value: fixedVertical === 'top' ? baseRect.y + neighbor.height : baseRect.y + baseRect.height - neighbor.height,
+        kind: 'size',
+      },
+    });
+  }
+
+  if (!candidates.length) {
+    return { deltaCm: requestedDeltaCm, snapped: false, guides: [] };
+  }
+
+  const best = candidates.reduce((currentBest, candidate) => {
+    if (candidate.distancePx < currentBest.distancePx) {
+      return candidate;
+    }
+    if (candidate.distancePx === currentBest.distancePx && candidate.priority < currentBest.priority) {
+      return candidate;
+    }
+    return currentBest;
+  });
+
+  const guides = candidates
+    .filter((candidate) => candidate.guide && Math.abs(candidate.deltaCm - best.deltaCm) < 0.0001)
+    .map((candidate) => candidate.guide!)
+    .filter((guide, index, all) =>
+      all.findIndex((entry) => entry.orientation === guide.orientation && entry.value === guide.value && entry.kind === guide.kind) ===
+      index,
+    );
+
+  return {
+    deltaCm: best.deltaCm,
+    snapped: true,
+    guides,
+  };
 }

@@ -21,6 +21,7 @@ import type {
   PersistedImageItem,
   PositionedImage,
   PreviewTransform,
+  ResizeSnapGuide,
 } from '../model/types';
 import { blobToImage, fileToImage } from '../lib/fileToImage';
 import { clearSnapshot, loadSnapshot, saveSnapshot } from '../lib/persistence';
@@ -46,6 +47,7 @@ import {
   resolvePushLayout,
   getPreferredPushAxis,
   canSwapImages,
+  getResizeAssistSnap,
 } from '../interactions';
 import { computeSmartDropSize, resolveSmartFraming } from '../lib/editorLayoutUtils';
 
@@ -148,6 +150,8 @@ export function useCollageEditor() {
   const [moveCollisionImageIds, setMoveCollisionImageIds] = useState<string[]>([]);
   const [resizeCurrentDimensions, setResizeCurrentDimensions] = useState<{ width: number; height: number } | null>(null);
   const [resizeFeedback, setResizeFeedback] = useState<ResizeFeedback | null>(null);
+  const [resizeSnapGuides, setResizeSnapGuides] = useState<ResizeSnapGuide[]>([]);
+  const [resizeSnapActive, setResizeSnapActive] = useState<boolean>(false);
   const [enhancingImageIds, setEnhancingImageIds] = useState<Set<string>>(new Set());
   const [canvasPlacementPreview, setCanvasPlacementPreview] = useState<CanvasPlacementPreview | null>(null);
   const [manualPlacementDragImageId, setManualPlacementDragImageId] = useState<string | null>(null);
@@ -216,6 +220,8 @@ export function useCollageEditor() {
         moveCollisionImageIds,
         resizeCurrentDimensions,
         resizeFeedback,
+        resizeSnapGuides,
+        resizeSnapActive,
         swapAnimation,
         replacePointer,
         swapTargetInvalid,
@@ -231,7 +237,7 @@ export function useCollageEditor() {
         previewRenderFrameRef.current = null;
       }
     };
-  }, [selectedPage, itemById, imageById, gridModeEnabled, selectedImageId, hoveredImageId, drawerSelectedImageId, imageZoomLevels, imagePanOffsets, interactionMode, dragActive, moveOutsideCanvas, moveCollisionImageIds, resizeCurrentDimensions, resizeFeedback, swapAnimation, replacePointer, swapTargetInvalid, canvasPlacementPreview, replaceAnimationTick]);
+  }, [selectedPage, itemById, imageById, gridModeEnabled, selectedImageId, hoveredImageId, drawerSelectedImageId, imageZoomLevels, imagePanOffsets, interactionMode, dragActive, moveOutsideCanvas, moveCollisionImageIds, resizeCurrentDimensions, resizeFeedback, resizeSnapGuides, resizeSnapActive, swapAnimation, replacePointer, swapTargetInvalid, canvasPlacementPreview, replaceAnimationTick]);
 
 function rectanglesTouchOrOverlap(
   a: { x: number; y: number; width: number; height: number },
@@ -836,6 +842,8 @@ function rectanglesTouchOrOverlap(
       setHoveredImageId(null);
       setDragActive(false);
       setShowSelectionControls(false);
+      setResizeSnapGuides([]);
+      setResizeSnapActive(false);
       return;
     }
 
@@ -846,6 +854,8 @@ function rectanglesTouchOrOverlap(
       setHoveredImageId(null);
       setDragActive(false);
       setShowSelectionControls(false);
+      setResizeSnapGuides([]);
+      setResizeSnapActive(false);
       return;
     }
 
@@ -922,9 +932,15 @@ function rectanglesTouchOrOverlap(
       currentRect: { x: hit.x, y: hit.y, width: hit.width, height: hit.height },
       intent: 'steady',
     });
+    setResizeSnapGuides([]);
+    setResizeSnapActive(false);
   }
 
-  function handleCanvasInteractionMove(clientX: number, clientY: number): void {
+  function handleCanvasInteractionMove(
+    clientX: number,
+    clientY: number,
+    modifiers: { shiftKey: boolean } = { shiftKey: false },
+  ): void {
     const point = pagePointFromClient(clientX, clientY);
     if (!point) {
       if (!dragActive && hoveredImageId !== null) {
@@ -1065,13 +1081,6 @@ function rectanglesTouchOrOverlap(
       const dominantDeltaCm = Math.abs(deltaXCm) >= Math.abs(deltaYCm) ? deltaXCm : deltaYCm;
       const resizeIntent = dominantDeltaCm > 0.01 ? 'expand' : dominantDeltaCm < -0.01 ? 'shrink' : 'steady';
 
-      const requestedMaxWidthCm = drag.baseMaxWidthCm + dominantDeltaCm;
-      const requestedMaxHeightCm = drag.baseMaxHeightCm + dominantDeltaCm;
-
-      const clampedRequestedMaxWidthCm = Math.max(minImageCm, requestedMaxWidthCm);
-      const clampedRequestedMaxHeightCm = Math.max(minImageCm, requestedMaxHeightCm);
-      setResizeLimitNotice('');
-
       const targetImage = itemById.get(drag.imageId);
       if (!targetImage) {
         return;
@@ -1087,6 +1096,27 @@ function rectanglesTouchOrOverlap(
       if (itemIndex === -1) {
         return;
       }
+
+      const snappingEnabled = !modifiers.shiftKey;
+      const assist = getResizeAssistSnap({
+        baseRect: { x: drag.baseX, y: drag.baseY, width: drag.baseWidth, height: drag.baseHeight },
+        fixedHorizontal: drag.fixedHorizontal,
+        fixedVertical: drag.fixedVertical,
+        requestedDeltaCm: dominantDeltaCm,
+        neighbors: page.items.filter((item) => item.imageId !== drag.imageId),
+        pxPerCm: cmToPx(1),
+        thresholdPx: 12,
+        includeDimensionMatches: true,
+      });
+      const effectiveDeltaCm = snappingEnabled && assist.snapped ? assist.deltaCm : dominantDeltaCm;
+      const requestedMaxWidthCm = drag.baseMaxWidthCm + effectiveDeltaCm;
+      const requestedMaxHeightCm = drag.baseMaxHeightCm + effectiveDeltaCm;
+
+      const clampedRequestedMaxWidthCm = Math.max(minImageCm, requestedMaxWidthCm);
+      const clampedRequestedMaxHeightCm = Math.max(minImageCm, requestedMaxHeightCm);
+      setResizeSnapGuides(snappingEnabled ? assist.guides : []);
+      setResizeSnapActive(snappingEnabled && assist.snapped);
+      setResizeLimitNotice('');
 
       const anchorX = drag.fixedHorizontal === 'left' ? drag.baseX : drag.baseX + drag.baseWidth;
       const anchorY = drag.fixedVertical === 'top' ? drag.baseY : drag.baseY + drag.baseHeight;
@@ -1328,6 +1358,8 @@ function rectanglesTouchOrOverlap(
     setMoveCollisionImageIds([]);
     setResizeCurrentDimensions(null);
     setResizeFeedback(null);
+    setResizeSnapGuides([]);
+    setResizeSnapActive(false);
   }
 
   function onCanvasMouseLeave(): void {
@@ -1340,7 +1372,7 @@ function rectanglesTouchOrOverlap(
   }
 
   function onCanvasMouseMove(event: MouseEvent<HTMLCanvasElement>): void {
-    handleCanvasInteractionMove(event.clientX, event.clientY);
+    handleCanvasInteractionMove(event.clientX, event.clientY, { shiftKey: event.shiftKey });
   }
 
   function onCanvasMouseUp(event?: MouseEvent<HTMLCanvasElement>): void {
@@ -1361,7 +1393,7 @@ function rectanglesTouchOrOverlap(
       return;
     }
     event.preventDefault();
-    handleCanvasInteractionMove(event.clientX, event.clientY);
+    handleCanvasInteractionMove(event.clientX, event.clientY, { shiftKey: event.shiftKey });
   }
 
   function onCanvasPointerUp(event: PointerEvent<HTMLCanvasElement>): void {
@@ -1733,6 +1765,8 @@ function rectanglesTouchOrOverlap(
     setError('');
     setResizeCurrentDimensions(null);
     setResizeFeedback(null);
+    setResizeSnapGuides([]);
+    setResizeSnapActive(false);
     setSwapAnimation(null);
     setReplacePointer(null);
     setSwapTargetInvalid(false);
@@ -1863,6 +1897,8 @@ function rectanglesTouchOrOverlap(
     setError('');
     setResizeCurrentDimensions(null);
     setResizeFeedback(null);
+    setResizeSnapGuides([]);
+    setResizeSnapActive(false);
     setSwapAnimation(null);
     setReplacePointer(null);
     setSwapTargetInvalid(false);
