@@ -1246,10 +1246,7 @@ function rectanglesTouchOrOverlap(
       typeof clientX === 'number' &&
       typeof clientY === 'number'
     ) {
-      const point =
-        typeof clientX === 'number' && typeof clientY === 'number'
-          ? pagePointFromClient(clientX, clientY)
-          : null;
+      const point = pagePointFromClient(clientX, clientY);
       const target = point
         ? findClosestSwapTarget(point, dragStateRef.current.sourceImageId)
         : null;

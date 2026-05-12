@@ -167,7 +167,7 @@ function ImageDrawerCard({ image, isUsed, isSelected, isEnhancing, cardRef, onSe
       </div>
 
       {/* Info & Controls */}
-         <div className="space-y-2 p-3.5">
+         <div className="p-3.5 space-y-2">
         <div>
           <p className="text-xs font-semibold text-white truncate">{image.fileName}</p>
           <p className="text-xs text-muted">{image.naturalWidth} × {image.naturalHeight}</p>
@@ -345,7 +345,7 @@ export function ImageDrawer({ images, pages, onUpdateImage, onDeleteImage, onRem
 
   return (
     <div
-      className={`fixed bottom-0 left-0 right-0 z-40 flex overflow-hidden border-t border-line/20 bg-[#0a0f1a]/95 shadow-[0_-8px_24px_rgba(0,0,0,0.4)] backdrop-blur-sm transition-all duration-300 md:bottom-0 md:left-auto md:right-0 md:top-0 md:border-l md:border-t-0 md:shadow-[-8px_0_24px_rgba(0,0,0,0.4)] ${
+      className={`fixed bottom-0 left-0 right-0 z-40 flex overflow-hidden border-t border-line/20 bg-[#0a0f1a]/95 shadow-[0_-8px_24px_rgba(0,0,0,0.4)] backdrop-blur-sm transition-all duration-300 md:left-auto md:top-0 md:border-l md:border-t-0 md:shadow-[-8px_0_24px_rgba(0,0,0,0.4)] ${
         collapsed
           ? 'h-14 md:h-auto md:w-12'
           : 'h-[72dvh] md:h-auto md:w-[28vw] md:min-w-[360px]'
