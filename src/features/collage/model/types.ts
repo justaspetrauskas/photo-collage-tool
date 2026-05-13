@@ -71,6 +71,12 @@ export interface PreviewTransform {
   offsetY: number;
 }
 
+export interface ResizeSnapGuide {
+  orientation: 'vertical' | 'horizontal';
+  value: number;
+  kind: 'edge' | 'size';
+}
+
 export interface LoadedImage {
   blob: Blob;
   src: string;
