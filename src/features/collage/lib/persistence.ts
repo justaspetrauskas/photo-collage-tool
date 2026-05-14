@@ -1,6 +1,6 @@
 import { openDB } from 'idb';
 import type { PersistedEditorSnapshot } from '../model/types';
-import { DEFAULT_FRAME_MM, DEFAULT_MAX_IMAGE_CM, DEFAULT_MIN_IMAGE_CM } from '../model/constants';
+import { DEFAULT_CANVAS_PRESET_ID, DEFAULT_FRAME_MM, DEFAULT_MAX_IMAGE_CM, DEFAULT_MIN_IMAGE_CM } from '../model/constants';
 
 const DB_NAME = 'photo-collage-tool';
 const DB_VERSION = 1;
@@ -66,6 +66,9 @@ function normalizeSnapshot(raw: unknown): PersistedEditorSnapshot | null {
       interactionMode,
       assistedPageCount: typeof settings.assistedPageCount === 'number' ? settings.assistedPageCount : 1,
       selectedPageIndex: typeof settings.selectedPageIndex === 'number' ? settings.selectedPageIndex : 0,
+      canvasPresetId: typeof settings.canvasPresetId === 'string' ? settings.canvasPresetId : DEFAULT_CANVAS_PRESET_ID,
+      customCanvasWidthCm: typeof settings.customCanvasWidthCm === 'number' ? settings.customCanvasWidthCm : 20,
+      customCanvasHeightCm: typeof settings.customCanvasHeightCm === 'number' ? settings.customCanvasHeightCm : 20,
     },
     pages: snapshot.pages,
     overflowImageIds: Array.isArray(snapshot.overflowImageIds) ? snapshot.overflowImageIds : [],

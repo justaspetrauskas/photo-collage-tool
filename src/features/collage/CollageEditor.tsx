@@ -140,6 +140,14 @@ export function CollageEditor() {
             onCreateNextPage: editor.onCreateNextPage,
             onStartFromScratch: editor.startFromScratch,
             onClearEverything: editor.clearEverything,
+            canvasSize: {
+              canvasPresetId: editor.canvasPresetId,
+              setCanvasPresetId: editor.setCanvasPresetId,
+              customCanvasWidthCm: editor.customCanvasWidthCm,
+              setCustomCanvasWidthCm: editor.setCustomCanvasWidthCm,
+              customCanvasHeightCm: editor.customCanvasHeightCm,
+              setCustomCanvasHeightCm: editor.setCustomCanvasHeightCm,
+            },
           }}
         />
       </div>

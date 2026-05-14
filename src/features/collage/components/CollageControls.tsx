@@ -4,6 +4,7 @@ import type { PaginationMode } from '../model/types';
 import { CANVAS_CM } from '../model/constants';
 import { Check, Zap, Download, RotateCcw, Trash2, Plus } from 'lucide-react';
 import { useState } from 'react';
+import { CanvasSizeDropdown, type CanvasSizeDropdownProps } from './CanvasSizeDropdown';
 
 type ExportFormat = 'png' | 'jpg' | 'jpeg';
 
@@ -29,6 +30,7 @@ export interface CollageControlsProps {
   onCreateNextPage: () => void;
   onStartFromScratch: () => void;
   onClearEverything: () => void;
+  canvasSize: CanvasSizeDropdownProps;
 }
 
 export function CollageControls({
@@ -53,11 +55,15 @@ export function CollageControls({
   onCreateNextPage,
   onStartFromScratch,
   onClearEverything,
+  canvasSize,
 }: CollageControlsProps) {
   const [exportFormat, setExportFormat] = useState<ExportFormat>('png');
 
   return (
       <div className="space-y-2">
+      {/* Canvas Size */}
+      <CanvasSizeDropdown {...canvasSize} />
+
       {/* Sizing Controls - Compact Grid */}
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               <Field label="Max (cm)" className="mb-0">

@@ -3,8 +3,6 @@
  * Handles all move-related logic and state management
  */
 
-import { CANVAS_SIZE_PX } from '../model/constants';
-
 export interface MoveInteractionState {
   imageId: string;
   startX: number;
@@ -47,9 +45,11 @@ export function getCanvasSnapPosition(
   y: number,
   width: number,
   height: number,
+  canvasWidthPx: number,
+  canvasHeightPx: number = canvasWidthPx,
 ): { x: number; y: number; snapped: boolean } {
-  const maxX = CANVAS_SIZE_PX - width;
-  const maxY = CANVAS_SIZE_PX - height;
+  const maxX = canvasWidthPx - width;
+  const maxY = canvasHeightPx - height;
 
   if (maxX <= 0 || maxY <= 0) {
     return { x, y, snapped: false };
@@ -117,6 +117,8 @@ export function calculateOutsideRatio(
   y: number,
   width: number,
   height: number,
+  canvasWidthPx: number,
+  canvasHeightPx: number = canvasWidthPx,
 ): number {
   const totalArea = width * height;
   if (totalArea <= 0) {
@@ -125,8 +127,8 @@ export function calculateOutsideRatio(
 
   const insideLeft = Math.max(0, x);
   const insideTop = Math.max(0, y);
-  const insideRight = Math.min(CANVAS_SIZE_PX, x + width);
-  const insideBottom = Math.min(CANVAS_SIZE_PX, y + height);
+  const insideRight = Math.min(canvasWidthPx, x + width);
+  const insideBottom = Math.min(canvasHeightPx, y + height);
   const insideWidth = Math.max(0, insideRight - insideLeft);
   const insideHeight = Math.max(0, insideBottom - insideTop);
   const insideArea = insideWidth * insideHeight;
@@ -139,8 +141,10 @@ export function isPositionOutsideCanvas(
   y: number,
   width: number,
   height: number,
+  canvasWidthPx: number,
+  canvasHeightPx: number = canvasWidthPx,
 ): boolean {
-  const outsideRatio = calculateOutsideRatio(x, y, width, height);
+  const outsideRatio = calculateOutsideRatio(x, y, width, height, canvasWidthPx, canvasHeightPx);
 
   // Remove-on-drop should only trigger when a meaningful portion is outside.
   return outsideRatio >= 0.05;
