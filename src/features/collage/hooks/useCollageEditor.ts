@@ -564,6 +564,10 @@ function rectanglesTouchOrOverlap(
   }, [frameMm]);
 
   // When canvas preset or custom dimensions change, update page sizes and regenerate layout.
+  // `images` and `pages` are intentionally omitted from deps to avoid an infinite loop:
+  // the effect updates pages, which would re-trigger the effect if pages were a dep.
+  // This mirrors the same pattern used in the frameMm effect above.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!isHydrated) {
       return;
@@ -582,7 +586,7 @@ function rectanglesTouchOrOverlap(
     if (images.length && pages.some((page) => page.items.length > 0)) {
       regenerateLayout(resolveMaxPages(), true, images);
     }
-  }, [canvasPresetId, customCanvasWidthCm, customCanvasHeightCm]);
+  }, [canvasPresetId, customCanvasWidthCm, customCanvasHeightCm]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function focusImageOnCanvas(imageId: string): void {
     setSelectedImageId(imageId);

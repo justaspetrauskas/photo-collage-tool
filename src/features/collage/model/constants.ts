@@ -46,7 +46,7 @@ export const CANVAS_SIZE_PRESETS: CanvasSizePreset[] = [
   { id: 'a5', label: 'A5 (14.8×21 cm)', widthCm: 14.8, heightCm: 21 },
   { id: 'a4', label: 'A4 (21×29.7 cm)', widthCm: 21, heightCm: 29.7 },
   { id: 'a3', label: 'A3 (29.7×42 cm)', widthCm: 29.7, heightCm: 42 },
-  { id: 'us_letter', label: 'US Letter (21.6×27.9 cm)', widthCm: 21.59, heightCm: 27.94 },
+  { id: 'us_letter', label: 'US Letter (21.6×27.9 cm)', widthCm: 21.6, heightCm: 27.9 },
   { id: 'custom', label: 'Custom', widthCm: 20, heightCm: 20 },
 ];
 
