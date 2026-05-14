@@ -13,14 +13,14 @@ describe('move interaction', () => {
     const maxX = CANVAS_SIZE_PX - width;
     const maxY = CANVAS_SIZE_PX - height;
 
-    expect(getCanvasSnapPosition(6, 25, width, height)).toEqual({ x: 0, y: 25, snapped: true });
-    expect(getCanvasSnapPosition(maxX - 7, maxY - 8, width, height)).toEqual({ x: maxX, y: maxY - 8, snapped: true });
+    expect(getCanvasSnapPosition(6, 25, width, height, CANVAS_SIZE_PX, CANVAS_SIZE_PX)).toEqual({ x: 0, y: 25, snapped: true });
+    expect(getCanvasSnapPosition(maxX - 7, maxY - 8, width, height, CANVAS_SIZE_PX, CANVAS_SIZE_PX)).toEqual({ x: maxX, y: maxY - 8, snapped: true });
   });
 
   it('reports outside ratio and outside threshold', () => {
-    const ratio = calculateOutsideRatio(-10, 0, 100, 100);
+    const ratio = calculateOutsideRatio(-10, 0, 100, 100, CANVAS_SIZE_PX, CANVAS_SIZE_PX);
     expect(ratio).toBeGreaterThan(0);
-    expect(isPositionOutsideCanvas(-2, 0, 100, 100)).toBe(false);
-    expect(isPositionOutsideCanvas(-20, 0, 100, 100)).toBe(true);
+    expect(isPositionOutsideCanvas(-2, 0, 100, 100, CANVAS_SIZE_PX, CANVAS_SIZE_PX)).toBe(false);
+    expect(isPositionOutsideCanvas(-20, 0, 100, 100, CANVAS_SIZE_PX, CANVAS_SIZE_PX)).toBe(true);
   });
 });

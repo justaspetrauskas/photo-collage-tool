@@ -3,7 +3,6 @@
  * Handles all resize-related logic and state management
  */
 
-import { CANVAS_SIZE_PX } from '../model/constants';
 import { rectanglesOverlap, isInsideCanvas } from '../../../shared/math';
 import type { PositionedImage } from '../model/types';
 import type { ResizeSnapGuide } from '../model/types';
@@ -39,6 +38,8 @@ export function resolvePushLayout(
   anchorIndex: number,
   anchorRect: { x: number; y: number; width: number; height: number },
   preferredAxis: 'x' | 'y',
+  canvasWidthPx: number,
+  canvasHeightPx: number = canvasWidthPx,
 ): PositionedImage[] | null {
   const nextItems = items.map((item, index) => {
     if (index !== anchorIndex) {
@@ -85,8 +86,8 @@ export function resolvePushLayout(
         y: other.y + pushDown,
       };
 
-      const rightFits = isInsideCanvas(rightCandidate, CANVAS_SIZE_PX);
-      const downFits = isInsideCanvas(downCandidate, CANVAS_SIZE_PX);
+      const rightFits = isInsideCanvas(rightCandidate, canvasWidthPx, canvasHeightPx);
+      const downFits = isInsideCanvas(downCandidate, canvasWidthPx, canvasHeightPx);
 
       if (!rightFits && !downFits) {
         return null;
@@ -109,7 +110,7 @@ export function resolvePushLayout(
 
   // Verify final state has no overlaps and all items fit
   for (let i = 0; i < nextItems.length; i += 1) {
-    if (!isInsideCanvas(nextItems[i], CANVAS_SIZE_PX)) {
+    if (!isInsideCanvas(nextItems[i], canvasWidthPx, canvasHeightPx)) {
       return null;
     }
 

@@ -19,8 +19,8 @@ export function rectanglesOverlap(a: Rectangle, b: Rectangle): boolean {
 /**
  * Check if a rectangle is completely inside canvas bounds
  */
-export function isInsideCanvas(rect: Rectangle, canvasSize: number): boolean {
-  return rect.x >= 0 && rect.y >= 0 && rect.x + rect.width <= canvasSize && rect.y + rect.height <= canvasSize;
+export function isInsideCanvas(rect: Rectangle, canvasWidth: number, canvasHeight: number = canvasWidth): boolean {
+  return rect.x >= 0 && rect.y >= 0 && rect.x + rect.width <= canvasWidth && rect.y + rect.height <= canvasHeight;
 }
 
 /**

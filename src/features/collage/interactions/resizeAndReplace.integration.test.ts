@@ -22,8 +22,9 @@ function makeItem(imageId: string, x: number, y: number, width: number, height: 
 
 describe('resize + replace interaction integration behavior', () => {
   it('pushes neighboring items during resize when there is space', () => {
+    const canvasPx = 400;
     const items = [makeItem('a', 0, 0, 100, 100), makeItem('b', 100, 0, 100, 100)];
-    const resolved = resolvePushLayout(items, 0, { x: 0, y: 0, width: 140, height: 100 }, 'x');
+    const resolved = resolvePushLayout(items, 0, { x: 0, y: 0, width: 140, height: 100 }, 'x', canvasPx, canvasPx);
     expect(resolved).not.toBeNull();
     expect(resolved?.[1].x).toBeGreaterThanOrEqual(140);
   });

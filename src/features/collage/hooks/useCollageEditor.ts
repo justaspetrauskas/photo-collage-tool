@@ -2,13 +2,15 @@ import { enhanceImageWithAI, type EnhanceOptions } from '../lib/openaiImageEdit'
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, DragEvent, MouseEvent, PointerEvent } from 'react';
 import {
-  CANVAS_SIZE_PX,
+  CANVAS_SIZE_PRESETS,
+  DEFAULT_CANVAS_PRESET_ID,
   DEFAULT_FRAME_MM,
   DEFAULT_GRID_SPACING_CM,
   DEFAULT_MAX_IMAGE_CM,
   DEFAULT_MIN_IMAGE_CM,
   cmToPx,
   mmToPx,
+  type CanvasSizePresetId,
 } from '../model/constants';
 import { buildPaginatedLayout, clampOffsets } from '../model/layoutEngine';
 import { drawPagePreview, renderPageToExportCanvas } from '../model/renderEngine';
@@ -156,6 +158,9 @@ export function useCollageEditor() {
   const [canvasPlacementPreview, setCanvasPlacementPreview] = useState<CanvasPlacementPreview | null>(null);
   const [manualPlacementDragImageId, setManualPlacementDragImageId] = useState<string | null>(null);
   const [showSelectionControls, setShowSelectionControls] = useState<boolean>(false);
+  const [canvasPresetId, setCanvasPresetId] = useState<CanvasSizePresetId>(DEFAULT_CANVAS_PRESET_ID);
+  const [customCanvasWidthCm, setCustomCanvasWidthCm] = useState<number>(20);
+  const [customCanvasHeightCm, setCustomCanvasHeightCm] = useState<number>(20);
 
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const previewTransformRef = useRef<PreviewTransform | null>(null);
@@ -167,6 +172,16 @@ export function useCollageEditor() {
   const imageById = useMemo(() => new Map(images.map((img) => [img.id, img.bitmap])), [images]);
   const selectedPage = pages[selectedPageIndex] ?? null;
   const selectedImage = selectedImageId ? itemById.get(selectedImageId) ?? null : null;
+
+  function resolveCanvasDimensions(): { widthPx: number; heightPx: number } {
+    const preset = CANVAS_SIZE_PRESETS.find((p) => p.id === canvasPresetId) ?? CANVAS_SIZE_PRESETS[0];
+    const widthCm = canvasPresetId === 'custom' ? customCanvasWidthCm : preset.widthCm;
+    const heightCm = canvasPresetId === 'custom' ? customCanvasHeightCm : preset.heightCm;
+    return {
+      widthPx: Math.round(cmToPx(widthCm)),
+      heightPx: Math.round(cmToPx(heightCm)),
+    };
+  }
 
   const shouldRunAnimationLoop = (dragActive && interactionMode === 'replace') || Boolean(swapAnimation);
 
@@ -333,6 +348,19 @@ function rectanglesTouchOrOverlap(
         setInteractionMode(snapshot.settings.interactionMode ?? 'crop');
         setAssistedPageCount(snapshot.settings.assistedPageCount);
         setSelectedPageIndex(snapshot.settings.selectedPageIndex);
+        if (snapshot.settings.canvasPresetId) {
+          const VALID_PRESET_IDS = CANVAS_SIZE_PRESETS.map((p) => p.id);
+          const id = snapshot.settings.canvasPresetId;
+          if (VALID_PRESET_IDS.includes(id as CanvasSizePresetId)) {
+            setCanvasPresetId(id as CanvasSizePresetId);
+          }
+        }
+        if (typeof snapshot.settings.customCanvasWidthCm === 'number') {
+          setCustomCanvasWidthCm(snapshot.settings.customCanvasWidthCm);
+        }
+        if (typeof snapshot.settings.customCanvasHeightCm === 'number') {
+          setCustomCanvasHeightCm(snapshot.settings.customCanvasHeightCm);
+        }
         // Explicitly clear selected image state on hydration to avoid stale selections
         setSelectedImageId(null);
         setShowSelectionControls(false);
@@ -407,6 +435,9 @@ function rectanglesTouchOrOverlap(
           interactionMode,
           assistedPageCount,
           selectedPageIndex,
+          canvasPresetId,
+          customCanvasWidthCm,
+          customCanvasHeightCm,
         },
         pages,
         overflowImageIds,
@@ -433,6 +464,9 @@ function rectanglesTouchOrOverlap(
     overflowImageIds,
     oversizedImageIds,
     images,
+    canvasPresetId,
+    customCanvasWidthCm,
+    customCanvasHeightCm,
   ]);
 
   useEffect(() => {
@@ -488,8 +522,7 @@ function rectanglesTouchOrOverlap(
           : [
               {
                 id: randomId('page'),
-                widthPx: CANVAS_SIZE_PX,
-                heightPx: CANVAS_SIZE_PX,
+                ...resolveCanvasDimensions(),
                 items: [],
               },
             ],
@@ -529,6 +562,30 @@ function rectanglesTouchOrOverlap(
       regenerateLayout(resolveMaxPages(), true, nextImages);
     }
   }, [frameMm]);
+
+  // When canvas preset or custom dimensions change, update page sizes and regenerate layout.
+  // `images` and `pages` are intentionally omitted from deps to avoid an infinite loop:
+  // the effect updates pages, which would re-trigger the effect if pages were a dep.
+  // This mirrors the same pattern used in the frameMm effect above.
+  useEffect(() => {
+    if (!isHydrated) {
+      return;
+    }
+
+    const { widthPx, heightPx } = resolveCanvasDimensions();
+
+    setPages((currentPages) =>
+      currentPages.map((page) => ({
+        ...page,
+        widthPx,
+        heightPx,
+      })),
+    );
+
+    if (images.length && pages.some((page) => page.items.length > 0)) {
+      regenerateLayout(resolveMaxPages(), true, images);
+    }
+  }, [canvasPresetId, customCanvasWidthCm, customCanvasHeightCm]);
 
   function focusImageOnCanvas(imageId: string): void {
     setSelectedImageId(imageId);
@@ -632,9 +689,10 @@ function rectanglesTouchOrOverlap(
       return;
     }
 
+    const { widthPx: canvasWidthPx, heightPx: canvasHeightPx } = resolveCanvasDimensions();
     const result = buildPaginatedLayout(sourceImages, {
-      canvasWidthPx: CANVAS_SIZE_PX,
-      canvasHeightPx: CANVAS_SIZE_PX,
+      canvasWidthPx,
+      canvasHeightPx,
       allowUpscale: true,
       maxPages: paginationMode === 'auto' ? Number.POSITIVE_INFINITY : overrideAssistedCount,
       minContentWidthPx: cmToPx(minImageCm),
@@ -1019,13 +1077,15 @@ function rectanglesTouchOrOverlap(
       }
 
       const item = page.items[itemIndex];
-      const snapResult = getCanvasSnapPosition(position.x, position.y, item.width, item.height);
+      const snapResult = getCanvasSnapPosition(position.x, position.y, item.width, item.height, page.widthPx, page.heightPx);
       const effectivePosition = snapResult.snapped ? { x: snapResult.x, y: snapResult.y } : position;
       const isOutsideCanvas = isPositionOutsideCanvas(
         effectivePosition.x,
         effectivePosition.y,
         item.width,
         item.height,
+        page.widthPx,
+        page.heightPx,
       );
 
       setMoveOutsideCanvas(isOutsideCanvas);
@@ -1140,7 +1200,7 @@ function rectanglesTouchOrOverlap(
           height: nextHeight,
         };
 
-        const pushedItems = resolvePushLayout(page.items, itemIndex, candidate, preferredPushAxis);
+        const pushedItems = resolvePushLayout(page.items, itemIndex, candidate, preferredPushAxis, page.widthPx, page.heightPx);
         if (!pushedItems) {
           return null;
         }
@@ -1307,11 +1367,11 @@ function rectanglesTouchOrOverlap(
         const itemIndex = page.items.findIndex((item) => item.imageId === imageId);
         if (itemIndex >= 0) {
           const item = page.items[itemIndex];
-          const outsideRatio = calculateOutsideRatio(item.x, item.y, item.width, item.height);
+          const outsideRatio = calculateOutsideRatio(item.x, item.y, item.width, item.height, page.widthPx, page.heightPx);
 
           if (outsideRatio > 0 && outsideRatio < 0.05) {
-            const snappedX = Math.max(0, Math.min(CANVAS_SIZE_PX - item.width, item.x));
-            const snappedY = Math.max(0, Math.min(CANVAS_SIZE_PX - item.height, item.y));
+            const snappedX = Math.max(0, Math.min(page.widthPx - item.width, item.x));
+            const snappedY = Math.max(0, Math.min(page.heightPx - item.height, item.y));
 
             if (snappedX !== item.x || snappedY !== item.y) {
               setPages((currentPages) =>
@@ -1747,8 +1807,7 @@ function rectanglesTouchOrOverlap(
         ? [
             {
               id: randomId('page'),
-              widthPx: CANVAS_SIZE_PX,
-              heightPx: CANVAS_SIZE_PX,
+              ...resolveCanvasDimensions(),
               items: [],
             },
           ]
@@ -1905,6 +1964,9 @@ function rectanglesTouchOrOverlap(
     dragStateRef.current = null;
     setMoveOutsideCanvas(false);
     setMoveCollisionImageIds([]);
+    setCanvasPresetId(DEFAULT_CANVAS_PRESET_ID);
+    setCustomCanvasWidthCm(20);
+    setCustomCanvasHeightCm(20);
     void clearSnapshot();
   }
 
@@ -1941,6 +2003,12 @@ function rectanglesTouchOrOverlap(
     error,
     showSelectionControls,
     previewCanvasRef,
+    canvasPresetId,
+    setCanvasPresetId,
+    customCanvasWidthCm,
+    setCustomCanvasWidthCm,
+    customCanvasHeightCm,
+    setCustomCanvasHeightCm,
     onUploadFiles,
     uploadFileList,
     applyGlobalSettings,

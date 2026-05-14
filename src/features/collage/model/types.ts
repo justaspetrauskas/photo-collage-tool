@@ -117,6 +117,9 @@ export interface PersistedEditorSnapshot {
     interactionMode: InteractionMode;
     assistedPageCount: number;
     selectedPageIndex: number;
+    canvasPresetId?: string;
+    customCanvasWidthCm?: number;
+    customCanvasHeightCm?: number;
   };
   pages: PageLayout[];
   overflowImageIds: string[];
