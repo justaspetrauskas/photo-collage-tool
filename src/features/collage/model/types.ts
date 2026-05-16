@@ -1,3 +1,5 @@
+import type { LayoutPresetId } from './constants';
+
 export type PaginationMode = 'auto' | 'assisted';
 export type InteractionMode = 'crop' | 'resize' | 'replace' | 'move';
 
@@ -117,6 +119,7 @@ export interface PersistedEditorSnapshot {
     interactionMode: InteractionMode;
     assistedPageCount: number;
     selectedPageIndex: number;
+    layoutPresetId?: LayoutPresetId;
     canvasPresetId?: string;
     customCanvasWidthCm?: number;
     customCanvasHeightCm?: number;

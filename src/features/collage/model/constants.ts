@@ -51,3 +51,34 @@ export const CANVAS_SIZE_PRESETS: CanvasSizePreset[] = [
 ];
 
 export const DEFAULT_CANVAS_PRESET_ID: CanvasSizePresetId = 'square_20';
+
+export type LayoutPresetId =
+  | 'auto'
+  | 'grid_2x2'
+  | 'grid_3x3'
+  | 'mosaic'
+  | 'story_strip'
+  | 'hero_supporting';
+
+export type LayoutPresetStrategy = 'auto' | 'grid' | 'mosaic' | 'story_strip' | 'hero_supporting';
+
+export interface LayoutPreset {
+  id: LayoutPresetId;
+  label: string;
+  minPhotos: number;
+  maxPhotos: number;
+  strategy: LayoutPresetStrategy;
+  /** Optional normalized slot weights used by preset strategies. */
+  slotRatios?: number[];
+}
+
+export const LAYOUT_PRESETS: LayoutPreset[] = [
+  { id: 'auto', label: 'Auto (Default)', minPhotos: 1, maxPhotos: 99, strategy: 'auto' },
+  { id: 'grid_2x2', label: 'Grid 2×2', minPhotos: 2, maxPhotos: 4, strategy: 'grid', slotRatios: [1, 1, 1, 1] },
+  { id: 'grid_3x3', label: 'Grid 3×3', minPhotos: 4, maxPhotos: 9, strategy: 'grid', slotRatios: [1, 1, 1, 1, 1, 1, 1, 1, 1] },
+  { id: 'mosaic', label: 'Mosaic', minPhotos: 3, maxPhotos: 5, strategy: 'mosaic', slotRatios: [2.2, 1, 1, 1, 1] },
+  { id: 'story_strip', label: 'Story Strip', minPhotos: 3, maxPhotos: 4, strategy: 'story_strip', slotRatios: [1, 1, 1, 1] },
+  { id: 'hero_supporting', label: 'Hero + Supporting', minPhotos: 3, maxPhotos: 5, strategy: 'hero_supporting', slotRatios: [2.4, 1, 1, 1, 1] },
+];
+
+export const DEFAULT_LAYOUT_PRESET_ID: LayoutPresetId = 'auto';
