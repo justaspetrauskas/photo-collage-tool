@@ -1820,13 +1820,18 @@ function rectanglesTouchOrOverlap(
       return;
     }
 
-    const current = itemById.get(selectedImageId);
-    if (!current) {
+    const currentImage = itemById.get(selectedImageId);
+    if (!currentImage) {
       return;
     }
 
-    const nextMaxWidthCm = Math.max(minImageCm, current.maxWidthCm * scaleFactor);
-    const nextMaxHeightCm = Math.max(minImageCm, current.maxHeightCm * scaleFactor);
+    const currentPlacement =
+      pages.flatMap((page) => page.items).find((item) => item.imageId === selectedImageId) ?? null;
+    const pxPerCm = cmToPx(1);
+    const currentWidthCm = currentPlacement ? currentPlacement.width / pxPerCm : currentImage.maxWidthCm;
+    const currentHeightCm = currentPlacement ? currentPlacement.height / pxPerCm : currentImage.maxHeightCm;
+    const nextMaxWidthCm = Math.max(minImageCm, currentWidthCm * scaleFactor);
+    const nextMaxHeightCm = Math.max(minImageCm, currentHeightCm * scaleFactor);
 
     const nextImages = images.map((image) => (image.id === selectedImageId ? {
       ...image,
@@ -1923,6 +1928,8 @@ function rectanglesTouchOrOverlap(
         : [],
     );
     setSelectedImageId(null);
+    setHoveredImageId(null);
+    setDrawerSelectedImageId(null);
     setShowSelectionControls(false);
     setDragActive(false);
     setAssistedPageCount(1);
@@ -1938,7 +1945,10 @@ function rectanglesTouchOrOverlap(
     setSwapAnimation(null);
     setReplacePointer(null);
     setSwapTargetInvalid(false);
+    setCanvasPlacementPreview(null);
+    setManualPlacementDragImageId(null);
     dragStateRef.current = null;
+    setMoveOutsideCanvas(false);
     setMoveCollisionImageIds([]);
   }
 
@@ -2026,12 +2036,42 @@ function rectanglesTouchOrOverlap(
     setPages((prev) =>
       prev.map((page) => ({ ...page, items: page.items.filter((item) => item.imageId !== imageId) })),
     );
+    setOverflowImageIds((prev) => prev.filter((id) => id !== imageId));
+    setOversizedImageIds((prev) => prev.filter((id) => id !== imageId));
+    if (selectedImageId === imageId) {
+      setSelectedImageId(null);
+      setHoveredImageId(null);
+      setShowSelectionControls(false);
+      setResizeCurrentDimensions(null);
+      setResizeFeedback(null);
+      setResizeSnapGuides([]);
+      setResizeSnapActive(false);
+      setResizeLimitNotice('');
+      setMoveOutsideCanvas(false);
+      setMoveCollisionImageIds([]);
+    }
+    if (drawerSelectedImageId === imageId) {
+      setDrawerSelectedImageId(null);
+    }
   }
 
   function removeFromCanvas(imageId: string): void {
     setPages((prev) =>
       prev.map((page) => ({ ...page, items: page.items.filter((item) => item.imageId !== imageId) })),
     );
+    setOverflowImageIds((prev) => prev.filter((id) => id !== imageId));
+    if (selectedImageId === imageId) {
+      setSelectedImageId(null);
+      setHoveredImageId(null);
+      setShowSelectionControls(false);
+      setResizeCurrentDimensions(null);
+      setResizeFeedback(null);
+      setResizeSnapGuides([]);
+      setResizeSnapActive(false);
+      setResizeLimitNotice('');
+      setMoveOutsideCanvas(false);
+      setMoveCollisionImageIds([]);
+    }
   }
 
   function clearEverything(): void {
