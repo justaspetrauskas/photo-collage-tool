@@ -59,7 +59,7 @@ function Accordion({
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className="border-b border-line/20">
+    <div className="border-b border-line/30">
       <button
         type="button"
         className="flex w-full items-center justify-between px-4 py-3 text-xs font-semibold uppercase tracking-[0.08em] text-muted hover:bg-white/5 focus-visible:outline-none"
@@ -68,7 +68,11 @@ function Accordion({
         <span>{title}</span>
         {open ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
       </button>
-      {open && <div className="px-4 pb-4">{children}</div>}
+      {open && (
+        <div className="mx-2 mb-2 rounded-xl bg-white/[0.03] px-3 py-3">
+          {children}
+        </div>
+      )}
     </div>
   );
 }
@@ -239,7 +243,7 @@ function ImageInspector({
   return (
     <div className="flex flex-col">
       {/* Image header */}
-      <div className="flex items-center gap-3 border-b border-line/20 px-4 py-3">
+      <div className="flex items-center gap-3 border-b border-line/30 px-4 py-3">
         <img
           src={image.src}
           alt={image.fileName}
@@ -453,7 +457,7 @@ export function RightInspectorPanel({
   const panelContent = (
     <div className="scrollbar-themed flex h-full flex-col overflow-hidden">
       {/* Panel header */}
-      <div className="flex flex-shrink-0 items-center justify-between border-b border-line/20 px-3 py-2.5">
+      <div className="flex flex-shrink-0 items-center justify-between border-b border-line/30 px-3 py-2.5">
         {inspectorImage ? (
           <button
             className="flex items-center gap-1.5 text-xs text-muted hover:text-ink"
@@ -501,7 +505,7 @@ export function RightInspectorPanel({
   return (
     <>
       {/* Desktop: always-visible right panel */}
-      <aside className="scrollbar-themed hidden w-[272px] flex-shrink-0 border-l border-line/20 md:flex md:flex-col">
+      <aside className="scrollbar-themed hidden w-[272px] flex-shrink-0 border-l border-line/30 bg-[#0a0f1a]/95 backdrop-blur-md md:flex md:flex-col">
         {panelContent}
       </aside>
 
