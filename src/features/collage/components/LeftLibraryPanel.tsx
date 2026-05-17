@@ -1,8 +1,10 @@
 import { useState, useRef, type ChangeEvent, type DragEvent } from 'react';
+import { useDrag } from '@use-gesture/react';
 import { UploadCloud, Sparkles, Loader2, X, GripVertical } from 'lucide-react';
 import type { ImageItem, PageLayout } from '../model/types';
 import { type EnhancePreset, ENHANCE_PRESET_LABELS } from '../lib/openaiImageEdit';
 import { cn } from '../../../shared/lib/cn';
+import { useEditorUIStore } from '../store/editorUIStore';
 
 const MAX_IMAGES = 24;
 
@@ -53,6 +55,31 @@ function LibraryCard({
   onRemoveFromCanvas,
   onDelete,
 }: LibraryCardProps) {
+  const { imageZoomLevels, imagePanOffsets, setImagePan } = useEditorUIStore();
+  const thumbnailRef = useRef<HTMLDivElement>(null);
+  const zoom = imageZoomLevels[image.id] ?? 1;
+  const pan = imagePanOffsets[image.id] ?? { x: 0, y: 0 };
+
+  const bindPan = useDrag(
+    ({ offset: [x, y], event }) => {
+      event.stopPropagation();
+      const width = thumbnailRef.current?.clientWidth ?? 44;
+      const height = thumbnailRef.current?.clientHeight ?? 44;
+      const maxPanX = (width * (zoom - 1)) / 2;
+      const maxPanY = (height * (zoom - 1)) / 2;
+      setImagePan(
+        image.id,
+        Math.max(-maxPanX, Math.min(maxPanX, x)),
+        Math.max(-maxPanY, Math.min(maxPanY, y)),
+      );
+    },
+    {
+      from: () => [pan.x, pan.y],
+      enabled: zoom > 1,
+      preventDefault: true,
+    },
+  );
+
   const handleDragStart = (e: DragEvent) => {
     e.stopPropagation();
     onBeginDrag(image.id);
@@ -93,18 +120,30 @@ function LibraryCard({
       </div>
 
       {/* Thumbnail */}
-      <div className="relative h-11 w-11 flex-shrink-0 overflow-hidden rounded-md bg-black/40">
+      <div
+        ref={thumbnailRef}
+        className="relative h-11 w-11 flex-shrink-0 overflow-hidden rounded-md bg-black/40"
+      >
         {isEnhancing && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/50">
             <Loader2 className="h-4 w-4 animate-spin text-violet-400" />
           </div>
         )}
         <img
+          {...bindPan()}
           src={image.src}
           alt={image.fileName}
           draggable={false}
-          className="h-full w-full object-cover"
+          className={cn(
+            'h-full w-full object-cover',
+            zoom > 1 ? 'cursor-grab active:cursor-grabbing' : 'cursor-default',
+          )}
           loading="lazy"
+          style={{
+            transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`,
+            transformOrigin: 'center',
+            touchAction: 'none',
+          }}
         />
       </div>
 
