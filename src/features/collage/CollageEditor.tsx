@@ -1,13 +1,18 @@
 import { CollageHeader } from './components/CollageHeader';
-import { ImageDrawer } from './components/ImageDrawer';
+import { LeftLibraryPanel } from './components/LeftLibraryPanel';
+import { RightInspectorPanel } from './components/RightInspectorPanel';
 import { CollagePreview } from './components/CollagePreview';
 import { useCollageEditor } from './hooks/useCollageEditor';
+import { useEditorUIStore } from './store/editorUIStore';
 import { Button } from '../../shared/ui/Button';
 import { useEffect, useState } from 'react';
 
 export function CollageEditor() {
   const editor = useCollageEditor();
+  const { drawerSelectedImageId, setDrawerSelectedImageId } = useEditorUIStore();
   const [toastError, setToastError] = useState<string | null>(null);
+  const [isLibraryOpen, setIsLibraryOpen] = useState(false);
+  const [isInspectorOpen, setIsInspectorOpen] = useState(false);
 
   const selectedPage = editor.pages[editor.selectedPageIndex];
   const selectedImageOnPage = selectedPage?.items.find((item) => item.imageId === editor.selectedImageId);
@@ -29,9 +34,8 @@ export function CollageEditor() {
   }, [editor.error]);
 
   return (
-    <div className="relative flex h-[100dvh] w-screen flex-col pb-10">
-      <CollageHeader />
-
+    <div className="flex h-[100dvh] w-screen flex-col">
+      {/* Toast error */}
       {toastError ? (
         <div
           className="pointer-events-none fixed left-1/2 top-4 z-[70] -translate-x-1/2"
@@ -40,21 +44,61 @@ export function CollageEditor() {
         >
           <div className="pointer-events-auto flex max-w-[min(92vw,680px)] items-start gap-3 rounded-lg border border-danger/45 bg-[#2a0f12]/95 px-4 py-3 text-sm text-[#ffd9de] shadow-[0_14px_36px_rgba(0,0,0,0.42)] backdrop-blur-sm">
             <p className="m-0 leading-5">{toastError}</p>
-              <button
-                type="button"
-                className="rounded-md border border-danger/35 px-2 py-0.5 text-xs text-[#ffd9de] hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70"
-                onClick={() => setToastError(null)}
-              >
-                Dismiss
+            <button
+              type="button"
+              className="rounded-md border border-danger/35 px-2 py-0.5 text-xs text-[#ffd9de] hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70"
+              onClick={() => setToastError(null)}
+            >
+              Dismiss
             </button>
           </div>
         </div>
       ) : null}
 
-      <div className="flex flex-1 overflow-hidden">
-        {/* Main Content Area — canvas only */}
-        <div className="flex-1 overflow-y-auto relative" data-collage-scroll-root>
-          <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-16 bg-gradient-to-l from-[#000000]/20 via-transparent to-transparent z-20" />
+      {/* Top bar */}
+      <CollageHeader
+        hasUnplacedImages={hasUnplacedImages}
+        pagesCount={editor.pages.length}
+        overflowCount={editor.overflowImageIds.length}
+        paginationMode={editor.paginationMode}
+        onGenerateLayout={editor.onGenerateLayout}
+        onExportPages={editor.exportPages}
+        onCreateNextPage={editor.onCreateNextPage}
+        onStartFromScratch={editor.startFromScratch}
+        onClearEverything={editor.clearEverything}
+        onToggleLibrary={() => setIsLibraryOpen((v) => !v)}
+        onToggleInspector={() => setIsInspectorOpen((v) => !v)}
+      />
+
+      {/* 3-pane workspace */}
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+
+        {/* Left: Image Library */}
+        <LeftLibraryPanel
+          images={editor.images}
+          pages={editor.pages}
+          enhancingImageIds={editor.enhancingImageIds}
+          selectedImageId={drawerSelectedImageId ?? editor.selectedImageId}
+          onSelectImage={(id) => {
+            setDrawerSelectedImageId(id);
+            setIsInspectorOpen(true);
+          }}
+          onDeleteImage={editor.deleteImage}
+          onRemoveFromCanvas={editor.removeFromCanvas}
+          onEnhanceAll={(preset) => editor.enhanceAllImages({ preset })}
+          onBeginManualPlacementDrag={editor.onBeginManualPlacementDrag}
+          onEndManualPlacementDrag={editor.onEndManualPlacementDrag}
+          onUploadFiles={editor.onUploadFiles}
+          onUploadFileList={editor.uploadFileList}
+          onPlaceImageOnCanvas={(imageId) => editor.placeImageOnSelectedPage(imageId, false)}
+          onReplaceSelectedImage={(imageId) => editor.placeImageOnSelectedPage(imageId, true)}
+          isOpen={isLibraryOpen}
+          onClose={() => setIsLibraryOpen(false)}
+        />
+
+        {/* Center: Canvas */}
+        <div className="relative min-w-0 flex-1 overflow-y-auto" data-collage-scroll-root>
+          <div className="pointer-events-none absolute right-0 top-0 bottom-0 z-20 w-8 bg-gradient-to-l from-[#000000]/15 via-transparent to-transparent" />
           <div className="mx-auto w-full max-w-[1440px] px-4 pt-4 sm:px-8">
             <main>
               {editor.oversizedImageIds.length ? (
@@ -101,8 +145,9 @@ export function CollageEditor() {
           </div>
         </div>
 
-        {/* Drawer — scene controls + images + upload */}
-        <ImageDrawer
+        {/* Right: Inspector */}
+        <RightInspectorPanel
+          selectedImageId={editor.selectedImageId}
           images={editor.images}
           pages={editor.pages}
           onUpdateImage={editor.updateImage}
@@ -110,114 +155,100 @@ export function CollageEditor() {
           onRemoveFromCanvas={editor.removeFromCanvas}
           onEnhanceImage={(id, preset) => editor.enhanceImage(id, { preset })}
           onRestoreOriginalImage={editor.restoreOriginalImage}
-          onEnhanceAll={(preset) => editor.enhanceAllImages({ preset })}
           enhancingImageIds={editor.enhancingImageIds}
-          onBeginManualPlacementDrag={editor.onBeginManualPlacementDrag}
-          onEndManualPlacementDrag={editor.onEndManualPlacementDrag}
-          onUploadFiles={editor.onUploadFiles}
-          onUploadFileList={editor.uploadFileList}
           onPlaceImageOnCanvas={(imageId) => editor.placeImageOnSelectedPage(imageId, false)}
           onReplaceSelectedImage={(imageId) => editor.placeImageOnSelectedPage(imageId, true)}
-          sceneControls={{
-            maxImageCm: editor.maxImageCm,
-            setMaxImageCm: editor.setMaxImageCm,
-            minImageCm: editor.minImageCm,
-            setMinImageCm: editor.setMinImageCm,
-            frameMm: editor.frameMm,
-            setFrameMm: editor.setFrameMm,
-            gridModeEnabled: editor.gridModeEnabled,
-            setGridModeEnabled: editor.setGridModeEnabled,
-            autoCompactPages: editor.autoCompactPages,
-            setAutoCompactPages: editor.setAutoCompactPages,
-             paginationMode: editor.paginationMode,
-             setPaginationMode: editor.setPaginationMode,
-             layoutPresetId: editor.layoutPresetId,
-             setLayoutPresetId: editor.setLayoutPresetId,
-             recommendedLayoutHint: editor.recommendedLayoutHint,
-             pagesCount: editor.pages.length,
-             overflowCount: editor.overflowImageIds.length,
-             hasUnplacedImages,
-             onApplyGlobalSettings: editor.applyGlobalSettings,
-             onGenerateLayout: editor.onGenerateLayout,
-            onExportPages: editor.exportPages,
-            onCreateNextPage: editor.onCreateNextPage,
-            onStartFromScratch: editor.startFromScratch,
-            onClearEverything: editor.clearEverything,
-            canvasSize: {
-              canvasPresetId: editor.canvasPresetId,
-              setCanvasPresetId: editor.setCanvasPresetId,
-              customCanvasWidthCm: editor.customCanvasWidthCm,
-              setCustomCanvasWidthCm: editor.setCustomCanvasWidthCm,
-              customCanvasHeightCm: editor.customCanvasHeightCm,
-              setCustomCanvasHeightCm: editor.setCustomCanvasHeightCm,
-            },
+          maxImageCm={editor.maxImageCm}
+          setMaxImageCm={editor.setMaxImageCm}
+          minImageCm={editor.minImageCm}
+          setMinImageCm={editor.setMinImageCm}
+          frameMm={editor.frameMm}
+          setFrameMm={editor.setFrameMm}
+          gridModeEnabled={editor.gridModeEnabled}
+          setGridModeEnabled={editor.setGridModeEnabled}
+          autoCompactPages={editor.autoCompactPages}
+          setAutoCompactPages={editor.setAutoCompactPages}
+          paginationMode={editor.paginationMode}
+          setPaginationMode={editor.setPaginationMode}
+          layoutPresetId={editor.layoutPresetId}
+          setLayoutPresetId={editor.setLayoutPresetId}
+          recommendedLayoutHint={editor.recommendedLayoutHint}
+          onApplyGlobalSettings={editor.applyGlobalSettings}
+          canvasSize={{
+            canvasPresetId: editor.canvasPresetId,
+            setCanvasPresetId: editor.setCanvasPresetId,
+            customCanvasWidthCm: editor.customCanvasWidthCm,
+            setCustomCanvasWidthCm: editor.setCustomCanvasWidthCm,
+            customCanvasHeightCm: editor.customCanvasHeightCm,
+            setCustomCanvasHeightCm: editor.setCustomCanvasHeightCm,
           }}
+          isOpen={isInspectorOpen}
+          onClose={() => setIsInspectorOpen(false)}
         />
       </div>
 
-      {/* Selection Controls Overlay — fixed at root level */}
+      {/* Bottom: Contextual manipulation toolbar */}
       {hasSelection && editor.showSelectionControls && (
-        <div className="fixed bottom-3 left-1/2 z-50 w-[min(95vw,680px)] -translate-x-1/2 rounded-xl border border-line/30 bg-[#0a0f1a]/95 p-2.5 pb-[calc(0.625rem+env(safe-area-inset-bottom))] shadow-[0_14px_40px_rgba(0,0,0,0.45)] backdrop-blur-md">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex-shrink-0 border-t border-line/20 bg-[#0a0f1a]/95 px-3 py-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] backdrop-blur-md">
+          <div className="flex items-center gap-2">
             {/* Image info */}
             <div className="min-w-0 flex-1">
-              <p className="m-0 text-xs font-semibold uppercase tracking-[0.05em] text-amber-200/90 truncate">
+              <p className="m-0 truncate text-xs font-semibold uppercase tracking-[0.05em] text-amber-200/90">
                 {editor.selectedImage?.fileName ?? 'Selected'}
               </p>
-              <p className="m-0 text-[10px] text-muted/80 truncate">
+              <p className="m-0 truncate text-[10px] text-muted/80">
                 {selectedImageOnPage?.width && selectedImageOnPage?.height
                   ? `${(selectedImageOnPage.width / 28.346).toFixed(1)}×${(selectedImageOnPage.height / 28.346).toFixed(1)} cm`
                   : 'Dimensions: —'}
               </p>
             </div>
 
-            {/* Control buttons */}
-            <div className="flex flex-wrap items-center gap-1.5">
+            {/* Interaction mode buttons — all 4 modes including Crop */}
+            <div className="flex items-center gap-1">
+              <Button
+                variant={editor.interactionMode === 'crop' ? 'primary' : 'soft'}
+                onClick={() => editor.setInteractionMode('crop')}
+                className="min-h-9 px-2.5 py-1.5 text-sm whitespace-nowrap"
+              >
+                Crop
+              </Button>
               <Button
                 variant={editor.interactionMode === 'resize' ? 'primary' : 'soft'}
                 onClick={() => editor.setInteractionMode('resize')}
-                className="min-h-11 px-3 py-2 text-sm whitespace-nowrap"
+                className="min-h-9 px-2.5 py-1.5 text-sm whitespace-nowrap"
               >
                 Resize
               </Button>
               <Button
                 variant={editor.interactionMode === 'move' ? 'primary' : 'soft'}
                 onClick={() => editor.setInteractionMode('move')}
-                className="min-h-11 px-3 py-2 text-sm whitespace-nowrap"
+                className="min-h-9 px-2.5 py-1.5 text-sm whitespace-nowrap"
               >
                 Move
               </Button>
               <Button
                 variant={editor.interactionMode === 'replace' ? 'primary' : 'soft'}
                 onClick={() => editor.setInteractionMode('replace')}
-                className="min-h-11 px-3 py-2 text-sm whitespace-nowrap"
+                className="min-h-9 px-2.5 py-1.5 text-sm whitespace-nowrap"
               >
                 Swap
               </Button>
-              <details className="sm:hidden">
-                <summary className="flex min-h-11 cursor-pointer list-none items-center rounded-xl bg-accent-soft/70 px-3 py-2 text-sm font-semibold text-ink/90">
-                  More
-                </summary>
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  <Button variant="soft" onClick={() => editor.expandSelectedImage(1.1)} className="min-h-11 px-3 py-2 text-sm">+ Size</Button>
-                  <Button variant="soft" onClick={() => editor.expandSelectedImage(0.9)} className="min-h-11 px-3 py-2 text-sm">− Size</Button>
-                  <Button variant="soft" onClick={() => editor.setShowSelectionControls(false)} className="min-h-11 px-3 py-2 text-sm">Close</Button>
-                </div>
-              </details>
-              <div className="hidden items-center gap-1.5 sm:flex">
-                <Button variant="soft" onClick={() => editor.expandSelectedImage(1.1)} className="min-h-11 px-3 py-2 text-sm">+ Size</Button>
-                <Button variant="soft" onClick={() => editor.expandSelectedImage(0.9)} className="min-h-11 px-3 py-2 text-sm">− Size</Button>
-                <button
-                  onClick={() => editor.setShowSelectionControls(false)}
-                  className="flex min-h-11 min-w-11 flex-shrink-0 items-center justify-center rounded-full border border-muted/40 p-1.5 transition-colors hover:border-muted/60 hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70"
-                  aria-label="Close controls"
-                  title="Close (Esc)"
-                >
-                  <svg className="w-4 h-4 text-muted hover:text-ink" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
+            </div>
+
+            {/* Size nudge + close */}
+            <div className="flex items-center gap-1">
+              <Button variant="soft" onClick={() => editor.expandSelectedImage(1.1)} className="min-h-9 px-2.5 py-1.5 text-sm">+</Button>
+              <Button variant="soft" onClick={() => editor.expandSelectedImage(0.9)} className="min-h-9 px-2.5 py-1.5 text-sm">−</Button>
+              <button
+                onClick={() => editor.setShowSelectionControls(false)}
+                className="flex min-h-9 min-w-9 flex-shrink-0 items-center justify-center rounded-xl border border-muted/40 p-1 transition-colors hover:border-muted/60 hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70"
+                aria-label="Close controls"
+                title="Close (Esc)"
+              >
+                <svg className="h-4 w-4 text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
             </div>
           </div>
         </div>
