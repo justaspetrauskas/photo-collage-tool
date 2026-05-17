@@ -1,6 +1,13 @@
 import { openDB } from 'idb';
 import type { PersistedEditorSnapshot } from '../model/types';
-import { DEFAULT_CANVAS_PRESET_ID, DEFAULT_FRAME_MM, DEFAULT_MAX_IMAGE_CM, DEFAULT_MIN_IMAGE_CM } from '../model/constants';
+import {
+  DEFAULT_CANVAS_PRESET_ID,
+  DEFAULT_FRAME_MM,
+  DEFAULT_LAYOUT_PRESET_ID,
+  DEFAULT_MAX_IMAGE_CM,
+  DEFAULT_MIN_IMAGE_CM,
+  LAYOUT_PRESETS,
+} from '../model/constants';
 
 const DB_NAME = 'photo-collage-tool';
 const DB_VERSION = 1;
@@ -46,6 +53,11 @@ function normalizeSnapshot(raw: unknown): PersistedEditorSnapshot | null {
 
   const settings: Partial<PersistedEditorSnapshot['settings']> = snapshot.settings ?? {};
   const paginationMode = settings.paginationMode === 'assisted' ? 'assisted' : 'auto';
+  const validLayoutPresetIds = new Set(LAYOUT_PRESETS.map((preset) => preset.id));
+  const layoutPresetId =
+    typeof settings.layoutPresetId === 'string' && validLayoutPresetIds.has(settings.layoutPresetId)
+      ? settings.layoutPresetId
+      : DEFAULT_LAYOUT_PRESET_ID;
   const interactionMode =
     settings.interactionMode === 'resize' ||
     settings.interactionMode === 'replace' ||
@@ -66,6 +78,7 @@ function normalizeSnapshot(raw: unknown): PersistedEditorSnapshot | null {
       interactionMode,
       assistedPageCount: typeof settings.assistedPageCount === 'number' ? settings.assistedPageCount : 1,
       selectedPageIndex: typeof settings.selectedPageIndex === 'number' ? settings.selectedPageIndex : 0,
+      layoutPresetId,
       canvasPresetId: typeof settings.canvasPresetId === 'string' ? settings.canvasPresetId : DEFAULT_CANVAS_PRESET_ID,
       customCanvasWidthCm: typeof settings.customCanvasWidthCm === 'number' ? settings.customCanvasWidthCm : 20,
       customCanvasHeightCm: typeof settings.customCanvasHeightCm === 'number' ? settings.customCanvasHeightCm : 20,

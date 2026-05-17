@@ -6,9 +6,12 @@ import {
   DEFAULT_CANVAS_PRESET_ID,
   DEFAULT_FRAME_MM,
   DEFAULT_GRID_SPACING_CM,
+  DEFAULT_LAYOUT_PRESET_ID,
   DEFAULT_MAX_IMAGE_CM,
   DEFAULT_MIN_IMAGE_CM,
+  LAYOUT_PRESETS,
   cmToPx,
+  type LayoutPresetId,
   mmToPx,
   type CanvasSizePresetId,
 } from '../model/constants';
@@ -161,6 +164,7 @@ export function useCollageEditor() {
   const [canvasPresetId, setCanvasPresetId] = useState<CanvasSizePresetId>(DEFAULT_CANVAS_PRESET_ID);
   const [customCanvasWidthCm, setCustomCanvasWidthCm] = useState<number>(20);
   const [customCanvasHeightCm, setCustomCanvasHeightCm] = useState<number>(20);
+  const [layoutPresetId, setLayoutPresetId] = useState<LayoutPresetId>(DEFAULT_LAYOUT_PRESET_ID);
 
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const previewTransformRef = useRef<PreviewTransform | null>(null);
@@ -182,6 +186,52 @@ export function useCollageEditor() {
       heightPx: Math.round(cmToPx(heightCm)),
     };
   }
+
+  const recommendedLayoutHint = useMemo(() => {
+    if (!images.length) {
+      return '';
+    }
+
+    const preset = CANVAS_SIZE_PRESETS.find((p) => p.id === canvasPresetId) ?? CANVAS_SIZE_PRESETS[0];
+    const widthCm = canvasPresetId === 'custom' ? customCanvasWidthCm : preset.widthCm;
+    const heightCm = canvasPresetId === 'custom' ? customCanvasHeightCm : preset.heightCm;
+    const widthPx = Math.round(cmToPx(widthCm));
+    const heightPx = Math.round(cmToPx(heightCm));
+    const orientation = widthPx >= heightPx ? 'landscape' : 'portrait';
+    const portraitCount = images.filter((img) => img.naturalHeight >= img.naturalWidth).length;
+    const portraitShare = portraitCount / images.length;
+    const recommended = new Set<LayoutPresetId>();
+
+    if (images.length >= 8) {
+      recommended.add('grid_3x3');
+    } else if (images.length >= 4) {
+      recommended.add('grid_2x2');
+    }
+
+    if (images.length >= 3 && images.length <= 5) {
+      recommended.add('hero_supporting');
+      recommended.add('mosaic');
+    }
+
+    if (images.length >= 3 && images.length <= 4) {
+      recommended.add('story_strip');
+    }
+
+    if (orientation === 'portrait' && portraitShare > 0.6) {
+      recommended.add('story_strip');
+      recommended.add('mosaic');
+    }
+
+    if (recommended.size === 0) {
+      return '';
+    }
+
+    const labels = LAYOUT_PRESETS.filter((preset) => recommended.has(preset.id) && preset.id !== 'auto').map(
+      (preset) => preset.label,
+    );
+
+    return labels.length ? `Recommended: ${labels.join(' • ')}` : '';
+  }, [images, canvasPresetId, customCanvasWidthCm, customCanvasHeightCm]);
 
   const shouldRunAnimationLoop = (dragActive && interactionMode === 'replace') || Boolean(swapAnimation);
 
@@ -348,6 +398,12 @@ function rectanglesTouchOrOverlap(
         setInteractionMode(snapshot.settings.interactionMode ?? 'crop');
         setAssistedPageCount(snapshot.settings.assistedPageCount);
         setSelectedPageIndex(snapshot.settings.selectedPageIndex);
+        if (snapshot.settings.layoutPresetId) {
+          const validLayoutPresetIds = new Set(LAYOUT_PRESETS.map((preset) => preset.id));
+          if (validLayoutPresetIds.has(snapshot.settings.layoutPresetId)) {
+            setLayoutPresetId(snapshot.settings.layoutPresetId);
+          }
+        }
         if (snapshot.settings.canvasPresetId) {
           const VALID_PRESET_IDS = CANVAS_SIZE_PRESETS.map((p) => p.id);
           const id = snapshot.settings.canvasPresetId;
@@ -435,6 +491,7 @@ function rectanglesTouchOrOverlap(
           interactionMode,
           assistedPageCount,
           selectedPageIndex,
+          layoutPresetId,
           canvasPresetId,
           customCanvasWidthCm,
           customCanvasHeightCm,
@@ -460,6 +517,7 @@ function rectanglesTouchOrOverlap(
     interactionMode,
     assistedPageCount,
     selectedPageIndex,
+    layoutPresetId,
     pages,
     overflowImageIds,
     oversizedImageIds,
@@ -698,6 +756,7 @@ function rectanglesTouchOrOverlap(
       minContentWidthPx: cmToPx(minImageCm),
       minContentHeightPx: cmToPx(minImageCm),
       enableCompaction: autoCompactPages,
+      layoutPresetId,
     });
 
     const metricsById = result.imageMetrics;
@@ -1965,6 +2024,7 @@ function rectanglesTouchOrOverlap(
     setMoveOutsideCanvas(false);
     setMoveCollisionImageIds([]);
     setCanvasPresetId(DEFAULT_CANVAS_PRESET_ID);
+    setLayoutPresetId(DEFAULT_LAYOUT_PRESET_ID);
     setCustomCanvasWidthCm(20);
     setCustomCanvasHeightCm(20);
     void clearSnapshot();
@@ -2005,6 +2065,9 @@ function rectanglesTouchOrOverlap(
     previewCanvasRef,
     canvasPresetId,
     setCanvasPresetId,
+    layoutPresetId,
+    setLayoutPresetId,
+    recommendedLayoutHint,
     customCanvasWidthCm,
     setCustomCanvasWidthCm,
     customCanvasHeightCm,

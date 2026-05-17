@@ -1,7 +1,7 @@
 import { Button } from '../../../shared/ui/Button';
 import { Field } from '../../../shared/ui/Field';
 import type { PaginationMode } from '../model/types';
-import { CANVAS_CM } from '../model/constants';
+import { CANVAS_CM, LAYOUT_PRESETS, type LayoutPresetId } from '../model/constants';
 import { Check, Zap, Download, RotateCcw, Trash2, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { CanvasSizeDropdown, type CanvasSizeDropdownProps } from './CanvasSizeDropdown';
@@ -21,6 +21,9 @@ export interface CollageControlsProps {
   setAutoCompactPages: (value: boolean) => void;
   paginationMode: PaginationMode;
   setPaginationMode: (value: PaginationMode) => void;
+  layoutPresetId: LayoutPresetId;
+  setLayoutPresetId: (value: LayoutPresetId) => void;
+  recommendedLayoutHint: string;
   pagesCount: number;
   overflowCount: number;
   hasUnplacedImages: boolean;
@@ -46,6 +49,9 @@ export function CollageControls({
   setAutoCompactPages,
   paginationMode,
   setPaginationMode,
+  layoutPresetId,
+  setLayoutPresetId,
+  recommendedLayoutHint,
   pagesCount,
   overflowCount,
   hasUnplacedImages,
@@ -65,7 +71,7 @@ export function CollageControls({
       <CanvasSizeDropdown {...canvasSize} />
 
       {/* Sizing Controls - Compact Grid */}
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               <Field label="Max (cm)" className="mb-0">
                 <input
                   className="field-input min-h-11 py-1 text-sm"
@@ -112,7 +118,24 @@ export function CollageControls({
                   <option value="assisted">Assist</option>
                 </select>
               </Field>
-            </div>
+             </div>
+
+            <Field label="Layout Preset" className="mb-0">
+              <select
+                className="field-input min-h-11 py-1 text-sm"
+                value={layoutPresetId}
+                onChange={(event) => setLayoutPresetId(event.target.value as LayoutPresetId)}
+              >
+                {LAYOUT_PRESETS.map((preset) => (
+                  <option key={preset.id} value={preset.id}>
+                    {preset.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            {recommendedLayoutHint ? (
+              <p className="m-0 text-[11px] text-amber-200/80">{recommendedLayoutHint}</p>
+            ) : null}
 
             {/* Checkboxes - Compact Row */}
             <div className="flex flex-wrap gap-1.5">
