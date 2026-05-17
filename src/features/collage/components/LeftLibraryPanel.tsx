@@ -1,4 +1,4 @@
-import { useState, type ChangeEvent, type DragEvent } from 'react';
+import { useRef, useState, type ChangeEvent, type DragEvent } from 'react';
 import { UploadCloud, Sparkles, Loader2, X, GripVertical } from 'lucide-react';
 import type { ImageItem, PageLayout } from '../model/types';
 import { type EnhancePreset, ENHANCE_PRESET_LABELS } from '../lib/openaiImageEdit';
