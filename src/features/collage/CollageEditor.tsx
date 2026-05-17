@@ -172,6 +172,7 @@ export function CollageEditor() {
           overflowCount={editor.overflowImageIds.length}
           onApplyGlobalSettings={editor.applyGlobalSettings}
           onCreateNextPage={editor.onCreateNextPage}
+          onRemoveSelectedCanvas={editor.removeSelectedCanvas}
           onStartFromScratch={editor.startFromScratch}
           onClearEverything={editor.clearEverything}
           canvasSize={{

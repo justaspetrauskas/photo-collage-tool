@@ -826,7 +826,11 @@ function rectanglesTouchOrOverlap(
     regenerateLayout(nextCount, false, images, true);
   }
 
-  function pagePointFromClient(clientX: number, clientY: number): { x: number; y: number } | null {
+  function pagePointFromClient(
+    clientX: number,
+    clientY: number,
+    options: { allowOutsideCanvas?: boolean } = {},
+  ): { x: number; y: number } | null {
     const canvas = previewCanvasRef.current;
     const transform = previewTransformRef.current;
     if (!canvas || !transform || !selectedPage) {
@@ -840,7 +844,10 @@ function rectanglesTouchOrOverlap(
     const pageX = (x - transform.offsetX) / transform.scale;
     const pageY = (y - transform.offsetY) / transform.scale;
 
-    if (pageX < 0 || pageY < 0 || pageX > selectedPage.widthPx || pageY > selectedPage.heightPx) {
+    if (
+      !options.allowOutsideCanvas &&
+      (pageX < 0 || pageY < 0 || pageX > selectedPage.widthPx || pageY > selectedPage.heightPx)
+    ) {
       return null;
     }
 
@@ -1087,7 +1094,7 @@ function rectanglesTouchOrOverlap(
     clientY: number,
     modifiers: { shiftKey: boolean } = { shiftKey: false },
   ): void {
-    const point = pagePointFromClient(clientX, clientY);
+    const point = pagePointFromClient(clientX, clientY, { allowOutsideCanvas: dragActive });
     if (!point) {
       if (!dragActive && hoveredImageId !== null) {
         setHoveredImageId(null);
@@ -1827,11 +1834,19 @@ function rectanglesTouchOrOverlap(
 
     const currentPlacement =
       pages.flatMap((page) => page.items).find((item) => item.imageId === selectedImageId) ?? null;
+    if (!currentPlacement) {
+      return;
+    }
+
     const pxPerCm = cmToPx(1);
-    const currentWidthCm = currentPlacement ? currentPlacement.width / pxPerCm : currentImage.maxWidthCm;
-    const currentHeightCm = currentPlacement ? currentPlacement.height / pxPerCm : currentImage.maxHeightCm;
-    const nextMaxWidthCm = Math.max(minImageCm, currentWidthCm * scaleFactor);
-    const nextMaxHeightCm = Math.max(minImageCm, currentHeightCm * scaleFactor);
+    const currentWidthCm = currentPlacement.width / pxPerCm;
+    const currentHeightCm = currentPlacement.height / pxPerCm;
+    const requestedMaxWidthCm = currentWidthCm * scaleFactor;
+    const requestedMaxHeightCm = currentHeightCm * scaleFactor;
+    const canvasWidthCm = currentPlacement && selectedPage ? selectedPage.widthPx / pxPerCm : currentImage.maxWidthCm;
+    const canvasHeightCm = currentPlacement && selectedPage ? selectedPage.heightPx / pxPerCm : currentImage.maxHeightCm;
+    const nextMaxWidthCm = Math.max(minImageCm, Math.min(canvasWidthCm, requestedMaxWidthCm));
+    const nextMaxHeightCm = Math.max(minImageCm, Math.min(canvasHeightCm, requestedMaxHeightCm));
 
     const nextImages = images.map((image) => (image.id === selectedImageId ? {
       ...image,
@@ -1854,6 +1869,12 @@ function rectanglesTouchOrOverlap(
       return;
     }
 
+    const exportablePages = pages.filter((page) => page.items.length > 0);
+    if (!exportablePages.length) {
+      setError('No non-empty canvases to export.');
+      return;
+    }
+
     const normalizedFormat = format === 'png' ? 'png' : 'jpeg';
     const extension = format === 'jpg' ? 'jpg' : format;
     const mimeType = normalizedFormat === 'png' ? 'image/png' : 'image/jpeg';
@@ -1869,7 +1890,7 @@ function rectanglesTouchOrOverlap(
       const quality = normalizedFormat === 'png' ? undefined : 0.92;
 
       const pageFiles = await Promise.all(
-        pages.map(async (page, index) => {
+        exportablePages.map(async (page, index) => {
           const canvas = renderPageToExportCanvas(page, itemById, imageById, {
             imageZoomLevels,
             imagePanOffsets,
@@ -2074,6 +2095,50 @@ function rectanglesTouchOrOverlap(
     }
   }
 
+  function removeSelectedCanvas(): void {
+    if (!pages.length) {
+      return;
+    }
+
+    const targetPage = pages[selectedPageIndex];
+    if (!targetPage) {
+      return;
+    }
+
+    const hasItems = targetPage.items.length > 0;
+    if (hasItems) {
+      const confirmed = window.confirm(
+        `This canvas contains ${targetPage.items.length} image${targetPage.items.length === 1 ? '' : 's'}. Remove this canvas and its placed images?`,
+      );
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    const removedImageIds = new Set(targetPage.items.map((item) => item.imageId));
+    setPages((prev) => prev.filter((_, index) => index !== selectedPageIndex));
+    setSelectedPageIndex((current) => {
+      const nextCount = pages.length - 1;
+      if (nextCount <= 0) {
+        return 0;
+      }
+      return Math.max(0, Math.min(current, nextCount - 1));
+    });
+
+    if (selectedImageId && removedImageIds.has(selectedImageId)) {
+      setSelectedImageId(null);
+      setHoveredImageId(null);
+      setShowSelectionControls(false);
+      setResizeCurrentDimensions(null);
+      setResizeFeedback(null);
+      setResizeSnapGuides([]);
+      setResizeSnapActive(false);
+      setResizeLimitNotice('');
+      setMoveOutsideCanvas(false);
+      setMoveCollisionImageIds([]);
+    }
+  }
+
   function clearEverything(): void {
     const urlsToRevoke = new Set<string>();
     for (const image of images) {
@@ -2173,6 +2238,7 @@ function rectanglesTouchOrOverlap(
     updateImage,
     deleteImage,
     removeFromCanvas,
+    removeSelectedCanvas,
     enhanceImage,
     enhanceAllImages,
     restoreOriginalImage,

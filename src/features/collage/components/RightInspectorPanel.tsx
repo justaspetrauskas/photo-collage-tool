@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronDown, ChevronUp, Check, X, Sparkles, Loader2, Plus, RotateCcw, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, Check, X, Sparkles, Loader2, Plus, RotateCcw, Trash2, Minus } from 'lucide-react';
 import { Button } from '../../../shared/ui/Button';
 import { Field } from '../../../shared/ui/Field';
 import { CanvasSizeDropdown, type CanvasSizeDropdownProps } from './CanvasSizeDropdown';
@@ -28,6 +28,7 @@ interface LayoutControlsProps {
   overflowCount: number;
   onApplyGlobalSettings: () => void;
   onCreateNextPage: () => void;
+  onRemoveSelectedCanvas: () => void;
   onStartFromScratch: () => void;
   onClearEverything: () => void;
   canvasSize: CanvasSizeDropdownProps;
@@ -102,6 +103,7 @@ function LayoutInspector({
   overflowCount,
   onApplyGlobalSettings,
   onCreateNextPage,
+  onRemoveSelectedCanvas,
   onStartFromScratch,
   onClearEverything,
   canvasSize,
@@ -224,6 +226,14 @@ function LayoutInspector({
               Next Page ({overflowCount})
             </Button>
           ) : null}
+          <Button
+            variant="soft"
+            onClick={onRemoveSelectedCanvas}
+            className="flex min-h-10 w-full items-center justify-center gap-2 px-3 py-1.5 text-sm"
+          >
+            <Minus className="h-4 w-4" />
+            Remove Canvas
+          </Button>
           <Button
             variant="soft"
             onClick={onStartFromScratch}
