@@ -190,7 +190,7 @@ export function LeftLibraryPanel({
   const panelContent = (
     <div className="scrollbar-themed flex h-full flex-col overflow-hidden">
       {/* Panel header */}
-      <div className="flex flex-shrink-0 items-center justify-between border-b border-line/20 px-3 py-2.5">
+      <div className="flex flex-shrink-0 items-center justify-between border-b border-line/30 px-3 py-2.5">
         <div className="flex items-center gap-2">
           <span className="text-xs font-semibold uppercase tracking-[0.08em] text-muted">
             Library
@@ -224,7 +224,7 @@ export function LeftLibraryPanel({
 
       {/* Batch enhance row */}
       {showEnhanceRow && images.length > 0 && (
-        <div className="flex flex-shrink-0 items-center gap-2 border-b border-line/20 px-3 py-2">
+        <div className="flex flex-shrink-0 items-center gap-2 border-b border-line/30 px-3 py-2">
           <select
             className="field-input flex-1 py-1 text-xs"
             value={enhancePreset}
@@ -285,7 +285,7 @@ export function LeftLibraryPanel({
       </div>
 
       {/* Upload zone */}
-      <div className="flex-shrink-0 border-t border-line/20 p-3">
+      <div className="flex-shrink-0 border-t border-line/30 p-3">
         <input
           ref={uploadInputRef}
           type="file"
@@ -333,7 +333,7 @@ export function LeftLibraryPanel({
   return (
     <>
       {/* Desktop: always-visible left panel */}
-      <aside className="scrollbar-themed hidden w-[240px] flex-shrink-0 border-r border-line/20 md:flex md:flex-col">
+      <aside className="scrollbar-themed hidden w-[240px] flex-shrink-0 border-r border-line/30 bg-[#0a0f1a]/95 backdrop-blur-md md:flex md:flex-col">
         {panelContent}
       </aside>
 
