@@ -33,9 +33,10 @@ import { clearSnapshot, loadSnapshot, saveSnapshot } from '../lib/persistence';
 import {
   type DragState,
   isCropDrag,
-  isResizeDrag,
-  isReplaceDrag,
   isMoveDrag,
+  isPanDrag,
+  isReplaceDrag,
+  isResizeDrag,
 } from '../../../shared/drag';
 import {
   rectanglesOverlap,
@@ -52,6 +53,8 @@ import {
   resolvePushLayout,
   getPreferredPushAxis,
   canSwapImages,
+  calculateZoomPanOffset,
+  getZoomPanBounds,
   getResizeAssistSnap,
 } from '../interactions';
 import { computeSmartDropSize, resolveSmartFraming } from '../lib/editorLayoutUtils';
@@ -987,6 +990,32 @@ function rectanglesTouchOrOverlap(
     }
 
     if (interactionMode === 'crop') {
+      const zoom = imageZoomLevels[hit.imageId] ?? 1;
+      if (zoom > 1) {
+        const pan = imagePanOffsets[hit.imageId] ?? { x: 0, y: 0 };
+        const bounds = getZoomPanBounds(
+          {
+            contentWidthPx: hit.contentWidthPx,
+            contentHeightPx: hit.contentHeightPx,
+            drawnImageWidthPx: hit.drawnImageWidthPx,
+            drawnImageHeightPx: hit.drawnImageHeightPx,
+          },
+          zoom,
+        );
+        setDragActive(true);
+        dragStateRef.current = {
+          type: 'pan',
+          imageId: hit.imageId,
+          startX: point.x,
+          startY: point.y,
+          basePanX: pan.x,
+          basePanY: pan.y,
+          maxPanX: bounds.maxX,
+          maxPanY: bounds.maxY,
+        };
+        return;
+      }
+
       setDragActive(true);
       dragStateRef.current = {
         type: 'crop',
@@ -1069,6 +1098,24 @@ function rectanglesTouchOrOverlap(
     const hit = findHitItem(point);
     if (!dragActive) {
       setHoveredImageId(hit?.imageId ?? null);
+    }
+
+    if (interactionMode === 'crop' && isPanDrag(dragStateRef.current)) {
+      const drag = dragStateRef.current;
+      const pan = calculateZoomPanOffset(
+        drag.startX,
+        drag.startY,
+        point.x,
+        point.y,
+        drag.basePanX,
+        drag.basePanY,
+        {
+          maxX: drag.maxPanX,
+          maxY: drag.maxPanY,
+        },
+      );
+      setImagePan(drag.imageId, pan.x, pan.y);
+      return;
     }
 
     if (interactionMode === 'crop' && isCropDrag(dragStateRef.current)) {
@@ -1818,7 +1865,10 @@ function rectanglesTouchOrOverlap(
 
       const pageFiles = await Promise.all(
         pages.map(async (page, index) => {
-          const canvas = renderPageToExportCanvas(page, itemById, imageById);
+          const canvas = renderPageToExportCanvas(page, itemById, imageById, {
+            imageZoomLevels,
+            imagePanOffsets,
+          });
           const blob = await canvasToBlob(canvas, mimeType, quality);
 
           return {

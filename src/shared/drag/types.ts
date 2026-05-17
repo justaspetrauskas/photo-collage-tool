@@ -5,7 +5,7 @@
 /**
  * Unified drag state for all interaction types
  */
-export type DragState = CropDragState | ResizeDragState | ReplaceDragState | MoveDragState;
+export type DragState = CropDragState | ZoomPanDragState | ResizeDragState | ReplaceDragState | MoveDragState;
 
 export interface CropDragState {
   type: 'crop';
@@ -16,6 +16,17 @@ export interface CropDragState {
   baseOffsetY: number;
   maxOffsetX: number;
   maxOffsetY: number;
+}
+
+export interface ZoomPanDragState {
+  type: 'pan';
+  imageId: string;
+  startX: number;
+  startY: number;
+  basePanX: number;
+  basePanY: number;
+  maxPanX: number;
+  maxPanY: number;
 }
 
 export interface ResizeDragState {
@@ -52,6 +63,10 @@ export interface MoveDragState {
  */
 export function isCropDrag(state: DragState | null): state is CropDragState {
   return state?.type === 'crop';
+}
+
+export function isPanDrag(state: DragState | null): state is ZoomPanDragState {
+  return state?.type === 'pan';
 }
 
 export function isResizeDrag(state: DragState | null): state is ResizeDragState {

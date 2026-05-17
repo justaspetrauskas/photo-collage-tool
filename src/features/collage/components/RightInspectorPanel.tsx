@@ -343,7 +343,7 @@ function ImageInspector({
             />
             {zoom > 1 && (
               <p className="text-[10px] text-muted">
-                Drag the image in the library card to pan
+                In Crop mode, drag the photo directly on the canvas to pan it
               </p>
             )}
           </div>

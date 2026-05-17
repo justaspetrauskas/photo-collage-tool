@@ -385,7 +385,7 @@ export function CollagePreview({
     previewCanvasRef,
   ]);
 
-  const helperText = 'Scroll through all collage pages. Select an image on the active page to edit via the bottom context menu.';
+  const helperText = 'Scroll through all collage pages. Select an image on the active page to edit it, and in Crop mode drag a zoomed photo directly on the canvas to pan it.';
 
   const jumpToPage = (index: number) => {
     onSelectPage(index);

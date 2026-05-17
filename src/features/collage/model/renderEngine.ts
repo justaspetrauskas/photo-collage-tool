@@ -1,5 +1,6 @@
 import { clampOffsets } from './layoutEngine';
 import type { ImageItem, InteractionMode, PageLayout, PreviewTransform, ResizeSnapGuide } from './types';
+import { getZoomPanBounds, resolveZoomPanOffset } from '../interactions';
 
 interface PreviewOptions {
   gridEnabled?: boolean;
@@ -589,7 +590,7 @@ function drawPage(
     );
 
     const zoom = options?.imageZoomLevels?.[placed.imageId] ?? 1;
-    const pan = options?.imagePanOffsets?.[placed.imageId] ?? { x: 0, y: 0 };
+    const panRatio = options?.imagePanOffsets?.[placed.imageId];
 
     let drawX: number;
     let drawY: number;
@@ -607,10 +608,20 @@ function drawPage(
       drawX = innerX + innerWidth / 2 * (1 - zoom) - clamped.offsetX * zoom;
       drawY = innerY + innerHeight / 2 * (1 - zoom) - clamped.offsetY * zoom;
 
-      // Apply pan (drawer pixels → canvas pixels)
-      const panScale = placed.drawnImageWidthPx / 400;
-      drawX += pan.x * panScale;
-      drawY += pan.y * panScale;
+      const pan = resolveZoomPanOffset(
+        panRatio,
+        getZoomPanBounds(
+          {
+            contentWidthPx: placed.contentWidthPx,
+            contentHeightPx: placed.contentHeightPx,
+            drawnImageWidthPx: placed.drawnImageWidthPx,
+            drawnImageHeightPx: placed.drawnImageHeightPx,
+          },
+          zoom,
+        ),
+      );
+      drawX += pan.x;
+      drawY += pan.y;
     } else {
       drawW = placed.drawnImageWidthPx;
       drawH = placed.drawnImageHeightPx;
@@ -833,6 +844,7 @@ export function renderPageToExportCanvas(
   page: PageLayout,
   itemById: Map<string, ImageItem>,
   imageById: Map<string, HTMLImageElement>,
+  options: Pick<PreviewOptions, 'imageZoomLevels' | 'imagePanOffsets'> = {},
 ): HTMLCanvasElement {
   const canvas = document.createElement('canvas');
   canvas.width = page.widthPx;
@@ -840,7 +852,7 @@ export function renderPageToExportCanvas(
 
   const ctx = canvas.getContext('2d');
   if (ctx) {
-    drawPage(ctx, page, itemById, imageById);
+    drawPage(ctx, page, itemById, imageById, options);
   }
 
   return canvas;

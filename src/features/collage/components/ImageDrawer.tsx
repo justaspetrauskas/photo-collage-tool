@@ -5,9 +5,9 @@ import { useState, useRef, useEffect, type DragEvent } from 'react';
 import { ChevronRight, ChevronLeft, UploadCloud, ChevronDown, ChevronUp, Trash2, X, Sparkles, Loader2, GripVertical } from 'lucide-react';
 import { type EnhancePreset, ENHANCE_PRESET_LABELS } from '../lib/openaiImageEdit';
 import { useEditorUIStore } from '../store/editorUIStore';
-import { useDrag } from '@use-gesture/react';
 import { CollageControls, type CollageControlsProps } from './CollageControls';
 import type { ChangeEvent } from 'react';
+import { resolveZoomPanOffset } from '../interactions';
 
 const MAX_IMAGES = 24;
 
@@ -58,21 +58,10 @@ function ImageDrawerCard({ image, isUsed, isSelected, isEnhancing, cardRef, onSe
   const previewSrc = showBefore && hasEnhancedVersion ? image.originalSrc : image.src;
 
   const zoom = imageZoomLevels[image.id] ?? 1;
-  const pan = imagePanOffsets[image.id] ?? { x: 0, y: 0 };
-
-  const bind = useDrag(
-    ({ offset: [x, y], event }) => {
-      event.stopPropagation();
-      const cw = imgContainerRef.current?.clientWidth ?? 400;
-      const maxPan = (cw * (zoom - 1)) / 2;
-      setImagePan(image.id, Math.max(-maxPan, Math.min(maxPan, x)), Math.max(-maxPan, Math.min(maxPan, y)));
-    },
-    {
-      from: () => [pan.x, pan.y],
-      enabled: zoom > 1,
-      preventDefault: true,
-    },
-  );
+  const pan = resolveZoomPanOffset(imagePanOffsets[image.id], {
+    maxX: zoom > 1 ? (400 * (zoom - 1)) / 2 : 0,
+    maxY: zoom > 1 ? (400 * (zoom - 1)) / 2 : 0,
+  });
 
   const handleDragStart = (e: DragEvent) => {
     e.stopPropagation();
@@ -105,10 +94,9 @@ function ImageDrawerCard({ image, isUsed, isSelected, isEnhancing, cardRef, onSe
         onDragEnd={zoom === 1 ? handleDragEnd : undefined}
       >
         <img
-          {...bind()}
           src={previewSrc}
           alt={image.fileName}
-          className={`w-full h-full object-cover ${zoom > 1 ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'}`}
+          className="h-full w-full cursor-default object-cover"
           loading="lazy"
           draggable={false}
           style={{
@@ -197,7 +185,7 @@ function ImageDrawerCard({ image, isUsed, isSelected, isEnhancing, cardRef, onSe
             }}
             onClick={(e) => e.stopPropagation()}
           />
-          {zoom > 1 && <p className="mt-1 text-muted">Drag image above to pan</p>}
+          {zoom > 1 && <p className="mt-1 text-muted">Use Crop mode on the canvas to pan</p>}
         </div>
 
         {/* Max W / H */}
