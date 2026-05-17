@@ -110,7 +110,7 @@ export async function enhanceImageWithAI(
   const workerResult = await runEnhancementInWorker(imageData, preset);
   const processed =
     workerResult ??
-    new ImageData(enhanceImageBuffer(imageData, preset).data, imageData.width, imageData.height);
+    new ImageData(new Uint8ClampedArray(enhanceImageBuffer(imageData, preset).data), imageData.width, imageData.height);
   ctx.putImageData(processed, 0, 0);
   return canvas.toDataURL('image/png');
 }
