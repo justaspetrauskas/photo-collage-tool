@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronDown, ChevronUp, Check, X, Sparkles, Loader2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, Check, X, Sparkles, Loader2, Plus, RotateCcw, Trash2 } from 'lucide-react';
 import { Button } from '../../../shared/ui/Button';
 import { Field } from '../../../shared/ui/Field';
 import { CanvasSizeDropdown, type CanvasSizeDropdownProps } from './CanvasSizeDropdown';
@@ -25,7 +25,11 @@ interface LayoutControlsProps {
   layoutPresetId: LayoutPresetId;
   setLayoutPresetId: (v: LayoutPresetId) => void;
   recommendedLayoutHint: string;
+  overflowCount: number;
   onApplyGlobalSettings: () => void;
+  onCreateNextPage: () => void;
+  onStartFromScratch: () => void;
+  onClearEverything: () => void;
   canvasSize: CanvasSizeDropdownProps;
 }
 
@@ -95,7 +99,11 @@ function LayoutInspector({
   layoutPresetId,
   setLayoutPresetId,
   recommendedLayoutHint,
+  overflowCount,
   onApplyGlobalSettings,
+  onCreateNextPage,
+  onStartFromScratch,
+  onClearEverything,
   canvasSize,
 }: LayoutControlsProps) {
   return (
@@ -201,6 +209,36 @@ function LayoutInspector({
           >
             <Check className="h-4 w-4" />
             Apply Constraints
+          </Button>
+        </div>
+      </Accordion>
+
+      <Accordion title="Project" defaultOpen>
+        <div className="space-y-2">
+          {paginationMode === 'assisted' && overflowCount > 0 ? (
+            <Button
+              onClick={onCreateNextPage}
+              className="flex min-h-10 w-full items-center justify-center gap-2 px-3 py-1.5 text-sm"
+            >
+              <Plus className="h-4 w-4" />
+              Next Page ({overflowCount})
+            </Button>
+          ) : null}
+          <Button
+            variant="soft"
+            onClick={onStartFromScratch}
+            className="flex min-h-10 w-full items-center justify-center gap-2 px-3 py-1.5 text-sm"
+          >
+            <RotateCcw className="h-4 w-4" />
+            Start Fresh
+          </Button>
+          <Button
+            variant="soft"
+            onClick={onClearEverything}
+            className="flex min-h-10 w-full items-center justify-center gap-2 px-3 py-1.5 text-sm text-danger hover:text-danger"
+          >
+            <Trash2 className="h-4 w-4" />
+            Clear All
           </Button>
         </div>
       </Accordion>

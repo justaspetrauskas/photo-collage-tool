@@ -14,9 +14,10 @@ export function CollageEditor() {
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
   const [isInspectorOpen, setIsInspectorOpen] = useState(false);
 
-  const selectedPage = editor.pages[editor.selectedPageIndex];
-  const selectedImageOnPage = selectedPage?.items.find((item) => item.imageId === editor.selectedImageId);
-  const hasSelection = Boolean(editor.selectedImageId);
+  const selectedPlacedItem = editor.selectedImageId
+    ? editor.pages.flatMap((page) => page.items).find((item) => item.imageId === editor.selectedImageId) ?? null
+    : null;
+  const hasSelection = Boolean(editor.selectedImageId && selectedPlacedItem);
   const hasPlacedItems = editor.pages.some((page) => page.items.length > 0);
   const hasUnplacedImages = editor.images.length > 0 && !hasPlacedItems;
 
@@ -56,19 +57,14 @@ export function CollageEditor() {
       ) : null}
 
       {/* Top bar */}
-      <CollageHeader
-        hasUnplacedImages={hasUnplacedImages}
-        pagesCount={editor.pages.length}
-        overflowCount={editor.overflowImageIds.length}
-        paginationMode={editor.paginationMode}
-        onGenerateLayout={editor.onGenerateLayout}
-        onExportPages={editor.exportPages}
-        onCreateNextPage={editor.onCreateNextPage}
-        onStartFromScratch={editor.startFromScratch}
-        onClearEverything={editor.clearEverything}
-        onToggleLibrary={() => setIsLibraryOpen((v) => !v)}
-        onToggleInspector={() => setIsInspectorOpen((v) => !v)}
-      />
+        <CollageHeader
+          hasUnplacedImages={hasUnplacedImages}
+          pagesCount={editor.pages.length}
+          onGenerateLayout={editor.onGenerateLayout}
+          onExportPages={editor.exportPages}
+          onToggleLibrary={() => setIsLibraryOpen((v) => !v)}
+          onToggleInspector={() => setIsInspectorOpen((v) => !v)}
+        />
 
       {/* 3-pane workspace */}
       <div className="flex min-h-0 flex-1 overflow-hidden">
@@ -113,8 +109,8 @@ export function CollageEditor() {
                 selectedImageId={editor.selectedImageId}
                 hoveredImageId={editor.hoveredImageId}
                 selectedImageName={editor.selectedImage?.fileName ?? null}
-                selectedImageWidth={selectedImageOnPage?.width ?? null}
-                selectedImageHeight={selectedImageOnPage?.height ?? null}
+                selectedImageWidth={selectedPlacedItem?.width ?? null}
+                selectedImageHeight={selectedPlacedItem?.height ?? null}
                 showSelectionControls={editor.showSelectionControls}
                 onCloseSelectionControls={() => editor.setShowSelectionControls(false)}
                 resizeLimitNotice={editor.resizeLimitNotice}
@@ -173,7 +169,11 @@ export function CollageEditor() {
           layoutPresetId={editor.layoutPresetId}
           setLayoutPresetId={editor.setLayoutPresetId}
           recommendedLayoutHint={editor.recommendedLayoutHint}
+          overflowCount={editor.overflowImageIds.length}
           onApplyGlobalSettings={editor.applyGlobalSettings}
+          onCreateNextPage={editor.onCreateNextPage}
+          onStartFromScratch={editor.startFromScratch}
+          onClearEverything={editor.clearEverything}
           canvasSize={{
             canvasPresetId: editor.canvasPresetId,
             setCanvasPresetId: editor.setCanvasPresetId,
@@ -197,8 +197,8 @@ export function CollageEditor() {
                 {editor.selectedImage?.fileName ?? 'Selected'}
               </p>
               <p className="m-0 truncate text-[10px] text-muted/80">
-                {selectedImageOnPage?.width && selectedImageOnPage?.height
-                  ? `${(selectedImageOnPage.width / 28.346).toFixed(1)}×${(selectedImageOnPage.height / 28.346).toFixed(1)} cm`
+                {selectedPlacedItem?.width && selectedPlacedItem?.height
+                  ? `${(selectedPlacedItem.width / 28.346).toFixed(1)}×${(selectedPlacedItem.height / 28.346).toFixed(1)} cm`
                   : 'Dimensions: —'}
               </p>
             </div>
