@@ -41,6 +41,7 @@ interface CollagePreviewProps {
   onMouseMove: MouseEventHandler<HTMLCanvasElement>;
   onMouseUp: MouseEventHandler<HTMLCanvasElement>;
   onMouseLeave: MouseEventHandler<HTMLCanvasElement>;
+  onDoubleClick: MouseEventHandler<HTMLCanvasElement>;
   onPointerDown: PointerEventHandler<HTMLCanvasElement>;
   onPointerMove: PointerEventHandler<HTMLCanvasElement>;
   onPointerUp: PointerEventHandler<HTMLCanvasElement>;
@@ -50,6 +51,7 @@ interface CollagePreviewProps {
   onDragLeave: DragEventHandler<HTMLCanvasElement>;
   onUploadFileList: (files: File[]) => Promise<void>;
   imagesCount: number;
+  canvasCursor?: string;
 }
 
 interface PageCanvasCardProps {
@@ -65,6 +67,7 @@ interface PageCanvasCardProps {
   onMouseMove: MouseEventHandler<HTMLCanvasElement>;
   onMouseUp: MouseEventHandler<HTMLCanvasElement>;
   onMouseLeave: MouseEventHandler<HTMLCanvasElement>;
+  onDoubleClick: MouseEventHandler<HTMLCanvasElement>;
   onPointerDown: PointerEventHandler<HTMLCanvasElement>;
   onPointerMove: PointerEventHandler<HTMLCanvasElement>;
   onPointerUp: PointerEventHandler<HTMLCanvasElement>;
@@ -73,6 +76,7 @@ interface PageCanvasCardProps {
   onDrop: DragEventHandler<HTMLCanvasElement>;
   onDragLeave: DragEventHandler<HTMLCanvasElement>;
   showPlacementHints: boolean;
+  canvasCursor?: string;
 }
 
 function PageCanvasCard({
@@ -88,6 +92,7 @@ function PageCanvasCard({
   onMouseMove,
   onMouseUp,
   onMouseLeave,
+  onDoubleClick,
   onPointerDown,
   onPointerMove,
   onPointerUp,
@@ -96,6 +101,7 @@ function PageCanvasCard({
   onDrop,
   onDragLeave,
   showPlacementHints,
+  canvasCursor,
 }: PageCanvasCardProps) {
   const { ref: inViewRef, inView } = useInView({
     threshold: 0.62,
@@ -132,12 +138,13 @@ function PageCanvasCard({
       <div className="rounded-2xl p-2 backdrop-blur-md">
         <div className="relative inline-block">
           <canvas
-            className={`h-auto max-w-full touch-none rounded-xl ${isActive ? 'cursor-default' : 'pointer-events-none'} `}
+            className={`h-auto max-w-full touch-none rounded-xl ${isActive ? (canvasCursor ?? 'cursor-default') : 'pointer-events-none'} `}
             ref={(node) => registerCanvasRef(index, node)}
             onMouseDown={isActive ? onMouseDown : undefined}
             onMouseMove={isActive ? onMouseMove : undefined}
             onMouseUp={isActive ? onMouseUp : undefined}
             onMouseLeave={isActive ? onMouseLeave : undefined}
+            onDoubleClick={isActive ? onDoubleClick : undefined}
             onPointerDown={isActive ? onPointerDown : undefined}
             onPointerMove={isActive ? onPointerMove : undefined}
             onPointerUp={isActive ? onPointerUp : undefined}
@@ -189,6 +196,7 @@ export function CollagePreview({
   onMouseMove,
   onMouseUp,
   onMouseLeave,
+  onDoubleClick,
   onPointerDown,
   onPointerMove,
   onPointerUp,
@@ -198,6 +206,7 @@ export function CollagePreview({
   onDragLeave,
   onUploadFileList,
   imagesCount,
+  canvasCursor,
 }: CollagePreviewProps) {
   const pageCanvasRefs = useRef<Array<HTMLCanvasElement | null>>([]);
   const pageContainerRefs = useRef<Array<HTMLElement | null>>([]);
@@ -258,6 +267,9 @@ export function CollagePreview({
 
       if (key === 'escape') {
         onCloseSelectionControls();
+        event.preventDefault();
+      } else if (key === 's') {
+        onSetInteractionMode('select');
         event.preventDefault();
       } else if (key === 'r') {
         onSetInteractionMode('resize');
@@ -528,6 +540,7 @@ export function CollagePreview({
                   onMouseMove={onMouseMove}
                   onMouseUp={onMouseUp}
                   onMouseLeave={onMouseLeave}
+                  onDoubleClick={onDoubleClick}
                   onPointerDown={onPointerDown}
                   onPointerMove={onPointerMove}
                   onPointerUp={onPointerUp}
@@ -536,6 +549,7 @@ export function CollagePreview({
                   onDrop={onDrop}
                   onDragLeave={onDragLeave}
                   showPlacementHints={dragActive}
+                  canvasCursor={index === selectedPageIndex ? canvasCursor : undefined}
                 />
               ))}
             </div>
