@@ -44,7 +44,7 @@ const RESIZE_ACCENT_FILL = 'rgba(252, 197, 21, 0.12)';
 const RESIZE_ACCENT_FILL_STRONG = 'rgba(252, 197, 21, 0.22)';
 
 export function shouldShowResizeSnapGuides(options: Pick<PreviewOptions, 'interactionMode' | 'dragActive' | 'resizeSnapGuides'>): boolean {
-  return options.interactionMode === 'resize' && Boolean(options.dragActive) && (options.resizeSnapGuides?.length ?? 0) > 0;
+  return (options.interactionMode === 'resize' || options.interactionMode === 'select') && Boolean(options.dragActive) && (options.resizeSnapGuides?.length ?? 0) > 0;
 }
 
 function drawPlacementPreview(
@@ -235,6 +235,7 @@ function drawSelectionFeedback(
   interactionMode: InteractionMode,
   dragActive: boolean,
   scale: number,
+  dpr: number,
   resizeFeedback?: PreviewOptions['resizeFeedback'],
 ): void {
   const selected = page.items.find((item) => item.imageId === selectedImageId);
@@ -268,6 +269,31 @@ function drawSelectionFeedback(
     ctx.moveTo(innerX, innerY + innerH / 2);
     ctx.lineTo(innerX + innerW, innerY + innerH / 2);
     ctx.stroke();
+  } else if (interactionMode === 'select') {
+    // Canva-style: 8 handles (4 corners + 4 edge midpoints), always visible when selected.
+    // Handle radius in page pixels ≈ 5 CSS px.
+    const hr = 5 * dpr / scale;
+    const handles: [number, number][] = [
+      [selected.x,                           selected.y],
+      [selected.x + selected.width / 2,      selected.y],
+      [selected.x + selected.width,          selected.y],
+      [selected.x + selected.width,          selected.y + selected.height / 2],
+      [selected.x + selected.width,          selected.y + selected.height],
+      [selected.x + selected.width / 2,      selected.y + selected.height],
+      [selected.x,                           selected.y + selected.height],
+      [selected.x,                           selected.y + selected.height / 2],
+    ];
+
+    ctx.setLineDash([]);
+    ctx.lineWidth = 1.5 / scale;
+    for (const [hx, hy] of handles) {
+      ctx.beginPath();
+      ctx.arc(hx, hy, hr, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+      ctx.strokeStyle = interactionColor;
+      ctx.stroke();
+    }
   } else if (interactionMode === 'resize') {
     const handleSize = 9;
     const half = handleSize / 2;
@@ -794,10 +820,11 @@ export function drawPagePreview(
       options.interactionMode ?? 'crop',
       options.dragActive ?? false,
       scale,
+      dpr,
       options.resizeFeedback,
     );
 
-    if (options.resizeFeedback && options.interactionMode === 'resize') {
+    if (options.resizeFeedback && (options.interactionMode === 'resize' || options.interactionMode === 'select')) {
       drawResizeFeedback(ctx, options.resizeFeedback, scale);
     }
 
@@ -811,11 +838,11 @@ export function drawPagePreview(
       );
     }
 
-    if (options.moveOutsideCanvas && options.interactionMode === 'move') {
+    if (options.moveOutsideCanvas && (options.interactionMode === 'move' || options.interactionMode === 'select')) {
       drawMoveOutsideFeedback(ctx, page, options.selectedImageId, scale);
     }
 
-    if (options.interactionMode === 'move' && (options.moveCollisionImageIds?.length ?? 0) > 0) {
+    if ((options.interactionMode === 'move' || options.interactionMode === 'select') && (options.moveCollisionImageIds?.length ?? 0) > 0) {
       drawMoveCollisionFeedback(
         ctx,
         page,
@@ -825,7 +852,7 @@ export function drawPagePreview(
       );
     }
 
-    if (options.resizeCurrentDimensions && options.interactionMode === 'resize') {
+    if (options.resizeCurrentDimensions && (options.interactionMode === 'resize' || options.interactionMode === 'select')) {
       drawResizeLabel(ctx, page, options.selectedImageId, options.resizeCurrentDimensions, scale);
     }
   }

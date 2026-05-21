@@ -2,4 +2,5 @@ export * from './cropInteraction';
 export * from './moveInteraction';
 export * from './replaceInteraction';
 export * from './resizeInteraction';
+export * from './selectInteraction';
 export * from './zoomPanInteraction';

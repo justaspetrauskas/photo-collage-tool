@@ -127,6 +127,7 @@ export function CollageEditor() {
                 onMouseMove={editor.onCanvasMouseMove}
                 onMouseUp={editor.onCanvasMouseUp}
                 onMouseLeave={editor.onCanvasMouseLeave}
+                onDoubleClick={editor.onCanvasDoubleClick}
                 onPointerDown={editor.onCanvasPointerDown}
                 onPointerMove={editor.onCanvasPointerMove}
                 onPointerUp={editor.onCanvasPointerUp}
@@ -136,6 +137,7 @@ export function CollageEditor() {
                 onDragLeave={editor.onCanvasDragLeave}
                 onUploadFileList={editor.uploadFileList}
                 imagesCount={editor.images.length}
+                canvasCursor={editor.canvasCursor}
               />
             </main>
           </div>
@@ -204,28 +206,22 @@ export function CollageEditor() {
               </p>
             </div>
 
-            {/* Interaction mode buttons — all 4 modes including Crop */}
+            {/* Interaction mode buttons */}
             <div className="flex items-center gap-1">
+              <Button
+                variant={editor.interactionMode === 'select' ? 'primary' : 'soft'}
+                onClick={() => editor.setInteractionMode('select')}
+                className="min-h-9 px-2.5 py-1.5 text-sm whitespace-nowrap"
+                title="Select — drag to move, drag handles to resize (S)"
+              >
+                Select
+              </Button>
               <Button
                 variant={editor.interactionMode === 'crop' ? 'primary' : 'soft'}
                 onClick={() => editor.setInteractionMode('crop')}
                 className="min-h-9 px-2.5 py-1.5 text-sm whitespace-nowrap"
               >
                 Crop
-              </Button>
-              <Button
-                variant={editor.interactionMode === 'resize' ? 'primary' : 'soft'}
-                onClick={() => editor.setInteractionMode('resize')}
-                className="min-h-9 px-2.5 py-1.5 text-sm whitespace-nowrap"
-              >
-                Resize
-              </Button>
-              <Button
-                variant={editor.interactionMode === 'move' ? 'primary' : 'soft'}
-                onClick={() => editor.setInteractionMode('move')}
-                className="min-h-9 px-2.5 py-1.5 text-sm whitespace-nowrap"
-              >
-                Move
               </Button>
               <Button
                 variant={editor.interactionMode === 'replace' ? 'primary' : 'soft'}

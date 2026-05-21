@@ -56,6 +56,9 @@ import {
   calculateZoomPanOffset,
   getZoomPanBounds,
   getResizeAssistSnap,
+  getHandleAtPoint,
+  getHandleFixedEdges,
+  getCursorForHandle,
 } from '../interactions';
 import { computeSmartDropSize, resolveSmartFraming } from '../lib/editorLayoutUtils';
 
@@ -139,7 +142,7 @@ export function useCollageEditor() {
   const [gridModeEnabled, setGridModeEnabled] = useState<boolean>(false);
   const [autoCompactPages, setAutoCompactPages] = useState<boolean>(true);
   const [paginationMode, setPaginationMode] = useState<PaginationMode>('auto');
-  const [interactionMode, setInteractionMode] = useState<InteractionMode>('crop');
+  const [interactionMode, setInteractionMode] = useState<InteractionMode>('select');
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
   const [hoveredImageId, setHoveredImageId] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState<boolean>(false);
@@ -168,6 +171,7 @@ export function useCollageEditor() {
   const [customCanvasWidthCm, setCustomCanvasWidthCm] = useState<number>(20);
   const [customCanvasHeightCm, setCustomCanvasHeightCm] = useState<number>(20);
   const [layoutPresetId, setLayoutPresetId] = useState<LayoutPresetId>(DEFAULT_LAYOUT_PRESET_ID);
+  const [canvasCursor, setCanvasCursor] = useState<string>('cursor-default');
 
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const previewTransformRef = useRef<PreviewTransform | null>(null);
@@ -398,7 +402,7 @@ function rectanglesTouchOrOverlap(
         setGridModeEnabled(snapshot.settings.gridModeEnabled);
         setAutoCompactPages(snapshot.settings.autoCompactPages ?? true);
         setPaginationMode(snapshot.settings.paginationMode);
-        setInteractionMode(snapshot.settings.interactionMode ?? 'crop');
+        setInteractionMode(snapshot.settings.interactionMode ?? 'select');
         setAssistedPageCount(snapshot.settings.assistedPageCount);
         setSelectedPageIndex(snapshot.settings.selectedPageIndex);
         if (snapshot.settings.layoutPresetId) {
@@ -1062,6 +1066,55 @@ function rectanglesTouchOrOverlap(
       return;
     }
 
+    if (interactionMode === 'select') {
+      // Check if the click lands on a resize handle of the currently selected image.
+      const transform = previewTransformRef.current;
+      if (selectedImageId === hit.imageId && transform) {
+        const hitRadiusPx = 10 * transform.dpr / transform.scale;
+        const handle = getHandleAtPoint(point, hit, hitRadiusPx);
+        if (handle) {
+          const { fixedHorizontal, fixedVertical } = getHandleFixedEdges(handle);
+          dragStateRef.current = {
+            type: 'resize',
+            imageId: hit.imageId,
+            startX: point.x,
+            startY: point.y,
+            fixedHorizontal,
+            fixedVertical,
+            baseMaxWidthCm: item.maxWidthCm,
+            baseMaxHeightCm: item.maxHeightCm,
+            baseX: hit.x,
+            baseY: hit.y,
+            baseWidth: hit.width,
+            baseHeight: hit.height,
+          };
+          setDragActive(true);
+          setResizeFeedback({
+            baseRect: { x: hit.x, y: hit.y, width: hit.width, height: hit.height },
+            currentRect: { x: hit.x, y: hit.y, width: hit.width, height: hit.height },
+            intent: 'steady',
+          });
+          setResizeSnapGuides([]);
+          setResizeSnapActive(false);
+          return;
+        }
+      }
+      // No handle hit — start a move drag.
+      dragStateRef.current = {
+        type: 'move',
+        imageId: hit.imageId,
+        startX: point.x,
+        startY: point.y,
+        baseX: hit.x,
+        baseY: hit.y,
+      };
+      setDragActive(true);
+      setMoveOutsideCanvas(false);
+      setMoveCollisionImageIds([]);
+      setCanvasCursor('cursor-grabbing');
+      return;
+    }
+
     const fixedHorizontal = point.x >= hit.x + hit.width / 2 ? 'left' : 'right';
     const fixedVertical = point.y >= hit.y + hit.height / 2 ? 'top' : 'bottom';
 
@@ -1105,6 +1158,27 @@ function rectanglesTouchOrOverlap(
     const hit = findHitItem(point);
     if (!dragActive) {
       setHoveredImageId(hit?.imageId ?? null);
+
+      // In 'select' mode, update the canvas cursor based on what's under the pointer.
+      if (interactionMode === 'select') {
+        const transform = previewTransformRef.current;
+        if (transform && selectedImageId) {
+          const selectedItem = selectedPage?.items.find((item) => item.imageId === selectedImageId);
+          if (selectedItem && hit?.imageId === selectedImageId) {
+            const hitRadiusPx = 10 * transform.dpr / transform.scale;
+            const handle = getHandleAtPoint(point, selectedItem, hitRadiusPx);
+            setCanvasCursor(handle ? getCursorForHandle(handle) : 'cursor-grab');
+          } else if (hit) {
+            setCanvasCursor('cursor-grab');
+          } else {
+            setCanvasCursor('cursor-default');
+          }
+        } else if (hit) {
+          setCanvasCursor('cursor-grab');
+        } else {
+          setCanvasCursor('cursor-default');
+        }
+      }
     }
 
     if (interactionMode === 'crop' && isPanDrag(dragStateRef.current)) {
@@ -1167,7 +1241,7 @@ function rectanglesTouchOrOverlap(
       return;
     }
 
-    if (interactionMode === 'move' && isMoveDrag(dragStateRef.current)) {
+    if ((interactionMode === 'move' || interactionMode === 'select') && isMoveDrag(dragStateRef.current)) {
       const drag = dragStateRef.current;
       const position = calculateNewPosition(
         drag.startX,
@@ -1242,7 +1316,7 @@ function rectanglesTouchOrOverlap(
       return;
     }
 
-    if (interactionMode === 'resize' && isResizeDrag(dragStateRef.current)) {
+    if ((interactionMode === 'resize' || interactionMode === 'select') && isResizeDrag(dragStateRef.current)) {
       const drag = dragStateRef.current;
       const deltaX = drag.fixedHorizontal === 'left' ? point.x - drag.startX : drag.startX - point.x;
       const deltaY = drag.fixedVertical === 'top' ? point.y - drag.startY : drag.startY - point.y;
@@ -1460,7 +1534,7 @@ function rectanglesTouchOrOverlap(
       }
     }
 
-    if (interactionMode === 'move' && isMoveDrag(dragStateRef.current) && moveOutsideCanvas) {
+    if ((interactionMode === 'move' || interactionMode === 'select') && isMoveDrag(dragStateRef.current) && moveOutsideCanvas) {
       const imageIdToRemove = dragStateRef.current.imageId;
       setPages((currentPages) =>
         currentPages.map((page) => ({
@@ -1472,7 +1546,7 @@ function rectanglesTouchOrOverlap(
       setHoveredImageId(null);
     }
 
-    if (interactionMode === 'move' && isMoveDrag(dragStateRef.current) && !moveOutsideCanvas) {
+    if ((interactionMode === 'move' || interactionMode === 'select') && isMoveDrag(dragStateRef.current) && !moveOutsideCanvas) {
       const imageId = dragStateRef.current.imageId;
       const pageIndex = pages.findIndex((page) => page.items.some((item) => item.imageId === imageId));
       if (pageIndex >= 0) {
@@ -1533,15 +1607,35 @@ function rectanglesTouchOrOverlap(
     setResizeFeedback(null);
     setResizeSnapGuides([]);
     setResizeSnapActive(false);
+    if (interactionMode === 'select') {
+      setCanvasCursor('cursor-default');
+    }
   }
 
   function onCanvasMouseLeave(): void {
     handleCanvasInteractionEnd();
     setHoveredImageId(null);
+    if (interactionMode === 'select') {
+      setCanvasCursor('cursor-default');
+    }
   }
 
   function onCanvasMouseDown(event: MouseEvent<HTMLCanvasElement>): void {
     handleCanvasInteractionStart(event.clientX, event.clientY);
+  }
+
+  function onCanvasDoubleClick(event: MouseEvent<HTMLCanvasElement>): void {
+    if (interactionMode !== 'select') {
+      return;
+    }
+    const point = pagePointFromMouse(event);
+    if (!point) {
+      return;
+    }
+    const hit = findHitItem(point);
+    if (hit) {
+      setInteractionMode('crop');
+    }
   }
 
   function onCanvasMouseMove(event: MouseEvent<HTMLCanvasElement>): void {
@@ -2247,6 +2341,7 @@ function rectanglesTouchOrOverlap(
     onCanvasMouseMove,
     onCanvasMouseUp,
     onCanvasMouseLeave,
+    onCanvasDoubleClick,
     onCanvasPointerDown,
     onCanvasPointerMove,
     onCanvasPointerUp,
@@ -2260,5 +2355,6 @@ function rectanglesTouchOrOverlap(
     expandSelectedImage,
     resetSelectedCrop,
     setShowSelectionControls,
+    canvasCursor,
   };
 }

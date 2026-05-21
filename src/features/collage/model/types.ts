@@ -1,7 +1,7 @@
 import type { LayoutPresetId } from './constants';
 
 export type PaginationMode = 'auto' | 'assisted';
-export type InteractionMode = 'crop' | 'resize' | 'replace' | 'move';
+export type InteractionMode = 'crop' | 'resize' | 'replace' | 'move' | 'select';
 
 export interface ImageItem {
   id: string;
