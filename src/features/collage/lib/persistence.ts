@@ -59,11 +59,13 @@ function normalizeSnapshot(raw: unknown): PersistedEditorSnapshot | null {
       ? settings.layoutPresetId
       : DEFAULT_LAYOUT_PRESET_ID;
   const interactionMode =
+    settings.interactionMode === 'select' ||
+    settings.interactionMode === 'crop' ||
     settings.interactionMode === 'resize' ||
     settings.interactionMode === 'replace' ||
     settings.interactionMode === 'move'
       ? settings.interactionMode
-      : 'crop';
+      : 'select';
 
   return {
     version: 1,

@@ -10,6 +10,9 @@ import { useEditorUIStore } from '../store/editorUIStore';
 import { cn } from '../../../shared/lib/cn';
 
 interface LayoutControlsProps {
+  hasImages: boolean;
+  hasPlacedItems: boolean;
+  selectedPageIndex: number;
   maxImageCm: number;
   setMaxImageCm: (v: number) => void;
   minImageCm: number;
@@ -32,6 +35,25 @@ interface LayoutControlsProps {
   onStartFromScratch: () => void;
   onClearEverything: () => void;
   canvasSize: CanvasSizeDropdownProps;
+  saveState: 'idle' | 'saving' | 'saved' | 'error';
+  lastSavedAt: number | null;
+  restoredFromSnapshot: boolean;
+  workflowStage: 'upload' | 'generate' | 'edit' | 'export';
+  sessionMetrics: {
+    uploads: number;
+    layoutGenerations: number;
+    exportsCompleted: number;
+    exportFailures: number;
+    enhancementRuns: number;
+    enhancementFailures: number;
+    modeSwitches: number;
+    destructiveCancels: number;
+    destructiveConfirms: number;
+  };
+  sessionInsights: {
+    timeToFirstLayoutMs: number | null;
+    timeToFirstExportMs: number | null;
+  };
 }
 
 export interface RightInspectorPanelProps extends LayoutControlsProps {
@@ -82,9 +104,40 @@ function Accordion({
   );
 }
 
+function formatSavedState(saveState: LayoutControlsProps['saveState'], lastSavedAt: number | null): string {
+  if (saveState === 'saving') {
+    return 'Saving latest changes…';
+  }
+  if (saveState === 'error') {
+    return 'Local save needs attention';
+  }
+  if (!lastSavedAt) {
+    return 'Not saved yet';
+  }
+
+  return `Saved at ${new Intl.DateTimeFormat(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(lastSavedAt)}`;
+}
+
+function formatDuration(durationMs: number | null): string {
+  if (!durationMs) {
+    return '—';
+  }
+
+  const totalSeconds = Math.max(0, Math.round(durationMs / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+}
+
 // ─── Layout controls (default inspector state) ────────────────────────────────
 
 function LayoutInspector({
+  hasImages,
+  hasPlacedItems,
+  selectedPageIndex,
   maxImageCm,
   setMaxImageCm,
   minImageCm,
@@ -107,9 +160,35 @@ function LayoutInspector({
   onStartFromScratch,
   onClearEverything,
   canvasSize,
+  saveState,
+  lastSavedAt,
+  restoredFromSnapshot,
+  workflowStage,
+  sessionMetrics,
+  sessionInsights,
 }: LayoutControlsProps) {
   return (
     <>
+      <div className="space-y-3 border-b border-line/30 px-4 py-4">
+        <div className="rounded-xl border border-line/30 bg-white/[0.03] p-3">
+          <p className="m-0 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">Project summary</p>
+          <p className="m-0 mt-2 text-sm text-ink">
+            {hasImages
+              ? hasPlacedItems
+                ? `Editing page ${selectedPageIndex + 1}. Layout is ready for fine-tuning.`
+                : 'Photos are loaded. Generate the layout next.'
+              : 'Start by uploading photos, then generate the layout.'}
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-muted">
+            <span className="rounded-full border border-line/30 px-2.5 py-1">{formatSavedState(saveState, lastSavedAt)}</span>
+            <span className="rounded-full border border-line/30 px-2.5 py-1">Stage: {workflowStage}</span>
+            {restoredFromSnapshot ? (
+              <span className="rounded-full border border-line/30 px-2.5 py-1">Restored session</span>
+            ) : null}
+          </div>
+        </div>
+      </div>
+
       <Accordion title="Canvas" defaultOpen>
         <div className="space-y-2">
           <CanvasSizeDropdown {...canvasSize} />
@@ -126,7 +205,7 @@ function LayoutInspector({
         </div>
       </Accordion>
 
-      <Accordion title="Layout" defaultOpen>
+      <Accordion title="Layout" defaultOpen={hasImages}>
         <div className="space-y-2">
           <Field label="Layout Preset" className="mb-0">
             <select
@@ -147,7 +226,7 @@ function LayoutInspector({
         </div>
       </Accordion>
 
-      <Accordion title="Sizing" defaultOpen>
+      <Accordion title="Sizing rules" defaultOpen={hasPlacedItems}>
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-2">
             <Field label="Max (cm)" className="mb-0">
@@ -210,12 +289,12 @@ function LayoutInspector({
             className="flex min-h-10 w-full items-center justify-center gap-2 px-3 py-1.5 text-sm"
           >
             <Check className="h-4 w-4" />
-            Apply Constraints
+            Apply sizing rules
           </Button>
         </div>
       </Accordion>
 
-      <Accordion title="Project" defaultOpen>
+      <Accordion title="Project actions" defaultOpen={hasPlacedItems}>
         <div className="space-y-2">
           {paginationMode === 'assisted' && overflowCount > 0 ? (
             <Button
@@ -223,7 +302,7 @@ function LayoutInspector({
               className="flex min-h-10 w-full items-center justify-center gap-2 px-3 py-1.5 text-sm"
             >
               <Plus className="h-4 w-4" />
-              Next Page ({overflowCount})
+              Add next page ({overflowCount})
             </Button>
           ) : null}
           <Button
@@ -232,7 +311,7 @@ function LayoutInspector({
             className="flex min-h-10 w-full items-center justify-center gap-2 px-3 py-1.5 text-sm"
           >
             <Minus className="h-4 w-4" />
-            Remove Canvas
+            Remove current page
           </Button>
           <Button
             variant="soft"
@@ -240,7 +319,7 @@ function LayoutInspector({
             className="flex min-h-10 w-full items-center justify-center gap-2 px-3 py-1.5 text-sm"
           >
             <RotateCcw className="h-4 w-4" />
-            Start Fresh
+            Reset layout
           </Button>
           <Button
             variant="soft"
@@ -248,8 +327,34 @@ function LayoutInspector({
             className="flex min-h-10 w-full items-center justify-center gap-2 px-3 py-1.5 text-sm text-danger hover:text-danger"
           >
             <Trash2 className="h-4 w-4" />
-            Clear All
+            Clear project
           </Button>
+        </div>
+      </Accordion>
+
+      <Accordion title="Session insights" defaultOpen={false}>
+        <div className="space-y-3 text-xs text-muted">
+          <div className="grid grid-cols-2 gap-2">
+            <div className="rounded-lg border border-line/25 bg-black/10 px-3 py-2">
+              <p className="m-0 text-[10px] uppercase tracking-[0.08em]">Time to first layout</p>
+              <p className="m-0 mt-1 text-sm text-ink">{formatDuration(sessionInsights.timeToFirstLayoutMs)}</p>
+            </div>
+            <div className="rounded-lg border border-line/25 bg-black/10 px-3 py-2">
+              <p className="m-0 text-[10px] uppercase tracking-[0.08em]">Time to first export</p>
+              <p className="m-0 mt-1 text-sm text-ink">{formatDuration(sessionInsights.timeToFirstExportMs)}</p>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="rounded-lg border border-line/25 bg-black/10 px-3 py-2">Uploads: <span className="text-ink">{sessionMetrics.uploads}</span></div>
+            <div className="rounded-lg border border-line/25 bg-black/10 px-3 py-2">Layouts: <span className="text-ink">{sessionMetrics.layoutGenerations}</span></div>
+            <div className="rounded-lg border border-line/25 bg-black/10 px-3 py-2">Exports: <span className="text-ink">{sessionMetrics.exportsCompleted}</span></div>
+            <div className="rounded-lg border border-line/25 bg-black/10 px-3 py-2">Mode switches: <span className="text-ink">{sessionMetrics.modeSwitches}</span></div>
+            <div className="rounded-lg border border-line/25 bg-black/10 px-3 py-2">Enhance runs: <span className="text-ink">{sessionMetrics.enhancementRuns}</span></div>
+            <div className="rounded-lg border border-line/25 bg-black/10 px-3 py-2">Canceled risky actions: <span className="text-ink">{sessionMetrics.destructiveCancels}</span></div>
+          </div>
+          <p className="m-0">
+            Failures tracked — export: <span className="text-ink">{sessionMetrics.exportFailures}</span>, enhance: <span className="text-ink">{sessionMetrics.enhancementFailures}</span>.
+          </p>
         </div>
       </Accordion>
     </>
@@ -311,13 +416,18 @@ function ImageInspector({
               : 'bg-amber-500/15 text-amber-400',
           )}
         >
-          {isOnCanvas ? '✓ On canvas' : 'Not placed'}
+          {isOnCanvas ? 'On a page' : 'Library only'}
         </span>
       </div>
 
       <div className="scrollbar-themed flex-1 overflow-y-auto">
-        {/* Constraints */}
-        <Accordion title="Constraints" defaultOpen>
+        <div className="border-b border-line/30 px-4 py-3">
+          <p className="m-0 text-xs text-muted">
+            Use <span className="font-semibold text-ink/90">Edit mode</span> for move and resize. Switch to <span className="font-semibold text-ink/90">Crop mode</span> on the canvas when you want to reframe the photo.
+          </p>
+        </div>
+
+        <Accordion title="Photo rules" defaultOpen>
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-2">
               <Field label="Max W (cm)" className="mb-0">
@@ -359,8 +469,7 @@ function ImageInspector({
           </div>
         </Accordion>
 
-        {/* Zoom */}
-        <Accordion title="Zoom / Pan" defaultOpen={false}>
+        <Accordion title="Crop zoom" defaultOpen={false}>
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <label className="text-xs text-muted">Zoom: {zoom.toFixed(2)}×</label>
@@ -397,7 +506,6 @@ function ImageInspector({
           </div>
         </Accordion>
 
-        {/* Enhance */}
         <Accordion title="Auto Enhance" defaultOpen={false}>
           <div className="space-y-2">
             <p className="text-[11px] text-muted/90">Subtle, content-preserving adjustments.</p>
@@ -435,20 +543,19 @@ function ImageInspector({
           </div>
         </Accordion>
 
-        {/* Placement */}
-        <Accordion title="Placement" defaultOpen>
+        <Accordion title="Page actions" defaultOpen>
           <div className="space-y-2">
             <button
               className="flex min-h-10 w-full items-center justify-center rounded-md border border-amber-300/35 bg-amber-500/10 px-3 py-2 text-sm text-amber-200 hover:bg-amber-500/20"
               onClick={onPlaceOnCanvas}
             >
-              Place on canvas
+              Add to current page
             </button>
             <button
               className="flex min-h-10 w-full items-center justify-center rounded-md border border-cyan-300/30 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-200 hover:bg-cyan-500/20"
               onClick={onReplaceSelected}
             >
-              Replace selected
+              Replace active image
             </button>
 
             {isOnCanvas && (
@@ -457,7 +564,7 @@ function ImageInspector({
                 onClick={onRemoveFromCanvas}
               >
                 <X className="h-4 w-4" />
-                Remove from canvas
+                Remove from current page
               </button>
             )}
 
@@ -466,7 +573,7 @@ function ImageInspector({
                 className="flex min-h-10 w-full items-center justify-center rounded-md bg-red-500/10 py-1.5 text-sm text-red-400 hover:bg-red-500/20"
                 onClick={onDeleteImage}
               >
-                Delete image
+                Delete from library
               </button>
             </div>
           </div>
@@ -511,11 +618,11 @@ export function RightInspectorPanel({
             className="flex items-center gap-1.5 text-xs text-muted hover:text-ink"
             onClick={() => setDrawerSelectedImageId(null)}
           >
-            ← Layout
+            ← Project
           </button>
         ) : (
           <span className="text-xs font-semibold uppercase tracking-[0.08em] text-muted">
-            Inspector
+            Project
           </span>
         )}
         {/* Close button — mobile only */}

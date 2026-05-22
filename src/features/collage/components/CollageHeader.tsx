@@ -5,8 +5,10 @@ import { Button } from '../../../shared/ui/Button';
 type ExportFormat = 'png' | 'jpg' | 'jpeg';
 
 export interface CollageHeaderProps {
+  hasImages: boolean;
   hasUnplacedImages: boolean;
-  pagesCount: number;
+  canExport: boolean;
+  isExporting: boolean;
   onGenerateLayout: () => void;
   onExportPages: (format: ExportFormat) => Promise<void> | void;
   /** Mobile: toggle the left library panel */
@@ -16,8 +18,10 @@ export interface CollageHeaderProps {
 }
 
 export function CollageHeader({
+  hasImages,
   hasUnplacedImages,
-  pagesCount,
+  canExport,
+  isExporting,
   onGenerateLayout,
   onExportPages,
   onToggleLibrary,
@@ -46,15 +50,16 @@ export function CollageHeader({
       {/* Generate Layout */}
       <Button
         onClick={onGenerateLayout}
+        disabled={!hasImages}
         aria-label={hasUnplacedImages ? 'Generate Layout (recommended action)' : 'Generate Layout'}
-        className={`flex min-h-9 items-center gap-1.5 px-3 py-1.5 text-sm ${
+        className={`flex min-h-9 items-center gap-1.5 px-3 py-1.5 text-sm disabled:cursor-not-allowed disabled:opacity-50 ${
           hasUnplacedImages
             ? 'animate-pulse motion-reduce:animate-none ring-2 ring-amber-300/70 ring-offset-1 ring-offset-[#0a0f1a]'
             : ''
         }`}
       >
         <Zap className="h-4 w-4" />
-        <span className="hidden sm:inline">Generate</span>
+        <span className="hidden sm:inline">Generate layout</span>
       </Button>
 
       {/* Export — format select + button */}
@@ -72,11 +77,11 @@ export function CollageHeader({
         </select>
         <Button
           onClick={async () => { await onExportPages(exportFormat); }}
-          disabled={!pagesCount}
+          disabled={!canExport || isExporting}
           className="flex min-h-9 items-center gap-1.5 px-3 py-1.5 text-sm disabled:opacity-50 sm:rounded-l-none"
         >
           <Download className="h-4 w-4" />
-          <span className="hidden sm:inline">Export</span>
+          <span className="hidden sm:inline">{isExporting ? 'Exporting…' : 'Export ZIP'}</span>
         </Button>
       </div>
 
