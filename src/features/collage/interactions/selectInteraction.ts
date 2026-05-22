@@ -136,6 +136,11 @@ export function getHandleFixedEdges(handle: HandleType): {
   }
 }
 
+/** Returns true if the handle is one of the four corner handles (nw, ne, sw, se). */
+export function isCornerHandle(handle: HandleType): handle is 'nw' | 'ne' | 'sw' | 'se' {
+  return handle === 'nw' || handle === 'ne' || handle === 'sw' || handle === 'se';
+}
+
 /** Returns the Tailwind CSS cursor class for a given handle type. */
 export function getCursorForHandle(handle: HandleType): string {
   switch (handle) {

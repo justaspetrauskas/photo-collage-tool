@@ -59,6 +59,7 @@ import {
   getHandleAtPoint,
   getHandleFixedEdges,
   getCursorForHandle,
+  isCornerHandle,
 } from '../interactions';
 import { computeSmartDropSize, resolveSmartFraming } from '../lib/editorLayoutUtils';
 
@@ -1365,12 +1366,13 @@ function rectanglesTouchOrOverlap(
     }
 
     if (interactionMode === 'select') {
-      // Check if the click lands on a resize handle of the currently selected image.
+      // Check if the click lands on a corner resize handle of the currently selected image.
+      // Only corner handles (nw, ne, sw, se) trigger resize — Pinterest-style behaviour.
       const transform = previewTransformRef.current;
       if (selectedImageId === hit.imageId && transform) {
         const hitRadiusPx = SELECT_HANDLE_HIT_RADIUS_CSS_PX * transform.dpr / transform.scale;
         const handle = getHandleAtPoint(point, hit, hitRadiusPx);
-        if (handle) {
+        if (handle && isCornerHandle(handle)) {
           const { fixedHorizontal, fixedVertical } = getHandleFixedEdges(handle);
           dragStateRef.current = {
             type: 'resize',
@@ -1397,7 +1399,7 @@ function rectanglesTouchOrOverlap(
           return;
         }
       }
-      // No handle hit — start a move drag.
+      // No corner handle hit — start a move drag.
       dragStateRef.current = {
         type: 'move',
         imageId: hit.imageId,
@@ -1465,7 +1467,9 @@ function rectanglesTouchOrOverlap(
           if (selectedItem && hit?.imageId === selectedImageId) {
             const hitRadiusPx = SELECT_HANDLE_HIT_RADIUS_CSS_PX * transform.dpr / transform.scale;
             const handle = getHandleAtPoint(point, selectedItem, hitRadiusPx);
-            setCanvasCursor(handle ? getCursorForHandle(handle) : 'cursor-grab');
+            // Only show a resize cursor for corner handles (Pinterest-style).
+            const cornerHandle = handle && isCornerHandle(handle) ? handle : null;
+            setCanvasCursor(cornerHandle ? getCursorForHandle(cornerHandle) : 'cursor-grab');
           } else if (hit) {
             setCanvasCursor('cursor-grab');
           } else {
