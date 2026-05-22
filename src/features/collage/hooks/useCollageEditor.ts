@@ -1277,8 +1277,21 @@ function rectanglesTouchOrOverlap(
       return;
     }
 
+    const selectedItem = selectedImageId
+      ? selectedPage?.items.find((item) => item.imageId === selectedImageId) ?? null
+      : null;
+    const transform = previewTransformRef.current;
+    const selectedHandleHitRadiusPx = transform
+      ? SELECT_HANDLE_HIT_RADIUS_CSS_PX * transform.dpr / transform.scale
+      : 0;
+    const selectedHandle = interactionMode === 'select' && selectedItem && selectedHandleHitRadiusPx > 0
+      ? getHandleAtPoint(point, selectedItem, selectedHandleHitRadiusPx)
+      : null;
+    const selectedCornerHandle = selectedHandle && isCornerHandle(selectedHandle) ? selectedHandle : null;
+
     const hit = findHitItem(point);
-    if (!hit) {
+    const interactionTarget = hit ?? (selectedCornerHandle ? selectedItem : null);
+    if (!interactionTarget) {
       setSelectedImageId(null);
       setDrawerSelectedImageId(null);
       setHoveredImageId(null);
@@ -1289,33 +1302,33 @@ function rectanglesTouchOrOverlap(
       return;
     }
 
-    setSelectedImageId(hit.imageId);
-    setDrawerSelectedImageId(hit.imageId);
-    setHoveredImageId(hit.imageId);
+    setSelectedImageId(interactionTarget.imageId);
+    setDrawerSelectedImageId(interactionTarget.imageId);
+    setHoveredImageId(interactionTarget.imageId);
     setShowSelectionControls(true);
 
-    const item = itemById.get(hit.imageId);
+    const item = itemById.get(interactionTarget.imageId);
     if (!item) {
       return;
     }
 
     if (interactionMode === 'crop') {
-      const zoom = imageZoomLevels[hit.imageId] ?? 1;
+      const zoom = imageZoomLevels[interactionTarget.imageId] ?? 1;
       if (zoom > 1) {
-        const pan = imagePanOffsets[hit.imageId] ?? { x: 0, y: 0 };
+        const pan = imagePanOffsets[interactionTarget.imageId] ?? { x: 0, y: 0 };
         const bounds = getZoomPanBounds(
           {
-            contentWidthPx: hit.contentWidthPx,
-            contentHeightPx: hit.contentHeightPx,
-            drawnImageWidthPx: hit.drawnImageWidthPx,
-            drawnImageHeightPx: hit.drawnImageHeightPx,
+            contentWidthPx: interactionTarget.contentWidthPx,
+            contentHeightPx: interactionTarget.contentHeightPx,
+            drawnImageWidthPx: interactionTarget.drawnImageWidthPx,
+            drawnImageHeightPx: interactionTarget.drawnImageHeightPx,
           },
           zoom,
         );
         setDragActive(true);
         dragStateRef.current = {
           type: 'pan',
-          imageId: hit.imageId,
+          imageId: interactionTarget.imageId,
           startX: point.x,
           startY: point.y,
           basePanX: pan.x,
@@ -1329,13 +1342,13 @@ function rectanglesTouchOrOverlap(
       setDragActive(true);
       dragStateRef.current = {
         type: 'crop',
-        imageId: hit.imageId,
+        imageId: interactionTarget.imageId,
         startX: point.x,
         startY: point.y,
         baseOffsetX: item.offsetX,
         baseOffsetY: item.offsetY,
-        maxOffsetX: hit.maxOffsetX,
-        maxOffsetY: hit.maxOffsetY,
+        maxOffsetX: interactionTarget.maxOffsetX,
+        maxOffsetY: interactionTarget.maxOffsetY,
       };
       return;
     }
@@ -1343,7 +1356,7 @@ function rectanglesTouchOrOverlap(
     if (interactionMode === 'replace') {
       dragStateRef.current = {
         type: 'replace',
-        sourceImageId: hit.imageId,
+        sourceImageId: interactionTarget.imageId,
       };
       setReplacePointer(point);
       setDragActive(true);
@@ -1353,11 +1366,11 @@ function rectanglesTouchOrOverlap(
     if (interactionMode === 'move') {
       dragStateRef.current = {
         type: 'move',
-        imageId: hit.imageId,
+        imageId: interactionTarget.imageId,
         startX: point.x,
         startY: point.y,
-        baseX: hit.x,
-        baseY: hit.y,
+        baseX: interactionTarget.x,
+        baseY: interactionTarget.y,
       };
       setDragActive(true);
       setMoveOutsideCanvas(false);
@@ -1368,45 +1381,54 @@ function rectanglesTouchOrOverlap(
     if (interactionMode === 'select') {
       // Check if the click lands on a corner resize handle of the currently selected image.
       // Only corner handles (nw, ne, sw, se) trigger resize — Pinterest-style behaviour.
-      const transform = previewTransformRef.current;
-      if (selectedImageId === hit.imageId && transform) {
-        const hitRadiusPx = SELECT_HANDLE_HIT_RADIUS_CSS_PX * transform.dpr / transform.scale;
-        const handle = getHandleAtPoint(point, hit, hitRadiusPx);
-        if (handle && isCornerHandle(handle)) {
-          const { fixedHorizontal, fixedVertical } = getHandleFixedEdges(handle);
-          dragStateRef.current = {
-            type: 'resize',
-            imageId: hit.imageId,
-            startX: point.x,
-            startY: point.y,
-            fixedHorizontal,
-            fixedVertical,
-            baseMaxWidthCm: item.maxWidthCm,
-            baseMaxHeightCm: item.maxHeightCm,
-            baseX: hit.x,
-            baseY: hit.y,
-            baseWidth: hit.width,
-            baseHeight: hit.height,
-          };
-          setDragActive(true);
-          setResizeFeedback({
-            baseRect: { x: hit.x, y: hit.y, width: hit.width, height: hit.height },
-            currentRect: { x: hit.x, y: hit.y, width: hit.width, height: hit.height },
-            intent: 'steady',
-          });
-          setResizeSnapGuides([]);
-          setResizeSnapActive(false);
-          return;
-        }
+      if (
+        selectedCornerHandle &&
+        selectedItem &&
+        selectedItem.imageId === interactionTarget.imageId
+      ) {
+        const { fixedHorizontal, fixedVertical } = getHandleFixedEdges(selectedCornerHandle);
+        dragStateRef.current = {
+          type: 'resize',
+          imageId: interactionTarget.imageId,
+          startX: point.x,
+          startY: point.y,
+          fixedHorizontal,
+          fixedVertical,
+          baseMaxWidthCm: item.maxWidthCm,
+          baseMaxHeightCm: item.maxHeightCm,
+          baseX: interactionTarget.x,
+          baseY: interactionTarget.y,
+          baseWidth: interactionTarget.width,
+          baseHeight: interactionTarget.height,
+        };
+        setDragActive(true);
+        setResizeFeedback({
+          baseRect: {
+            x: interactionTarget.x,
+            y: interactionTarget.y,
+            width: interactionTarget.width,
+            height: interactionTarget.height,
+          },
+          currentRect: {
+            x: interactionTarget.x,
+            y: interactionTarget.y,
+            width: interactionTarget.width,
+            height: interactionTarget.height,
+          },
+          intent: 'steady',
+        });
+        setResizeSnapGuides([]);
+        setResizeSnapActive(false);
+        return;
       }
       // No corner handle hit — start a move drag.
       dragStateRef.current = {
         type: 'move',
-        imageId: hit.imageId,
+        imageId: interactionTarget.imageId,
         startX: point.x,
         startY: point.y,
-        baseX: hit.x,
-        baseY: hit.y,
+        baseX: interactionTarget.x,
+        baseY: interactionTarget.y,
       };
       setDragActive(true);
       setMoveOutsideCanvas(false);
@@ -1415,27 +1437,37 @@ function rectanglesTouchOrOverlap(
       return;
     }
 
-    const fixedHorizontal = point.x >= hit.x + hit.width / 2 ? 'left' : 'right';
-    const fixedVertical = point.y >= hit.y + hit.height / 2 ? 'top' : 'bottom';
+    const fixedHorizontal = point.x >= interactionTarget.x + interactionTarget.width / 2 ? 'left' : 'right';
+    const fixedVertical = point.y >= interactionTarget.y + interactionTarget.height / 2 ? 'top' : 'bottom';
 
     dragStateRef.current = {
       type: 'resize',
-      imageId: hit.imageId,
+      imageId: interactionTarget.imageId,
       startX: point.x,
       startY: point.y,
       fixedHorizontal,
       fixedVertical,
       baseMaxWidthCm: item.maxWidthCm,
       baseMaxHeightCm: item.maxHeightCm,
-      baseX: hit.x,
-      baseY: hit.y,
-      baseWidth: hit.width,
-      baseHeight: hit.height,
+      baseX: interactionTarget.x,
+      baseY: interactionTarget.y,
+      baseWidth: interactionTarget.width,
+      baseHeight: interactionTarget.height,
     };
     setDragActive(true);
     setResizeFeedback({
-      baseRect: { x: hit.x, y: hit.y, width: hit.width, height: hit.height },
-      currentRect: { x: hit.x, y: hit.y, width: hit.width, height: hit.height },
+      baseRect: {
+        x: interactionTarget.x,
+        y: interactionTarget.y,
+        width: interactionTarget.width,
+        height: interactionTarget.height,
+      },
+      currentRect: {
+        x: interactionTarget.x,
+        y: interactionTarget.y,
+        width: interactionTarget.width,
+        height: interactionTarget.height,
+      },
       intent: 'steady',
     });
     setResizeSnapGuides([]);
@@ -1457,24 +1489,24 @@ function rectanglesTouchOrOverlap(
 
     const hit = findHitItem(point);
     if (!dragActive) {
-      setHoveredImageId(hit?.imageId ?? null);
+      const transform = previewTransformRef.current;
+      const selectedItem = selectedImageId
+        ? selectedPage?.items.find((item) => item.imageId === selectedImageId) ?? null
+        : null;
+      const selectedHandleHitRadiusPx = transform
+        ? SELECT_HANDLE_HIT_RADIUS_CSS_PX * transform.dpr / transform.scale
+        : 0;
+      const selectedHandle = interactionMode === 'select' && selectedItem && selectedHandleHitRadiusPx > 0
+        ? getHandleAtPoint(point, selectedItem, selectedHandleHitRadiusPx)
+        : null;
+      const selectedCornerHandle = selectedHandle && isCornerHandle(selectedHandle) ? selectedHandle : null;
+
+      setHoveredImageId(selectedCornerHandle && selectedItem ? selectedItem.imageId : (hit?.imageId ?? null));
 
       // In 'select' mode, update the canvas cursor based on what's under the pointer.
       if (interactionMode === 'select') {
-        const transform = previewTransformRef.current;
-        if (transform && selectedImageId) {
-          const selectedItem = selectedPage?.items.find((item) => item.imageId === selectedImageId);
-          if (selectedItem && hit?.imageId === selectedImageId) {
-            const hitRadiusPx = SELECT_HANDLE_HIT_RADIUS_CSS_PX * transform.dpr / transform.scale;
-            const handle = getHandleAtPoint(point, selectedItem, hitRadiusPx);
-            // Only show a resize cursor for corner handles (Pinterest-style).
-            const cornerHandle = handle && isCornerHandle(handle) ? handle : null;
-            setCanvasCursor(cornerHandle ? getCursorForHandle(cornerHandle) : 'cursor-grab');
-          } else if (hit) {
-            setCanvasCursor('cursor-grab');
-          } else {
-            setCanvasCursor('cursor-default');
-          }
+        if (selectedCornerHandle) {
+          setCanvasCursor(getCursorForHandle(selectedCornerHandle));
         } else if (hit) {
           setCanvasCursor('cursor-grab');
         } else {
