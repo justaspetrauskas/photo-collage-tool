@@ -275,6 +275,10 @@ export function useCollageEditor() {
   const interactionMoveFrameRef = useRef<number | null>(null);
   const pendingInteractionMoveRef = useRef<{ clientX: number; clientY: number; shiftKey: boolean } | null>(null);
   const dragStateRef = useRef<DragState | null>(null);
+  // Tracks when pointer capture is active for a mouse pointer so that the
+  // duplicate mouse event handlers (mousedown/mousemove/mouseup/mouseleave)
+  // can be suppressed while pointer events handle the interaction.
+  const mousePointerCapturedRef = useRef(false);
   const knownImageSrcsRef = useRef<Set<string>>(new Set());
 
   const itemById = useMemo(() => new Map(images.map((img) => [img.id, img])), [images]);
@@ -1948,6 +1952,12 @@ function rectanglesTouchOrOverlap(
   }
 
   function onCanvasMouseLeave(): void {
+    // Do not end an active drag — pointer capture on the mouse pointer keeps
+    // delivering pointermove/pointerup even outside the canvas element, so
+    // the drag will be ended cleanly by onCanvasPointerUp instead.
+    if (mousePointerCapturedRef.current) {
+      return;
+    }
     handleCanvasInteractionEnd();
     setHoveredImageId(null);
     if (interactionMode === 'select') {
@@ -1956,6 +1966,10 @@ function rectanglesTouchOrOverlap(
   }
 
   function onCanvasMouseDown(event: MouseEvent<HTMLCanvasElement>): void {
+    // Skip if already handled by onCanvasPointerDown (which set pointer capture).
+    if (mousePointerCapturedRef.current) {
+      return;
+    }
     handleCanvasInteractionStart(event.clientX, event.clientY);
   }
 
@@ -1978,6 +1992,10 @@ function rectanglesTouchOrOverlap(
   }
 
   function onCanvasMouseMove(event: MouseEvent<HTMLCanvasElement>): void {
+    // Skip if pointer events are already tracking this mouse interaction.
+    if (mousePointerCapturedRef.current) {
+      return;
+    }
     pendingInteractionMoveRef.current = {
       clientX: event.clientX,
       clientY: event.clientY,
@@ -2006,11 +2024,21 @@ function rectanglesTouchOrOverlap(
       interactionMoveFrameRef.current = null;
       pendingInteractionMoveRef.current = null;
     }
-    handleCanvasInteractionEnd(event?.clientX, event?.clientY);
+    // Skip if the drag was already ended by onCanvasPointerUp (pointer capture path).
+    if (dragStateRef.current) {
+      handleCanvasInteractionEnd(event?.clientX, event?.clientY);
+    }
   }
 
   function onCanvasPointerDown(event: PointerEvent<HTMLCanvasElement>): void {
     if (event.pointerType === 'mouse') {
+      // Use pointer capture for mouse so that pointermove/pointerup keep firing
+      // even when the cursor moves outside the canvas element during a drag.
+      // Do NOT call preventDefault() here — that would suppress mousedown and
+      // thereby also prevent dblclick (used for crop mode activation).
+      event.currentTarget.setPointerCapture(event.pointerId);
+      mousePointerCapturedRef.current = true;
+      handleCanvasInteractionStart(event.clientX, event.clientY);
       return;
     }
     event.preventDefault();
@@ -2019,10 +2047,9 @@ function rectanglesTouchOrOverlap(
   }
 
   function onCanvasPointerMove(event: PointerEvent<HTMLCanvasElement>): void {
-    if (event.pointerType === 'mouse') {
-      return;
+    if (event.pointerType !== 'mouse') {
+      event.preventDefault();
     }
-    event.preventDefault();
     pendingInteractionMoveRef.current = {
       clientX: event.clientX,
       clientY: event.clientY,
@@ -2047,7 +2074,7 @@ function rectanglesTouchOrOverlap(
 
   function onCanvasPointerUp(event: PointerEvent<HTMLCanvasElement>): void {
     if (event.pointerType === 'mouse') {
-      return;
+      mousePointerCapturedRef.current = false;
     }
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
@@ -2062,7 +2089,7 @@ function rectanglesTouchOrOverlap(
 
   function onCanvasPointerCancel(event: PointerEvent<HTMLCanvasElement>): void {
     if (event.pointerType === 'mouse') {
-      return;
+      mousePointerCapturedRef.current = false;
     }
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
