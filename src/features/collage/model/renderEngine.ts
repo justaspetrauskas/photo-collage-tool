@@ -270,29 +270,23 @@ function drawSelectionFeedback(
     ctx.lineTo(innerX + innerW, innerY + innerH / 2);
     ctx.stroke();
   } else if (interactionMode === 'select') {
-    // Canva-style: 8 handles (4 corners + 4 edge midpoints), always visible when selected.
-    // Handle radius in page pixels ≈ 5 CSS px.
-    const hr = 5 * dpr / scale;
-    const handles: [number, number][] = [
-      [selected.x,                           selected.y],
-      [selected.x + selected.width / 2,      selected.y],
-      [selected.x + selected.width,          selected.y],
-      [selected.x + selected.width,          selected.y + selected.height / 2],
-      [selected.x + selected.width,          selected.y + selected.height],
-      [selected.x + selected.width / 2,      selected.y + selected.height],
-      [selected.x,                           selected.y + selected.height],
-      [selected.x,                           selected.y + selected.height / 2],
+    // Pinterest-style: 4 corner square handles, fixed visual size (~9 CSS px).
+    const hSize = 9 * dpr / scale;
+    const half = hSize / 2;
+    const corners: [number, number][] = [
+      [selected.x,                  selected.y],
+      [selected.x + selected.width, selected.y],
+      [selected.x,                  selected.y + selected.height],
+      [selected.x + selected.width, selected.y + selected.height],
     ];
 
     ctx.setLineDash([]);
     ctx.lineWidth = 1.5 / scale;
-    for (const [hx, hy] of handles) {
-      ctx.beginPath();
-      ctx.arc(hx, hy, hr, 0, Math.PI * 2);
+    for (const [cx, cy] of corners) {
       ctx.fillStyle = '#ffffff';
-      ctx.fill();
+      ctx.fillRect(cx - half, cy - half, hSize, hSize);
       ctx.strokeStyle = interactionColor;
-      ctx.stroke();
+      ctx.strokeRect(cx - half, cy - half, hSize, hSize);
     }
   } else if (interactionMode === 'resize') {
     const handleSize = 9;
