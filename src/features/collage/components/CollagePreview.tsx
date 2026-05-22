@@ -378,17 +378,18 @@ export function CollagePreview({
       }
 
       const isActive = index === selectedPageIndex;
-      drawPagePreview(canvas, page, itemById, imageById, {
-        selectedImageId: isActive ? selectedImageId : null,
-        hoveredImageId: isActive ? hoveredImageId : null,
-        interactionMode,
-        dragActive: isActive ? dragActive : false,
-        moveOutsideCanvas: isActive ? moveOutsideCanvas : false,
-      });
-
       if (isActive) {
         previewCanvasRef.current = canvas;
+        return;
       }
+
+      drawPagePreview(canvas, page, itemById, imageById, {
+        selectedImageId: null,
+        hoveredImageId: null,
+        interactionMode,
+        dragActive: false,
+        moveOutsideCanvas: false,
+      });
     });
   }, [
     pages,

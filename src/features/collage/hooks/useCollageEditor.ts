@@ -271,13 +271,25 @@ export function useCollageEditor() {
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const previewTransformRef = useRef<PreviewTransform | null>(null);
   const previewRenderFrameRef = useRef<number | null>(null);
+  const interactionMoveFrameRef = useRef<number | null>(null);
+  const pendingInteractionMoveRef = useRef<{ clientX: number; clientY: number; shiftKey: boolean } | null>(null);
   const dragStateRef = useRef<DragState | null>(null);
   const knownImageSrcsRef = useRef<Set<string>>(new Set());
 
   const itemById = useMemo(() => new Map(images.map((img) => [img.id, img])), [images]);
   const imageById = useMemo(() => new Map(images.map((img) => [img.id, img.bitmap])), [images]);
+  const placementByImageId = useMemo(() => {
+    const next = new Map<string, { pageIndex: number; itemIndex: number; item: PositionedImage }>();
+    pages.forEach((page, pageIndex) => {
+      page.items.forEach((item, itemIndex) => {
+        next.set(item.imageId, { pageIndex, itemIndex, item });
+      });
+    });
+    return next;
+  }, [pages]);
   const selectedPage = pages[selectedPageIndex] ?? null;
   const selectedImage = selectedImageId ? itemById.get(selectedImageId) ?? null : null;
+  const selectedPlacedItem = selectedImageId ? placementByImageId.get(selectedImageId)?.item ?? null : null;
   const hasPlacedItems = pages.some((page) => page.items.length > 0);
   const hasUnplacedImages = images.length > 0 && !hasPlacedItems;
 
@@ -536,6 +548,14 @@ export function useCollageEditor() {
       }
     };
   }, [selectedPage, itemById, imageById, gridModeEnabled, selectedImageId, hoveredImageId, drawerSelectedImageId, imageZoomLevels, imagePanOffsets, interactionMode, dragActive, moveOutsideCanvas, moveCollisionImageIds, resizeCurrentDimensions, resizeFeedback, resizeSnapGuides, resizeSnapActive, swapAnimation, replacePointer, swapTargetInvalid, canvasPlacementPreview, replaceAnimationTick]);
+
+  useEffect(() => {
+    return () => {
+      if (interactionMoveFrameRef.current !== null) {
+        window.cancelAnimationFrame(interactionMoveFrameRef.current);
+      }
+    };
+  }, []);
 
 function rectanglesTouchOrOverlap(
   a: { x: number; y: number; width: number; height: number },
@@ -914,7 +934,7 @@ function rectanglesTouchOrOverlap(
       return;
     }
 
-    const pageIndex = pages.findIndex((page) => page.items.some((item) => item.imageId === imageId));
+    const pageIndex = placementByImageId.get(imageId)?.pageIndex ?? -1;
     if (pageIndex >= 0) {
       setSelectedPageIndex(pageIndex);
     }
@@ -1530,18 +1550,21 @@ function rectanglesTouchOrOverlap(
         drag.baseY,
       );
 
-      const pageIndex = pages.findIndex((page) => page.items.some((item) => item.imageId === drag.imageId));
-      if (pageIndex === -1) {
+      const placement = placementByImageId.get(drag.imageId);
+      if (!placement) {
         return;
       }
 
+      const { pageIndex, itemIndex } = placement;
       const page = pages[pageIndex];
-      const itemIndex = page.items.findIndex((item) => item.imageId === drag.imageId);
-      if (itemIndex === -1) {
+      if (!page) {
         return;
       }
 
       const item = page.items[itemIndex];
+      if (!item) {
+        return;
+      }
       const snapResult = getCanvasSnapPosition(position.x, position.y, item.width, item.height, page.widthPx, page.heightPx);
       const effectivePosition = snapResult.snapped ? { x: snapResult.x, y: snapResult.y } : position;
       const isOutsideCanvas = isPositionOutsideCanvas(
@@ -1611,14 +1634,14 @@ function rectanglesTouchOrOverlap(
         return;
       }
 
-      const pageIndex = pages.findIndex((page) => page.items.some((item) => item.imageId === drag.imageId));
-      if (pageIndex === -1) {
+      const placement = placementByImageId.get(drag.imageId);
+      if (!placement) {
         return;
       }
 
+      const { pageIndex, itemIndex } = placement;
       const page = pages[pageIndex];
-      const itemIndex = page.items.findIndex((item) => item.imageId === drag.imageId);
-      if (itemIndex === -1) {
+      if (!page || !page.items[itemIndex]) {
         return;
       }
 
@@ -1919,10 +1942,34 @@ function rectanglesTouchOrOverlap(
   }
 
   function onCanvasMouseMove(event: MouseEvent<HTMLCanvasElement>): void {
-    handleCanvasInteractionMove(event.clientX, event.clientY, { shiftKey: event.shiftKey });
+    pendingInteractionMoveRef.current = {
+      clientX: event.clientX,
+      clientY: event.clientY,
+      shiftKey: event.shiftKey,
+    };
+
+    if (interactionMoveFrameRef.current !== null) {
+      return;
+    }
+
+    interactionMoveFrameRef.current = window.requestAnimationFrame(() => {
+      interactionMoveFrameRef.current = null;
+      const pending = pendingInteractionMoveRef.current;
+      if (!pending) {
+        return;
+      }
+
+      pendingInteractionMoveRef.current = null;
+      handleCanvasInteractionMove(pending.clientX, pending.clientY, { shiftKey: pending.shiftKey });
+    });
   }
 
   function onCanvasMouseUp(event?: MouseEvent<HTMLCanvasElement>): void {
+    if (interactionMoveFrameRef.current !== null) {
+      window.cancelAnimationFrame(interactionMoveFrameRef.current);
+      interactionMoveFrameRef.current = null;
+      pendingInteractionMoveRef.current = null;
+    }
     handleCanvasInteractionEnd(event?.clientX, event?.clientY);
   }
 
@@ -1940,7 +1987,26 @@ function rectanglesTouchOrOverlap(
       return;
     }
     event.preventDefault();
-    handleCanvasInteractionMove(event.clientX, event.clientY, { shiftKey: event.shiftKey });
+    pendingInteractionMoveRef.current = {
+      clientX: event.clientX,
+      clientY: event.clientY,
+      shiftKey: event.shiftKey,
+    };
+
+    if (interactionMoveFrameRef.current !== null) {
+      return;
+    }
+
+    interactionMoveFrameRef.current = window.requestAnimationFrame(() => {
+      interactionMoveFrameRef.current = null;
+      const pending = pendingInteractionMoveRef.current;
+      if (!pending) {
+        return;
+      }
+
+      pendingInteractionMoveRef.current = null;
+      handleCanvasInteractionMove(pending.clientX, pending.clientY, { shiftKey: pending.shiftKey });
+    });
   }
 
   function onCanvasPointerUp(event: PointerEvent<HTMLCanvasElement>): void {
@@ -1949,6 +2015,11 @@ function rectanglesTouchOrOverlap(
     }
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    if (interactionMoveFrameRef.current !== null) {
+      window.cancelAnimationFrame(interactionMoveFrameRef.current);
+      interactionMoveFrameRef.current = null;
+      pendingInteractionMoveRef.current = null;
     }
     handleCanvasInteractionEnd(event.clientX, event.clientY);
   }
@@ -1959,6 +2030,11 @@ function rectanglesTouchOrOverlap(
     }
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    if (interactionMoveFrameRef.current !== null) {
+      window.cancelAnimationFrame(interactionMoveFrameRef.current);
+      interactionMoveFrameRef.current = null;
+      pendingInteractionMoveRef.current = null;
     }
     handleCanvasInteractionEnd();
     setHoveredImageId(null);
@@ -2216,8 +2292,7 @@ function rectanglesTouchOrOverlap(
       return;
     }
 
-    const currentPlacement =
-      pages.flatMap((page) => page.items).find((item) => item.imageId === selectedImageId) ?? null;
+    const currentPlacement = selectedPlacedItem;
     if (!currentPlacement) {
       return;
     }
@@ -2726,6 +2801,7 @@ function rectanglesTouchOrOverlap(
     interactionMode,
     setInteractionMode,
     selectedImage,
+    selectedPlacedItem,
     selectedImageId,
     hoveredImageId,
     dragActive,

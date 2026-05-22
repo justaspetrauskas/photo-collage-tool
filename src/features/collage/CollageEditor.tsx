@@ -15,9 +15,7 @@ export function CollageEditor() {
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
   const [isInspectorOpen, setIsInspectorOpen] = useState(false);
 
-  const selectedPlacedItem = editor.selectedImageId
-    ? editor.pages.flatMap((page) => page.items).find((item) => item.imageId === editor.selectedImageId) ?? null
-    : null;
+  const selectedPlacedItem = editor.selectedPlacedItem;
   const hasSelection = Boolean(editor.selectedImageId && selectedPlacedItem);
   useEffect(() => {
     if (!editor.error) {
