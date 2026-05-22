@@ -12,6 +12,11 @@ interface LeftLibraryPanelProps {
   images: ImageItem[];
   pages: PageLayout[];
   enhancingImageIds: Set<string>;
+  batchEnhanceProgress: {
+    completed: number;
+    total: number;
+    preset: string;
+  } | null;
   selectedImageId: string | null;
   onSelectImage: (id: string) => void;
   onDeleteImage: (id: string) => void;
@@ -139,8 +144,8 @@ function LibraryCard({
             ? 'bg-green-500/15 text-green-400'
             : 'bg-amber-500/15 text-amber-400',
         )}
-      >
-        {isUsed ? '✓' : 'New'}
+        >
+        {isUsed ? 'On page' : 'New'}
       </span>
 
       {/* Quick actions (on hover, desktop) */}
@@ -156,10 +161,10 @@ function LibraryCard({
         ) : (
           <button
             className="rounded-md border border-amber-300/30 bg-amber-500/10 px-2 py-1 text-[10px] text-amber-300 hover:bg-amber-500/20"
-            title="Place on canvas"
+            title="Add to current page"
             onClick={onPlaceOnCanvas}
           >
-            Place
+            Add
           </button>
         )}
       </div>
@@ -171,6 +176,7 @@ export function LeftLibraryPanel({
   images,
   pages,
   enhancingImageIds,
+  batchEnhanceProgress,
   selectedImageId,
   onSelectImage,
   onDeleteImage,
@@ -194,6 +200,7 @@ export function LeftLibraryPanel({
   const atLimit = images.length >= MAX_IMAGES;
   const usedImageIds = new Set<string>();
   pages.forEach((page) => page.items.forEach((item) => usedImageIds.add(item.imageId)));
+  const hasPlacedItems = pages.some((page) => page.items.length > 0);
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
@@ -214,7 +221,7 @@ export function LeftLibraryPanel({
           </span>
           {images.length > 0 && (
             <span className="rounded-full bg-amber-400/10 px-2 py-0.5 text-[10px] font-semibold text-amber-300">
-              {usedImageIds.size}/{images.length}
+              {usedImageIds.size}/{images.length} on page
             </span>
           )}
         </div>
@@ -240,34 +247,43 @@ export function LeftLibraryPanel({
       </div>
 
       {/* Batch enhance row */}
-      {showEnhanceRow && images.length > 0 && (
+      {(showEnhanceRow || batchEnhanceProgress) && images.length > 0 && (
         <div className="flex flex-shrink-0 items-center gap-2 border-b border-line/30 px-3 py-2">
-          <select
-            className="field-input flex-1 py-1 text-xs"
-            value={enhancePreset}
-            onChange={(e) => setEnhancePreset(e.target.value as EnhancePreset)}
-          >
-            {(Object.keys(ENHANCE_PRESET_LABELS) as EnhancePreset[]).map((key) => (
-              <option key={key} value={key}>
-                {ENHANCE_PRESET_LABELS[key]}
-              </option>
-            ))}
-          </select>
-          <button
-            disabled={enhancingAll || enhancingImageIds.size > 0}
-            className="flex min-h-8 items-center gap-1 whitespace-nowrap rounded-md bg-violet-500/15 px-2.5 py-1 text-xs text-violet-300 hover:bg-violet-500/25 disabled:cursor-not-allowed disabled:opacity-50"
-            onClick={async () => {
-              setEnhancingAll(true);
-              await onEnhanceAll(enhancePreset);
-              setEnhancingAll(false);
-            }}
-          >
-            {enhancingAll ? (
-              <><Loader2 className="h-3 w-3 animate-spin" /> Working…</>
-            ) : (
-              <><Sparkles className="h-3 w-3" /> All</>
-            )}
-          </button>
+          {showEnhanceRow ? (
+            <>
+              <select
+                className="field-input flex-1 py-1 text-xs"
+                value={enhancePreset}
+                onChange={(e) => setEnhancePreset(e.target.value as EnhancePreset)}
+              >
+                {(Object.keys(ENHANCE_PRESET_LABELS) as EnhancePreset[]).map((key) => (
+                  <option key={key} value={key}>
+                    {ENHANCE_PRESET_LABELS[key]}
+                  </option>
+                ))}
+              </select>
+              <button
+                disabled={enhancingAll || enhancingImageIds.size > 0}
+                className="flex min-h-8 items-center gap-1 whitespace-nowrap rounded-md bg-violet-500/15 px-2.5 py-1 text-xs text-violet-300 hover:bg-violet-500/25 disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={async () => {
+                  setEnhancingAll(true);
+                  await onEnhanceAll(enhancePreset);
+                  setEnhancingAll(false);
+                }}
+              >
+                {enhancingAll ? (
+                  <><Loader2 className="h-3 w-3 animate-spin" /> Working…</>
+                ) : (
+                  <><Sparkles className="h-3 w-3" /> All</>
+                )}
+              </button>
+            </>
+          ) : null}
+          {batchEnhanceProgress ? (
+            <p className="m-0 text-[11px] text-violet-200">
+              Enhancing {batchEnhanceProgress.completed}/{batchEnhanceProgress.total} photos
+            </p>
+          ) : null}
         </div>
       )}
 
@@ -281,6 +297,11 @@ export function LeftLibraryPanel({
           </div>
         ) : (
           <div className="p-2 space-y-0.5">
+            {!hasPlacedItems ? (
+              <div className="mb-2 rounded-lg border border-amber-300/20 bg-amber-400/10 px-3 py-2 text-[11px] text-amber-100">
+                Step 1 done. Your next primary action is <span className="font-semibold">Generate layout</span>.
+              </div>
+            ) : null}
             {images.map((image) => (
               <LibraryCard
                 key={image.id}

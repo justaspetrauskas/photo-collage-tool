@@ -50,6 +50,8 @@ interface CollagePreviewProps {
   onDrop: DragEventHandler<HTMLCanvasElement>;
   onDragLeave: DragEventHandler<HTMLCanvasElement>;
   onUploadFileList: (files: File[]) => Promise<void>;
+  hasUnplacedImages: boolean;
+  onGenerateLayout: () => void;
   imagesCount: number;
   canvasCursor?: string;
 }
@@ -205,6 +207,8 @@ export function CollagePreview({
   onDrop,
   onDragLeave,
   onUploadFileList,
+  hasUnplacedImages,
+  onGenerateLayout,
   imagesCount,
   canvasCursor,
 }: CollagePreviewProps) {
@@ -217,6 +221,7 @@ export function CollagePreview({
   const hasSelection = Boolean(selectedImageId);
   const hasPlacedItems = pages.some((page) => page.items.length > 0);
   const showOnboardingHints = !hasPlacedItems && imagesCount === 0;
+  const showGenerateGuidance = !hasPlacedItems && imagesCount > 0;
   const imagesAtLimit = imagesCount >= MAX_IMAGES;
 
   useEffect(() => {
@@ -266,16 +271,17 @@ export function CollagePreview({
       }
 
       if (key === 'escape') {
-        onCloseSelectionControls();
+        if (interactionMode !== 'select') {
+          onSetInteractionMode('select');
+        } else {
+          onCloseSelectionControls();
+        }
         event.preventDefault();
       } else if (key === 's') {
         onSetInteractionMode('select');
         event.preventDefault();
-      } else if (key === 'r') {
-        onSetInteractionMode('resize');
-        event.preventDefault();
-      } else if (key === 'm') {
-        onSetInteractionMode('move');
+      } else if (key === 'c') {
+        onSetInteractionMode('crop');
         event.preventDefault();
       } else if (key === 'p') {
         onSetInteractionMode('replace');
@@ -397,7 +403,9 @@ export function CollagePreview({
     previewCanvasRef,
   ]);
 
-  const helperText = 'Scroll through all collage pages. Select an image on the active page to edit it, and in Crop mode drag a zoomed photo directly on the canvas to pan it.';
+  const helperText = hasUnplacedImages
+    ? 'Follow the core flow: generate the layout first, then fine-tune individual photos only when needed.'
+    : 'Edit the active page here. Use Edit (S) for move/resize, Crop (C) for reframing, Swap (P) to replace, and Esc to return to Edit mode.';
 
   const jumpToPage = (index: number) => {
     onSelectPage(index);
@@ -417,6 +425,11 @@ export function CollagePreview({
     <Panel className="animate-fade-up [animation-delay:130ms] bg-transparent shadow-none backdrop-blur-0">
       <h2 className="m-0 text-xl font-semibold text-ink">Canvas Pages</h2>
       <p className="m-0 text-sm text-muted">{helperText}</p>
+      {pages.length > 0 ? (
+        <p className="m-0 mt-1 text-xs text-amber-100/80">
+          Active page: {Math.min(selectedPageIndex + 1, pages.length)} of {pages.length}
+        </p>
+      ) : null}
       {resizeLimitNotice ? (
         <p className="m-0 mt-1 text-xs font-semibold text-warn" role="status" aria-live="polite">
           {resizeLimitNotice}
@@ -514,6 +527,22 @@ export function CollagePreview({
                    </div>
 
                 </button>
+              </div>
+            </div>
+          ) : showGenerateGuidance ? (
+            <div className="flex min-h-[400px] items-center justify-center rounded-2xl border border-line/30 bg-[#0b1220]/80 backdrop-blur-md">
+              <div className="w-full max-w-xl px-8 py-12 text-center">
+                <p className="m-0 text-xs font-semibold uppercase tracking-[0.08em] text-amber-200/80">Step 2 · Generate layout</p>
+                <h3 className="mt-2 text-2xl font-semibold text-ink">Build the first collage automatically</h3>
+                <p className="mx-auto mt-3 max-w-lg text-sm text-muted">
+                  Your photos are uploaded. Generate the layout first to get a clean starting point, then fine-tune the active page only where needed.
+                </p>
+                <div className="mt-5 flex flex-col items-center justify-center gap-3 sm:flex-row">
+                  <Button onClick={onGenerateLayout} className="min-h-11 px-5 text-sm">
+                    Generate layout
+                  </Button>
+                  <span className="text-xs text-muted">Manual drag-and-drop stays available from the library as a secondary option.</span>
+                </div>
               </div>
             </div>
           ) : (

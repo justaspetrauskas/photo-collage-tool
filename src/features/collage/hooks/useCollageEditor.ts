@@ -1,4 +1,4 @@
-import { enhanceImageWithAI, type EnhanceOptions } from '../lib/openaiImageEdit';
+import { enhanceImageWithAI, type EnhanceOptions, type EnhancePreset } from '../lib/openaiImageEdit';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, DragEvent, MouseEvent, PointerEvent } from 'react';
 import {
@@ -127,6 +127,90 @@ interface CanvasPlacementPreview {
   valid: boolean;
 }
 
+type WorkflowStage = 'upload' | 'generate' | 'edit' | 'export';
+type SaveState = 'idle' | 'saving' | 'saved' | 'error';
+type NoticeTone = 'info' | 'success';
+
+interface NoticeMessage {
+  tone: NoticeTone;
+  text: string;
+}
+
+interface UndoAction {
+  label: string;
+  description: string;
+  restore: () => void;
+}
+
+interface BatchEnhanceProgress {
+  completed: number;
+  total: number;
+  preset: EnhancePreset;
+}
+
+interface SessionMetrics {
+  sessionStartedAt: number;
+  firstUploadAt: number | null;
+  firstLayoutAt: number | null;
+  firstExportAt: number | null;
+  uploads: number;
+  layoutGenerations: number;
+  exportsCompleted: number;
+  exportFailures: number;
+  enhancementRuns: number;
+  enhancementFailures: number;
+  modeSwitches: number;
+  destructiveConfirms: number;
+  destructiveCancels: number;
+  removedFromCanvas: number;
+  removedPages: number;
+}
+
+interface EditorUndoSnapshot {
+  images: ImageItem[];
+  pages: Array<{ id: string; widthPx: number; heightPx: number; items: PositionedImage[] }>;
+  maxImageCm: number;
+  minImageCm: number;
+  frameMm: number;
+  gridModeEnabled: boolean;
+  autoCompactPages: boolean;
+  paginationMode: PaginationMode;
+  interactionMode: InteractionMode;
+  selectedImageId: string | null;
+  hoveredImageId: string | null;
+  assistedPageCount: number;
+  selectedPageIndex: number;
+  overflowImageIds: string[];
+  oversizedImageIds: string[];
+  resizeLimitNotice: string;
+  showSelectionControls: boolean;
+  canvasPresetId: CanvasSizePresetId;
+  customCanvasWidthCm: number;
+  customCanvasHeightCm: number;
+  layoutPresetId: LayoutPresetId;
+  drawerSelectedImageId: string | null;
+  imageZoomLevels: Record<string, number>;
+  imagePanOffsets: Record<string, { x: number; y: number }>;
+}
+
+const DEFAULT_SESSION_METRICS = (): SessionMetrics => ({
+  sessionStartedAt: Date.now(),
+  firstUploadAt: null,
+  firstLayoutAt: null,
+  firstExportAt: null,
+  uploads: 0,
+  layoutGenerations: 0,
+  exportsCompleted: 0,
+  exportFailures: 0,
+  enhancementRuns: 0,
+  enhancementFailures: 0,
+  modeSwitches: 0,
+  destructiveConfirms: 0,
+  destructiveCancels: 0,
+  removedFromCanvas: 0,
+  removedPages: 0,
+});
+
 export function useCollageEditor() {
   const {
     drawerSelectedImageId,
@@ -144,7 +228,7 @@ export function useCollageEditor() {
   const [gridModeEnabled, setGridModeEnabled] = useState<boolean>(false);
   const [autoCompactPages, setAutoCompactPages] = useState<boolean>(true);
   const [paginationMode, setPaginationMode] = useState<PaginationMode>('auto');
-  const [interactionMode, setInteractionMode] = useState<InteractionMode>('select');
+  const [interactionMode, setInteractionModeState] = useState<InteractionMode>('select');
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
   const [hoveredImageId, setHoveredImageId] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState<boolean>(false);
@@ -174,6 +258,15 @@ export function useCollageEditor() {
   const [customCanvasHeightCm, setCustomCanvasHeightCm] = useState<number>(20);
   const [layoutPresetId, setLayoutPresetId] = useState<LayoutPresetId>(DEFAULT_LAYOUT_PRESET_ID);
   const [canvasCursor, setCanvasCursor] = useState<string>('cursor-default');
+  const [notice, setNotice] = useState<NoticeMessage | null>(null);
+  const [saveState, setSaveState] = useState<SaveState>('idle');
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
+  const [restoredFromSnapshot, setRestoredFromSnapshot] = useState<boolean>(false);
+  const [undoAction, setUndoAction] = useState<UndoAction | null>(null);
+  const [isExporting, setIsExporting] = useState<boolean>(false);
+  const [lastExportSummary, setLastExportSummary] = useState<string>('');
+  const [batchEnhanceProgress, setBatchEnhanceProgress] = useState<BatchEnhanceProgress | null>(null);
+  const [sessionMetrics, setSessionMetrics] = useState<SessionMetrics>(DEFAULT_SESSION_METRICS);
 
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const previewTransformRef = useRef<PreviewTransform | null>(null);
@@ -185,6 +278,113 @@ export function useCollageEditor() {
   const imageById = useMemo(() => new Map(images.map((img) => [img.id, img.bitmap])), [images]);
   const selectedPage = pages[selectedPageIndex] ?? null;
   const selectedImage = selectedImageId ? itemById.get(selectedImageId) ?? null : null;
+  const hasPlacedItems = pages.some((page) => page.items.length > 0);
+  const hasUnplacedImages = images.length > 0 && !hasPlacedItems;
+
+  function updateSessionMetrics(update: (current: SessionMetrics) => SessionMetrics): void {
+    setSessionMetrics((current) => update(current));
+  }
+
+  function setInteractionMode(nextMode: InteractionMode): void {
+    setInteractionModeState((current) => {
+      if (current === nextMode) {
+        return current;
+      }
+
+      updateSessionMetrics((metrics) => ({
+        ...metrics,
+        modeSwitches: metrics.modeSwitches + 1,
+      }));
+      return nextMode;
+    });
+  }
+
+  function captureEditorUndoSnapshot(): EditorUndoSnapshot {
+    return {
+      images,
+      pages,
+      maxImageCm,
+      minImageCm,
+      frameMm,
+      gridModeEnabled,
+      autoCompactPages,
+      paginationMode,
+      interactionMode,
+      selectedImageId,
+      hoveredImageId,
+      assistedPageCount,
+      selectedPageIndex,
+      overflowImageIds,
+      oversizedImageIds,
+      resizeLimitNotice,
+      showSelectionControls,
+      canvasPresetId,
+      customCanvasWidthCm,
+      customCanvasHeightCm,
+      layoutPresetId,
+      drawerSelectedImageId,
+      imageZoomLevels,
+      imagePanOffsets,
+    };
+  }
+
+  function restoreEditorUndoSnapshot(snapshot: EditorUndoSnapshot): void {
+    setImages(snapshot.images);
+    setPages(snapshot.pages);
+    setMaxImageCm(snapshot.maxImageCm);
+    setMinImageCm(snapshot.minImageCm);
+    setFrameMm(snapshot.frameMm);
+    setGridModeEnabled(snapshot.gridModeEnabled);
+    setAutoCompactPages(snapshot.autoCompactPages);
+    setPaginationMode(snapshot.paginationMode);
+    setInteractionModeState(snapshot.interactionMode);
+    setSelectedImageId(snapshot.selectedImageId);
+    setHoveredImageId(snapshot.hoveredImageId);
+    setAssistedPageCount(snapshot.assistedPageCount);
+    setSelectedPageIndex(snapshot.selectedPageIndex);
+    setOverflowImageIds(snapshot.overflowImageIds);
+    setOversizedImageIds(snapshot.oversizedImageIds);
+    setResizeLimitNotice(snapshot.resizeLimitNotice);
+    setShowSelectionControls(snapshot.showSelectionControls);
+    setCanvasPresetId(snapshot.canvasPresetId);
+    setCustomCanvasWidthCm(snapshot.customCanvasWidthCm);
+    setCustomCanvasHeightCm(snapshot.customCanvasHeightCm);
+    setLayoutPresetId(snapshot.layoutPresetId);
+    setNotice({
+      tone: 'success',
+      text: 'Undo complete. Your previous project state has been restored.',
+    });
+    useEditorUIStore.setState({
+      drawerSelectedImageId: snapshot.drawerSelectedImageId,
+      imageZoomLevels: snapshot.imageZoomLevels,
+      imagePanOffsets: snapshot.imagePanOffsets,
+    });
+  }
+
+  function queueUndoAction(label: string, description: string, snapshot: EditorUndoSnapshot): void {
+    setUndoAction({
+      label,
+      description,
+      restore: () => restoreEditorUndoSnapshot(snapshot),
+    });
+  }
+
+  function undoLastAction(): void {
+    if (!undoAction) {
+      return;
+    }
+
+    undoAction.restore();
+    setUndoAction(null);
+  }
+
+  function registerDestructiveConfirmation(confirmed: boolean): void {
+    updateSessionMetrics((metrics) => ({
+      ...metrics,
+      destructiveConfirms: metrics.destructiveConfirms + (confirmed ? 1 : 0),
+      destructiveCancels: metrics.destructiveCancels + (confirmed ? 0 : 1),
+    }));
+  }
 
   function resolveCanvasDimensions(): { widthPx: number; heightPx: number } {
     const preset = CANVAS_SIZE_PRESETS.find((p) => p.id === canvasPresetId) ?? CANVAS_SIZE_PRESETS[0];
@@ -241,6 +441,30 @@ export function useCollageEditor() {
 
     return labels.length ? `Recommended: ${labels.join(' • ')}` : '';
   }, [images, canvasPresetId, customCanvasWidthCm, customCanvasHeightCm]);
+
+  const workflowStage = useMemo<WorkflowStage>(() => {
+    if (!images.length) {
+      return 'upload';
+    }
+    if (!hasPlacedItems) {
+      return 'generate';
+    }
+    if (isExporting || sessionMetrics.exportsCompleted > 0) {
+      return 'export';
+    }
+    return 'edit';
+  }, [hasPlacedItems, images.length, isExporting, sessionMetrics.exportsCompleted]);
+
+  const sessionInsights = useMemo(() => ({
+    timeToFirstLayoutMs:
+      sessionMetrics.firstUploadAt && sessionMetrics.firstLayoutAt
+        ? Math.max(0, sessionMetrics.firstLayoutAt - sessionMetrics.firstUploadAt)
+        : null,
+    timeToFirstExportMs:
+      sessionMetrics.firstLayoutAt && sessionMetrics.firstExportAt
+        ? Math.max(0, sessionMetrics.firstExportAt - sessionMetrics.firstLayoutAt)
+        : null,
+  }), [sessionMetrics.firstExportAt, sessionMetrics.firstLayoutAt, sessionMetrics.firstUploadAt]);
 
   const shouldRunAnimationLoop = (dragActive && interactionMode === 'replace') || Boolean(swapAnimation);
 
@@ -404,7 +628,7 @@ function rectanglesTouchOrOverlap(
         setGridModeEnabled(snapshot.settings.gridModeEnabled);
         setAutoCompactPages(snapshot.settings.autoCompactPages ?? true);
         setPaginationMode(snapshot.settings.paginationMode);
-        setInteractionMode(snapshot.settings.interactionMode ?? 'select');
+        setInteractionModeState(snapshot.settings.interactionMode ?? 'select');
         setAssistedPageCount(snapshot.settings.assistedPageCount);
         setSelectedPageIndex(snapshot.settings.selectedPageIndex);
         if (snapshot.settings.layoutPresetId) {
@@ -429,11 +653,18 @@ function rectanglesTouchOrOverlap(
         // Explicitly clear selected image state on hydration to avoid stale selections
         setSelectedImageId(null);
         setShowSelectionControls(false);
+        setLastSavedAt(snapshot.savedAt);
+        setRestoredFromSnapshot(true);
+        setNotice({
+          tone: 'info',
+          text: 'Saved project restored. Continue with your last collage or export when ready.',
+        });
       } catch {
         setError('Could not restore saved project state from local storage.');
       } finally {
         if (!cancelled) {
           setIsHydrated(true);
+          setSaveState('idle');
         }
       }
     }
@@ -450,6 +681,7 @@ function rectanglesTouchOrOverlap(
       return;
     }
 
+    setSaveState('saving');
     const timeoutId = window.setTimeout(async () => {
       const persistedImages: PersistedImageItem[] = await Promise.all(
         images.map(async (image) => {
@@ -511,7 +743,14 @@ function rectanglesTouchOrOverlap(
         images: persistedImages,
       };
 
-      void saveSnapshot(snapshot);
+      try {
+        await saveSnapshot(snapshot);
+        setLastSavedAt(snapshot.savedAt);
+        setSaveState('saved');
+      } catch {
+        setSaveState('error');
+        setError('We could not save your latest changes locally. Please keep this tab open and try again.');
+      }
     }, 500);
 
     return () => window.clearTimeout(timeoutId);
@@ -595,8 +834,17 @@ function rectanglesTouchOrOverlap(
             ],
       );
       setError('');
+      setNotice({
+        tone: 'success',
+        text: `${next.length} photo${next.length === 1 ? '' : 's'} added. Next step: generate a layout to start editing.`,
+      });
+      updateSessionMetrics((metrics) => ({
+        ...metrics,
+        uploads: metrics.uploads + next.length,
+        firstUploadAt: metrics.firstUploadAt ?? Date.now(),
+      }));
     } catch {
-      setError('Some images failed to load. Please retry with valid JPG, PNG, or WebP files.');
+      setError('Some photos could not be loaded. Please retry with valid PNG, JPG, or WebP files.');
     }
   }
 
@@ -609,6 +857,10 @@ function rectanglesTouchOrOverlap(
         frameThicknessPx: mmToPx(frameMm),
       })),
     );
+    setNotice({
+      tone: 'success',
+      text: 'Project sizing rules updated. Generate layout again if you want every page reflowed.',
+    });
   }
 
   // Keep canvas frames in sync with global frame width changes.
@@ -824,12 +1076,26 @@ function rectanglesTouchOrOverlap(
   function onGenerateLayout(): void {
     setAssistedPageCount(1);
     regenerateLayout(1, false, images, true);
+    setUndoAction(null);
+    setNotice({
+      tone: 'success',
+      text: 'Layout ready. Select a photo to fine-tune it, or export when the collage looks right.',
+    });
+    updateSessionMetrics((metrics) => ({
+      ...metrics,
+      layoutGenerations: metrics.layoutGenerations + 1,
+      firstLayoutAt: metrics.firstLayoutAt ?? Date.now(),
+    }));
   }
 
   function onCreateNextPage(): void {
     const nextCount = assistedPageCount + 1;
     setAssistedPageCount(nextCount);
     regenerateLayout(nextCount, false, images, true);
+    setNotice({
+      tone: 'info',
+      text: `Added page ${nextCount}. Continue placing and editing photos on the current page.`,
+    });
   }
 
   function pagePointFromClient(
@@ -1543,19 +1809,17 @@ function rectanglesTouchOrOverlap(
       const targetImageId = target?.imageId ?? hoveredImageId;
       if (targetImageId && targetImageId !== dragStateRef.current.sourceImageId) {
         swapImagesOnSelectedPage(dragStateRef.current.sourceImageId, targetImageId);
+        setInteractionModeState('select');
+        setNotice({
+          tone: 'success',
+          text: 'Photos swapped. You are back in Edit mode.',
+        });
       }
     }
 
     if ((interactionMode === 'move' || interactionMode === 'select') && isMoveDrag(dragStateRef.current) && moveOutsideCanvas) {
       const imageIdToRemove = dragStateRef.current.imageId;
-      setPages((currentPages) =>
-        currentPages.map((page) => ({
-          ...page,
-          items: page.items.filter((item) => item.imageId !== imageIdToRemove),
-        })),
-      );
-      setSelectedImageId(null);
-      setHoveredImageId(null);
+      removeFromCanvas(imageIdToRemove);
     }
 
     if ((interactionMode === 'move' || interactionMode === 'select') && isMoveDrag(dragStateRef.current) && !moveOutsideCanvas) {
@@ -1647,6 +1911,10 @@ function rectanglesTouchOrOverlap(
     const hit = findHitItem(point);
     if (hit) {
       setInteractionMode('crop');
+      setNotice({
+        tone: 'info',
+        text: 'Crop mode active. Drag the photo to reframe it, then press Esc to return to Edit mode.',
+      });
     }
   }
 
@@ -1821,6 +2089,10 @@ function rectanglesTouchOrOverlap(
     setError('');
     setManualPlacementDragImageId(null);
     setCanvasPlacementPreview(null);
+    setNotice({
+      tone: 'success',
+      text: `${image.fileName} added to the active page. Use Edit mode to move or resize it.`,
+    });
   }
 
   function onCanvasDragLeave(): void {
@@ -1926,6 +2198,12 @@ function rectanglesTouchOrOverlap(
     setHoveredImageId(imageId);
     setShowSelectionControls(true);
     setError('');
+    setNotice({
+      tone: 'success',
+      text: replaceSelected
+        ? `${image.fileName} replaced the active photo on the current page.`
+        : `${image.fileName} added to the current page.`,
+    });
   }
 
   function expandSelectedImage(scaleFactor: number): void {
@@ -1990,6 +2268,8 @@ function rectanglesTouchOrOverlap(
         ? crypto.randomUUID().slice(0, 8)
         : Math.random().toString(36).slice(2, 10);
 
+    setIsExporting(true);
+    setLastExportSummary('');
     try {
       const { default: JSZip } = await import('jszip');
       const zip = new JSZip();
@@ -2026,8 +2306,29 @@ function rectanglesTouchOrOverlap(
       link.href = objectUrl;
       link.click();
       window.setTimeout(() => URL.revokeObjectURL(objectUrl), 30_000);
+      const summary = `Exported ${exportablePages.length} page${exportablePages.length === 1 ? '' : 's'} as a ${extension.toUpperCase()} ZIP.`;
+      setLastExportSummary(summary);
+      setNotice({
+        tone: 'success',
+        text: `${summary} Review the downloaded archive before printing.`,
+      });
+      updateSessionMetrics((metrics) => ({
+        ...metrics,
+        exportsCompleted: metrics.exportsCompleted + 1,
+        firstExportAt: metrics.firstExportAt ?? Date.now(),
+      }));
     } catch (err) {
-      setError(err instanceof Error ? `${exportZipErrorMessage}: ${err.message}` : `${exportZipErrorMessage}. Please try again.`);
+      setError(
+        err instanceof Error
+          ? `${exportZipErrorMessage}: ${err.message}. Please retry export or switch to PNG if JPEG packaging fails.`
+          : `${exportZipErrorMessage}. Please retry export or switch to PNG if JPEG packaging fails.`,
+      );
+      updateSessionMetrics((metrics) => ({
+        ...metrics,
+        exportFailures: metrics.exportFailures + 1,
+      }));
+    } finally {
+      setIsExporting(false);
     }
   }
 
@@ -2077,16 +2378,38 @@ function rectanglesTouchOrOverlap(
     dragStateRef.current = null;
     setMoveOutsideCanvas(false);
     setMoveCollisionImageIds([]);
+    setInteractionModeState('select');
+    setUndoAction(null);
+    setLastExportSummary('');
   }
 
   function startFromScratch(): void {
+    const hasAnyLayout = pages.some((page) => page.items.length > 0);
+    if (hasAnyLayout) {
+      const confirmed = window.confirm(
+        'Reset the generated layout and keep your uploaded photos in the library? You can undo this right after resetting.',
+      );
+      registerDestructiveConfirmation(confirmed);
+      if (!confirmed) {
+        return;
+      }
+      queueUndoAction('Layout reset', 'Undo reset and restore your previous page arrangement.', captureEditorUndoSnapshot());
+    }
     resetGeneratedLayoutState();
+    setNotice({
+      tone: 'info',
+      text: 'Layout reset. Your uploaded photos are still available, and you can undo this reset.',
+    });
   }
 
   async function enhanceImage(imageId: string, options: EnhanceOptions = {}): Promise<void> {
     const image = images.find((img) => img.id === imageId);
     if (!image) return;
     setEnhancingImageIds((prev) => new Set(prev).add(imageId));
+    updateSessionMetrics((metrics) => ({
+      ...metrics,
+      enhancementRuns: metrics.enhancementRuns + 1,
+    }));
     try {
       const enhancedSrc = await enhanceImageWithAI(image.src, options);
       // Load the result as an HTMLImageElement (matches ImageItem.bitmap type)
@@ -2101,8 +2424,16 @@ function rectanglesTouchOrOverlap(
           img.id === imageId ? { ...img, src: enhancedSrc, bitmap: htmlImg } : img,
         ),
       );
+      setNotice({
+        tone: 'success',
+        text: `Enhanced ${image.fileName}. Compare it on the canvas before exporting.`,
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Auto enhancement failed');
+      updateSessionMetrics((metrics) => ({
+        ...metrics,
+        enhancementFailures: metrics.enhancementFailures + 1,
+      }));
     } finally {
       setEnhancingImageIds((prev) => {
         const next = new Set(prev);
@@ -2113,8 +2444,29 @@ function rectanglesTouchOrOverlap(
   }
 
   async function enhanceAllImages(options: EnhanceOptions = {}): Promise<void> {
-    for (const image of images) {
+    const preset = options.preset ?? 'consistent';
+    setBatchEnhanceProgress({
+      completed: 0,
+      total: images.length,
+      preset,
+    });
+    for (const [index, image] of images.entries()) {
       await enhanceImage(image.id, options);
+      setBatchEnhanceProgress((current) =>
+        current
+          ? {
+              ...current,
+              completed: index + 1,
+            }
+          : current,
+      );
+    }
+    setBatchEnhanceProgress(null);
+    if (images.length) {
+      setNotice({
+        tone: 'success',
+        text: `Finished enhancing ${images.length} photo${images.length === 1 ? '' : 's'}. Review the results before export.`,
+      });
     }
   }
 
@@ -2138,6 +2490,10 @@ function rectanglesTouchOrOverlap(
           img.id === imageId ? { ...img, src: img.originalSrc, bitmap: originalImg } : img,
         ),
       );
+      setNotice({
+        tone: 'info',
+        text: `Restored the original version of ${image.fileName}.`,
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to restore original image');
     } finally {
@@ -2151,6 +2507,13 @@ function rectanglesTouchOrOverlap(
 
   function deleteImage(imageId: string): void {
     const image = images.find((img) => img.id === imageId);
+    const confirmed = window.confirm(
+      `Delete ${image?.fileName ?? 'this photo'} from the project library? This also removes it from every page.`,
+    );
+    registerDestructiveConfirmation(confirmed);
+    if (!confirmed) {
+      return;
+    }
     if (image) {
       URL.revokeObjectURL(image.src);
       knownImageSrcsRef.current.delete(image.src);
@@ -2180,9 +2543,19 @@ function rectanglesTouchOrOverlap(
     if (drawerSelectedImageId === imageId) {
       setDrawerSelectedImageId(null);
     }
+    setNotice({
+      tone: 'info',
+      text: `${image?.fileName ?? 'Photo'} removed from the project library.`,
+    });
   }
 
   function removeFromCanvas(imageId: string): void {
+    const image = images.find((img) => img.id === imageId);
+    queueUndoAction(
+      'Photo removed',
+      'Undo removal and place the photo back on its previous page.',
+      captureEditorUndoSnapshot(),
+    );
     setPages((prev) =>
       prev.map((page) => ({ ...page, items: page.items.filter((item) => item.imageId !== imageId) })),
     );
@@ -2199,6 +2572,14 @@ function rectanglesTouchOrOverlap(
       setMoveOutsideCanvas(false);
       setMoveCollisionImageIds([]);
     }
+    updateSessionMetrics((metrics) => ({
+      ...metrics,
+      removedFromCanvas: metrics.removedFromCanvas + 1,
+    }));
+    setNotice({
+      tone: 'info',
+      text: `${image?.fileName ?? 'Photo'} removed from the current layout. You can undo this action.`,
+    });
   }
 
   function removeSelectedCanvas(): void {
@@ -2214,13 +2595,19 @@ function rectanglesTouchOrOverlap(
     const hasItems = targetPage.items.length > 0;
     if (hasItems) {
       const confirmed = window.confirm(
-        `This canvas contains ${targetPage.items.length} image${targetPage.items.length === 1 ? '' : 's'}. Remove this canvas and its placed images?`,
+        `Remove current page ${selectedPageIndex + 1}? It contains ${targetPage.items.length} placed photo${targetPage.items.length === 1 ? '' : 's'}. You can undo this right after removing it.`,
       );
+      registerDestructiveConfirmation(confirmed);
       if (!confirmed) {
         return;
       }
     }
 
+    queueUndoAction(
+      'Page removed',
+      'Undo page removal and restore the previous page stack.',
+      captureEditorUndoSnapshot(),
+    );
     const removedImageIds = new Set(targetPage.items.map((item) => item.imageId));
     setPages((prev) => prev.filter((_, index) => index !== selectedPageIndex));
     setSelectedPageIndex((current) => {
@@ -2243,9 +2630,24 @@ function rectanglesTouchOrOverlap(
       setMoveOutsideCanvas(false);
       setMoveCollisionImageIds([]);
     }
+    updateSessionMetrics((metrics) => ({
+      ...metrics,
+      removedPages: metrics.removedPages + 1,
+    }));
+    setNotice({
+      tone: 'info',
+      text: `Removed page ${selectedPageIndex + 1}. You can undo this action.`,
+    });
   }
 
   function clearEverything(): void {
+    const confirmed = window.confirm(
+      'Clear the entire project, including uploaded photos, layouts, and saved local state? This cannot be undone.',
+    );
+    registerDestructiveConfirmation(confirmed);
+    if (!confirmed) {
+      return;
+    }
     const urlsToRevoke = new Set<string>();
     for (const image of images) {
       urlsToRevoke.add(image.src);
@@ -2264,8 +2666,10 @@ function rectanglesTouchOrOverlap(
     setGridModeEnabled(false);
     setAutoCompactPages(true);
     setPaginationMode('auto');
-    setInteractionMode('crop');
+    setInteractionModeState('select');
     setSelectedImageId(null);
+    setHoveredImageId(null);
+    setDrawerSelectedImageId(null);
     setShowSelectionControls(false);
     setDragActive(false);
     setAssistedPageCount(1);
@@ -2288,6 +2692,17 @@ function rectanglesTouchOrOverlap(
     setLayoutPresetId(DEFAULT_LAYOUT_PRESET_ID);
     setCustomCanvasWidthCm(20);
     setCustomCanvasHeightCm(20);
+    setSaveState('idle');
+    setLastSavedAt(null);
+    setRestoredFromSnapshot(false);
+    setUndoAction(null);
+    setLastExportSummary('');
+    setBatchEnhanceProgress(null);
+    setSessionMetrics(DEFAULT_SESSION_METRICS());
+    setNotice({
+      tone: 'info',
+      text: 'Project cleared. Start again by uploading photos.',
+    });
     void clearSnapshot();
   }
 
@@ -2315,6 +2730,8 @@ function rectanglesTouchOrOverlap(
     hoveredImageId,
     dragActive,
     moveOutsideCanvas,
+    hasPlacedItems,
+    hasUnplacedImages,
     selectedPageIndex,
     setSelectedPageIndex,
     overflowImageIds,
@@ -2322,6 +2739,18 @@ function rectanglesTouchOrOverlap(
     resizeLimitNotice,
     resizeCurrentDimensions,
     error,
+    notice,
+    saveState,
+    lastSavedAt,
+    restoredFromSnapshot,
+    workflowStage,
+    isExporting,
+    lastExportSummary,
+    batchEnhanceProgress,
+    sessionMetrics,
+    sessionInsights,
+    undoActionLabel: undoAction?.label ?? null,
+    undoActionDescription: undoAction?.description ?? null,
     showSelectionControls,
     previewCanvasRef,
     canvasPresetId,
@@ -2341,6 +2770,7 @@ function rectanglesTouchOrOverlap(
     onCreateNextPage,
     startFromScratch,
     clearEverything,
+    undoLastAction,
     updateImage,
     deleteImage,
     removeFromCanvas,
