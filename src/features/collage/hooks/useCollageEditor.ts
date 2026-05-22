@@ -96,6 +96,8 @@ function elapsedTicks(currentTick: number, startTick: number): number {
   return currentTick >= startTick ? currentTick - startTick : 10000 - startTick + currentTick;
 }
 
+const SELECT_HANDLE_HIT_RADIUS_CSS_PX = 12;
+
 function randomId(prefix = 'img'): string {
   return `${prefix}-${crypto.randomUUID()}`;
 }
@@ -910,16 +912,26 @@ function rectanglesTouchOrOverlap(
       return null;
     }
 
+    const transform = previewTransformRef.current;
+    const handleHitRadiusPx = transform
+      ? SELECT_HANDLE_HIT_RADIUS_CSS_PX * transform.dpr / transform.scale
+      : 0;
+
     for (let i = selectedPage.items.length - 1; i >= 0; i -= 1) {
       const placed = selectedPage.items[i];
-      const frame = placed.frameThicknessPx;
-      const innerX = placed.x + frame;
-      const innerY = placed.y + frame;
       if (
-        pagePoint.x >= innerX &&
-        pagePoint.x <= innerX + placed.contentWidthPx &&
-        pagePoint.y >= innerY &&
-        pagePoint.y <= innerY + placed.contentHeightPx
+        pagePoint.x >= placed.x &&
+        pagePoint.x <= placed.x + placed.width &&
+        pagePoint.y >= placed.y &&
+        pagePoint.y <= placed.y + placed.height
+      ) {
+        return placed;
+      }
+
+      if (
+        placed.imageId === selectedImageId &&
+        handleHitRadiusPx > 0 &&
+        getHandleAtPoint(pagePoint, placed, handleHitRadiusPx)
       ) {
         return placed;
       }
@@ -1070,7 +1082,7 @@ function rectanglesTouchOrOverlap(
       // Check if the click lands on a resize handle of the currently selected image.
       const transform = previewTransformRef.current;
       if (selectedImageId === hit.imageId && transform) {
-        const hitRadiusPx = 10 * transform.dpr / transform.scale;
+        const hitRadiusPx = SELECT_HANDLE_HIT_RADIUS_CSS_PX * transform.dpr / transform.scale;
         const handle = getHandleAtPoint(point, hit, hitRadiusPx);
         if (handle) {
           const { fixedHorizontal, fixedVertical } = getHandleFixedEdges(handle);
@@ -1165,7 +1177,7 @@ function rectanglesTouchOrOverlap(
         if (transform && selectedImageId) {
           const selectedItem = selectedPage?.items.find((item) => item.imageId === selectedImageId);
           if (selectedItem && hit?.imageId === selectedImageId) {
-            const hitRadiusPx = 10 * transform.dpr / transform.scale;
+            const hitRadiusPx = SELECT_HANDLE_HIT_RADIUS_CSS_PX * transform.dpr / transform.scale;
             const handle = getHandleAtPoint(point, selectedItem, hitRadiusPx);
             setCanvasCursor(handle ? getCursorForHandle(handle) : 'cursor-grab');
           } else if (hit) {
