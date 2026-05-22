@@ -52,7 +52,71 @@ export function getHandleAtPoint(
     }
   }
 
-  return bestHandle;
+  if (bestHandle) {
+    return bestHandle;
+  }
+
+  const withinExpandedBounds =
+    point.x >= item.x - hitRadiusPx &&
+    point.x <= item.x + item.width + hitRadiusPx &&
+    point.y >= item.y - hitRadiusPx &&
+    point.y <= item.y + item.height + hitRadiusPx;
+
+  if (!withinExpandedBounds) {
+    return null;
+  }
+
+  const distLeft = Math.abs(point.x - item.x);
+  const distRight = Math.abs(point.x - (item.x + item.width));
+  const distTop = Math.abs(point.y - item.y);
+  const distBottom = Math.abs(point.y - (item.y + item.height));
+  const nearLeft = distLeft <= hitRadiusPx;
+  const nearRight = distRight <= hitRadiusPx;
+  const nearTop = distTop <= hitRadiusPx;
+  const nearBottom = distBottom <= hitRadiusPx;
+
+  if (!nearLeft && !nearRight && !nearTop && !nearBottom) {
+    return null;
+  }
+
+  const edgeCandidates: Array<{ handle: HandleType; distance: number; priority: number }> = [];
+  if (nearLeft) {
+    edgeCandidates.push({ handle: 'w', distance: distLeft, priority: 1 });
+  }
+  if (nearRight) {
+    edgeCandidates.push({ handle: 'e', distance: distRight, priority: 1 });
+  }
+  if (nearTop) {
+    edgeCandidates.push({ handle: 'n', distance: distTop, priority: 1 });
+  }
+  if (nearBottom) {
+    edgeCandidates.push({ handle: 's', distance: distBottom, priority: 1 });
+  }
+  if (nearLeft && nearTop) {
+    edgeCandidates.push({ handle: 'nw', distance: Math.max(distLeft, distTop), priority: 0 });
+  }
+  if (nearRight && nearTop) {
+    edgeCandidates.push({ handle: 'ne', distance: Math.max(distRight, distTop), priority: 0 });
+  }
+  if (nearLeft && nearBottom) {
+    edgeCandidates.push({ handle: 'sw', distance: Math.max(distLeft, distBottom), priority: 0 });
+  }
+  if (nearRight && nearBottom) {
+    edgeCandidates.push({ handle: 'se', distance: Math.max(distRight, distBottom), priority: 0 });
+  }
+
+  return edgeCandidates.reduce((best, candidate) => {
+    if (!best) {
+      return candidate;
+    }
+    if (candidate.distance < best.distance) {
+      return candidate;
+    }
+    if (candidate.distance === best.distance && candidate.priority < best.priority) {
+      return candidate;
+    }
+    return best;
+  }, null as { handle: HandleType; distance: number; priority: number } | null)?.handle ?? null;
 }
 
 /** Returns the fixed-edge anchors for a given handle (the opposite corner/side stays fixed). */
