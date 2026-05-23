@@ -29,4 +29,14 @@ describe('select interaction handle targeting', () => {
   it('does not return a resize handle for the body center', () => {
     expect(getHandleAtPoint({ x: 180, y: 180 }, item, 10)).toBeNull();
   });
+
+  it('supports corner-only targeting for visible handle points', () => {
+    expect(getHandleAtPoint({ x: 96, y: 116 }, item, 10, { cornersOnly: true })).toBe('nw');
+    expect(getHandleAtPoint({ x: 264, y: 244 }, item, 10, { cornersOnly: true })).toBe('se');
+  });
+
+  it('does not return edge handles in corner-only mode', () => {
+    expect(getHandleAtPoint({ x: 180, y: 124 }, item, 10, { cornersOnly: true })).toBeNull();
+    expect(getHandleAtPoint({ x: 258, y: 180 }, item, 10, { cornersOnly: true })).toBeNull();
+  });
 });

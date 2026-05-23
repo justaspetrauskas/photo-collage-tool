@@ -39,12 +39,40 @@ export function getHandleAtPoint(
   point: { x: number; y: number },
   item: Rect,
   hitRadiusPx: number,
+  options: { cornersOnly?: boolean } = {},
 ): HandleType | null {
   const handles = getSelectHandlePositions(item);
+  const handleOrder: HandleType[] = options.cornersOnly
+    ? ['nw', 'ne', 'sw', 'se']
+    : ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
+
+  if (options.cornersOnly) {
+    let bestCorner: HandleType | null = null;
+    let bestScore = Number.POSITIVE_INFINITY;
+
+    for (const type of handleOrder) {
+      const pos = handles[type];
+      const dx = Math.abs(point.x - pos.x);
+      const dy = Math.abs(point.y - pos.y);
+
+      // Corner-only mode matches a square hover/click zone around each visible handle.
+      if (dx <= hitRadiusPx && dy <= hitRadiusPx) {
+        const score = Math.max(dx, dy);
+        if (score < bestScore) {
+          bestScore = score;
+          bestCorner = type;
+        }
+      }
+    }
+
+    return bestCorner;
+  }
+
   let bestHandle: HandleType | null = null;
   let bestDist = hitRadiusPx;
 
-  for (const [type, pos] of Object.entries(handles) as [HandleType, { x: number; y: number }][]) {
+  for (const type of handleOrder) {
+    const pos = handles[type];
     const dist = Math.hypot(point.x - pos.x, point.y - pos.y);
     if (dist <= bestDist) {
       bestDist = dist;

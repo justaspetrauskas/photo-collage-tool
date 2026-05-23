@@ -1221,7 +1221,7 @@ function rectanglesTouchOrOverlap(
       if (
         placed.imageId === selectedImageId &&
         handleHitRadiusPx > 0 &&
-        getHandleAtPoint(pagePoint, placed, handleHitRadiusPx)
+        getHandleAtPoint(pagePoint, placed, handleHitRadiusPx, { cornersOnly: true })
       ) {
         return placed;
       }
@@ -1288,14 +1288,14 @@ function rectanglesTouchOrOverlap(
       ? SELECT_HANDLE_HIT_RADIUS_CSS_PX * transform.dpr / transform.scale
       : 0;
     const selectedHandle = interactionMode === 'select' && selectedItem && handleHitRadiusPx > 0
-      ? getHandleAtPoint(point, selectedItem, handleHitRadiusPx)
+      ? getHandleAtPoint(point, selectedItem, handleHitRadiusPx, { cornersOnly: true })
       : null;
     const selectedResizeHandle = selectedHandle;
 
     const hit = findHitItem(point);
     const interactionTarget = hit ?? (selectedResizeHandle ? selectedItem : null);
     const interactionResizeHandle = interactionMode === 'select' && interactionTarget && handleHitRadiusPx > 0
-      ? getHandleAtPoint(point, interactionTarget, handleHitRadiusPx)
+      ? getHandleAtPoint(point, interactionTarget, handleHitRadiusPx, { cornersOnly: true })
       : null;
     if (!interactionTarget) {
       setSelectedImageId(null);
@@ -1498,10 +1498,10 @@ function rectanglesTouchOrOverlap(
         ? SELECT_HANDLE_HIT_RADIUS_CSS_PX * transform.dpr / transform.scale
         : 0;
       const selectedResizeHandle = interactionMode === 'select' && selectedItem && handleHitRadiusPx > 0
-        ? getHandleAtPoint(point, selectedItem, handleHitRadiusPx)
+        ? getHandleAtPoint(point, selectedItem, handleHitRadiusPx, { cornersOnly: true })
         : null;
       const hitResizeHandle = interactionMode === 'select' && hit && handleHitRadiusPx > 0
-        ? getHandleAtPoint(point, hit, handleHitRadiusPx)
+        ? getHandleAtPoint(point, hit, handleHitRadiusPx, { cornersOnly: true })
         : null;
       const hoverResizeHandle = selectedResizeHandle ?? hitResizeHandle;
       const hoverResizeImageId = selectedResizeHandle && selectedItem
