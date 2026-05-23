@@ -1284,16 +1284,19 @@ function rectanglesTouchOrOverlap(
       ? selectedPage?.items.find((item) => item.imageId === selectedImageId) ?? null
       : null;
     const transform = previewTransformRef.current;
-    const selectedHandleHitRadiusPx = transform
+    const handleHitRadiusPx = transform
       ? SELECT_HANDLE_HIT_RADIUS_CSS_PX * transform.dpr / transform.scale
       : 0;
-    const selectedHandle = interactionMode === 'select' && selectedItem && selectedHandleHitRadiusPx > 0
-      ? getHandleAtPoint(point, selectedItem, selectedHandleHitRadiusPx)
+    const selectedHandle = interactionMode === 'select' && selectedItem && handleHitRadiusPx > 0
+      ? getHandleAtPoint(point, selectedItem, handleHitRadiusPx)
       : null;
     const selectedResizeHandle = selectedHandle;
 
     const hit = findHitItem(point);
     const interactionTarget = hit ?? (selectedResizeHandle ? selectedItem : null);
+    const interactionResizeHandle = interactionMode === 'select' && interactionTarget && handleHitRadiusPx > 0
+      ? getHandleAtPoint(point, interactionTarget, handleHitRadiusPx)
+      : null;
     if (!interactionTarget) {
       setSelectedImageId(null);
       setDrawerSelectedImageId(null);
@@ -1382,13 +1385,9 @@ function rectanglesTouchOrOverlap(
     }
 
     if (interactionMode === 'select') {
-      // Check if the click lands on a resize handle (corner or edge) of the selected image.
-      if (
-        selectedResizeHandle &&
-        selectedItem &&
-        selectedItem.imageId === interactionTarget.imageId
-      ) {
-        const { fixedHorizontal, fixedVertical } = getHandleFixedEdges(selectedResizeHandle);
+      // Check if the click lands on a resize handle (corner or edge) of the interaction target.
+      if (interactionResizeHandle) {
+        const { fixedHorizontal, fixedVertical } = getHandleFixedEdges(interactionResizeHandle);
         dragStateRef.current = {
           type: 'resize',
           imageId: interactionTarget.imageId,
@@ -1495,20 +1494,28 @@ function rectanglesTouchOrOverlap(
       const selectedItem = selectedImageId
         ? selectedPage?.items.find((item) => item.imageId === selectedImageId) ?? null
         : null;
-      const selectedHandleHitRadiusPx = transform
+      const handleHitRadiusPx = transform
         ? SELECT_HANDLE_HIT_RADIUS_CSS_PX * transform.dpr / transform.scale
         : 0;
-      const selectedHandle = interactionMode === 'select' && selectedItem && selectedHandleHitRadiusPx > 0
-        ? getHandleAtPoint(point, selectedItem, selectedHandleHitRadiusPx)
+      const selectedResizeHandle = interactionMode === 'select' && selectedItem && handleHitRadiusPx > 0
+        ? getHandleAtPoint(point, selectedItem, handleHitRadiusPx)
         : null;
-      const selectedResizeHandle = selectedHandle;
+      const hitResizeHandle = interactionMode === 'select' && hit && handleHitRadiusPx > 0
+        ? getHandleAtPoint(point, hit, handleHitRadiusPx)
+        : null;
+      const hoverResizeHandle = selectedResizeHandle ?? hitResizeHandle;
+      const hoverResizeImageId = selectedResizeHandle && selectedItem
+        ? selectedItem.imageId
+        : hitResizeHandle && hit
+          ? hit.imageId
+          : null;
 
-      setHoveredImageId(selectedResizeHandle && selectedItem ? selectedItem.imageId : (hit?.imageId ?? null));
+      setHoveredImageId(hoverResizeImageId ?? (hit?.imageId ?? null));
 
       // In 'select' mode, update the canvas cursor based on what's under the pointer.
       if (interactionMode === 'select') {
-        if (selectedResizeHandle) {
-          setCanvasCursor(getCursorForHandle(selectedResizeHandle));
+        if (hoverResizeHandle) {
+          setCanvasCursor(getCursorForHandle(hoverResizeHandle));
         } else if (hit) {
           setCanvasCursor('cursor-grab');
         } else {
