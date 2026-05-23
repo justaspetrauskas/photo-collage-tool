@@ -1485,6 +1485,9 @@ function rectanglesTouchOrOverlap(
       if (!dragActive && hoveredImageId !== null) {
         setHoveredImageId(null);
       }
+      if (!dragActive && interactionMode === 'select') {
+        setCanvasCursor('cursor-default');
+      }
       return;
     }
 
