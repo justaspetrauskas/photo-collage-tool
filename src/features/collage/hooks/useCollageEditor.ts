@@ -59,7 +59,6 @@ import {
   getHandleAtPoint,
   getHandleFixedEdges,
   getCursorForHandle,
-  isCornerHandle,
 } from '../interactions';
 import { computeSmartDropSize, resolveSmartFraming } from '../lib/editorLayoutUtils';
 
@@ -1291,10 +1290,10 @@ function rectanglesTouchOrOverlap(
     const selectedHandle = interactionMode === 'select' && selectedItem && selectedHandleHitRadiusPx > 0
       ? getHandleAtPoint(point, selectedItem, selectedHandleHitRadiusPx)
       : null;
-    const selectedCornerHandle = selectedHandle && isCornerHandle(selectedHandle) ? selectedHandle : null;
+    const selectedResizeHandle = selectedHandle;
 
     const hit = findHitItem(point);
-    const interactionTarget = hit ?? (selectedCornerHandle ? selectedItem : null);
+    const interactionTarget = hit ?? (selectedResizeHandle ? selectedItem : null);
     if (!interactionTarget) {
       setSelectedImageId(null);
       setDrawerSelectedImageId(null);
@@ -1383,14 +1382,13 @@ function rectanglesTouchOrOverlap(
     }
 
     if (interactionMode === 'select') {
-      // Check if the click lands on a corner resize handle of the currently selected image.
-      // Only corner handles (nw, ne, sw, se) trigger resize — Pinterest-style behaviour.
+      // Check if the click lands on a resize handle (corner or edge) of the selected image.
       if (
-        selectedCornerHandle &&
+        selectedResizeHandle &&
         selectedItem &&
         selectedItem.imageId === interactionTarget.imageId
       ) {
-        const { fixedHorizontal, fixedVertical } = getHandleFixedEdges(selectedCornerHandle);
+        const { fixedHorizontal, fixedVertical } = getHandleFixedEdges(selectedResizeHandle);
         dragStateRef.current = {
           type: 'resize',
           imageId: interactionTarget.imageId,
@@ -1503,14 +1501,14 @@ function rectanglesTouchOrOverlap(
       const selectedHandle = interactionMode === 'select' && selectedItem && selectedHandleHitRadiusPx > 0
         ? getHandleAtPoint(point, selectedItem, selectedHandleHitRadiusPx)
         : null;
-      const selectedCornerHandle = selectedHandle && isCornerHandle(selectedHandle) ? selectedHandle : null;
+      const selectedResizeHandle = selectedHandle;
 
-      setHoveredImageId(selectedCornerHandle && selectedItem ? selectedItem.imageId : (hit?.imageId ?? null));
+      setHoveredImageId(selectedResizeHandle && selectedItem ? selectedItem.imageId : (hit?.imageId ?? null));
 
       // In 'select' mode, update the canvas cursor based on what's under the pointer.
       if (interactionMode === 'select') {
-        if (selectedCornerHandle) {
-          setCanvasCursor(getCursorForHandle(selectedCornerHandle));
+        if (selectedResizeHandle) {
+          setCanvasCursor(getCursorForHandle(selectedResizeHandle));
         } else if (hit) {
           setCanvasCursor('cursor-grab');
         } else {
