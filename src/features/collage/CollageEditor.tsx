@@ -143,8 +143,11 @@ export function CollageEditor() {
                 pages={editor.pages}
                 itemById={editor.itemById}
                 imageById={editor.imageById}
+                imageZoomLevels={editor.imageZoomLevels}
+                imagePanOffsets={editor.imagePanOffsets}
                 selectedImageId={editor.selectedImageId}
                 hoveredImageId={editor.hoveredImageId}
+                drawerSelectedImageId={editor.drawerSelectedImageId}
                 selectedImageName={editor.selectedImage?.fileName ?? null}
                 showSelectionControls={editor.showSelectionControls}
                 onCloseSelectionControls={editor.clearSelection}
@@ -152,21 +155,26 @@ export function CollageEditor() {
                 interactionMode={editor.interactionMode}
                 dragActive={editor.dragActive}
                 moveOutsideCanvas={editor.moveOutsideCanvas}
+                moveCollisionImageIds={editor.moveCollisionImageIds}
+                resizeCurrentDimensions={editor.resizeCurrentDimensions}
+                resizeFeedback={editor.resizeFeedback}
+                resizeSnapGuides={editor.resizeSnapGuides}
+                resizeSnapActive={editor.resizeSnapActive}
+                replaceAnimationTick={editor.replaceAnimationTick}
+                replacePointer={editor.replacePointer}
+                swapTargetInvalid={editor.swapTargetInvalid}
+                canvasPlacementPreview={editor.canvasPlacementPreview}
                 onSetInteractionMode={editor.setInteractionMode}
                 onExpandSelectedImage={editor.expandSelectedImage}
                 onResetSelectedCrop={editor.resetSelectedCrop}
                 selectedPageIndex={editor.selectedPageIndex}
                 onSelectPage={editor.setSelectedPageIndex}
-                previewCanvasRef={editor.previewCanvasRef}
-                onMouseDown={editor.onCanvasMouseDown}
-                onMouseMove={editor.onCanvasMouseMove}
-                onMouseUp={editor.onCanvasMouseUp}
-                onMouseLeave={editor.onCanvasMouseLeave}
-                onDoubleClick={editor.onCanvasDoubleClick}
-                onPointerDown={editor.onCanvasPointerDown}
-                onPointerMove={editor.onCanvasPointerMove}
-                onPointerUp={editor.onCanvasPointerUp}
-                onPointerCancel={editor.onCanvasPointerCancel}
+                previewViewportRef={editor.previewViewportRef}
+                onPreviewMouseDown={editor.onPreviewMouseDown}
+                onPreviewMouseMove={editor.onPreviewMouseMove}
+                onPreviewMouseUp={editor.onPreviewMouseUp}
+                onPreviewMouseLeave={editor.onPreviewMouseLeave}
+                onPreviewDoubleClick={editor.onPreviewDoubleClick}
                 onDragOver={editor.onCanvasDragOver}
                 onDrop={editor.onCanvasDrop}
                  onDragLeave={editor.onCanvasDragLeave}
@@ -174,6 +182,7 @@ export function CollageEditor() {
                  hasUnplacedImages={editor.hasUnplacedImages}
                  onGenerateLayout={editor.onGenerateLayout}
                  imagesCount={editor.images.length}
+                 canvasCursor={editor.canvasCursor}
                />
             </main>
           </div>

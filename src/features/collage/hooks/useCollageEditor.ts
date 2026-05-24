@@ -1,11 +1,10 @@
 import { enhanceImageWithAI, type EnhanceOptions, type EnhancePreset } from '../lib/openaiImageEdit';
 import { useEffect } from 'react';
-import type { ChangeEvent, DragEvent, MouseEvent, PointerEvent } from 'react';
+import type { ChangeEvent, DragEvent } from 'react';
 import {
   CANVAS_SIZE_PRESETS,
   DEFAULT_CANVAS_PRESET_ID,
   DEFAULT_FRAME_MM,
-  DEFAULT_GRID_SPACING_CM,
   DEFAULT_LAYOUT_PRESET_ID,
   DEFAULT_MAX_IMAGE_CM,
   DEFAULT_MIN_IMAGE_CM,
@@ -16,7 +15,7 @@ import {
   type CanvasSizePresetId,
 } from '../model/constants';
 import { buildPaginatedLayout, clampOffsets } from '../model/layoutEngine';
-import { drawPagePreview, renderPageToExportCanvas } from '../model/renderEngine';
+import { renderPageToExportCanvas } from '../model/renderEngine';
 import { useEditorUIStore } from '../store/editorUIStore';
 import { useCollageState } from './useCollageState';
 import { useCollageUIState } from './useCollageUIState';
@@ -44,6 +43,7 @@ import {
   getResizeAssistSnap,
   getHandleAtPoint,
   getHandleFixedEdges,
+  getCursorForHandle,
   calculateCropOffsets,
   calculateNewPosition,
 } from '../interactions';
@@ -55,7 +55,6 @@ import type {
   ImageItem,
   PositionedImage,
   PageLayout,
-  PreviewTransform,
   PersistedEditorSnapshot,
   PersistedImageItem,
 } from '../model/types';
@@ -303,13 +302,10 @@ export function useCollageEditor() {
     lastExportSummary, setLastExportSummary,
     batchEnhanceProgress, setBatchEnhanceProgress,
     sessionMetrics, setSessionMetrics,
-    previewCanvasRef,
-    previewTransformRef,
-    previewRenderFrameRef,
+    previewViewportRef,
     interactionMoveFrameRef,
     pendingInteractionMoveRef,
     dragStateRef,
-    mousePointerCapturedRef,
     knownImageSrcsRef,
   } = collageUIState;
 
@@ -415,58 +411,6 @@ export function useCollageEditor() {
       setSwapAnimation(null);
     }
   }, [replaceAnimationTick, swapAnimation]);
-
-  useEffect(() => {
-    const canvas = previewCanvasRef.current;
-    if (!canvas || !selectedPage) {
-      return;
-    }
-
-    if (previewRenderFrameRef.current !== null) {
-      window.cancelAnimationFrame(previewRenderFrameRef.current);
-    }
-
-    const frameId = window.requestAnimationFrame(() => {
-      previewTransformRef.current = drawPagePreview(
-        canvas,
-        selectedPage,
-        itemById,
-        bitmapById,
-        {
-          gridEnabled: gridModeEnabled,
-          gridSpacingPx: cmToPx(DEFAULT_GRID_SPACING_CM),
-          selectedImageId,
-          hoveredImageId,
-          drawerSelectedImageId,
-          imageZoomLevels,
-          imagePanOffsets,
-          interactionMode,
-          dragActive,
-          moveOutsideCanvas,
-          moveCollisionImageIds,
-          resizeCurrentDimensions,
-          resizeFeedback,
-          resizeSnapGuides,
-          resizeSnapActive,
-          hoveredResizeHandle,
-          swapAnimation,
-          replacePointer,
-          swapTargetInvalid,
-          placementPreview: canvasPlacementPreview,
-          animationTimeMs: replaceAnimationTick,
-        }
-      );
-      previewRenderFrameRef.current = null;
-    });
-    previewRenderFrameRef.current = frameId;
-
-    return () => {
-      if (previewRenderFrameRef.current !== null) {
-        window.cancelAnimationFrame(previewRenderFrameRef.current);
-        previewRenderFrameRef.current = null;
-      }
-    };
-  }, [selectedPage, itemById, bitmapById, gridModeEnabled, selectedImageId, hoveredImageId, drawerSelectedImageId, imageZoomLevels, imagePanOffsets, interactionMode, dragActive, moveOutsideCanvas, moveCollisionImageIds, resizeCurrentDimensions, resizeFeedback, resizeSnapGuides, resizeSnapActive, hoveredResizeHandle, swapAnimation, replacePointer, swapTargetInvalid, canvasPlacementPreview, replaceAnimationTick]);
 
   useEffect(() => {
     return () => {
@@ -1062,22 +1006,30 @@ export function useCollageEditor() {
     clientY: number,
     options: { allowOutsideCanvas?: boolean } = {},
   ): { x: number; y: number } | null {
-    const canvas = previewCanvasRef.current;
-    const transform = previewTransformRef.current;
-    if (!canvas || !transform || !selectedPage) {
+    const viewport = previewViewportRef.current;
+    if (!viewport || !selectedPage) {
       return null;
     }
 
-    const { dpr, scale, offsetX, offsetY } = transform;
-    if (
-      typeof dpr !== 'number' ||
-      typeof scale !== 'number' ||
-      typeof offsetX !== 'number' ||
-      typeof offsetY !== 'number'
-    ) {
+    const rect = viewport.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) {
       return null;
     }
-    const rect = canvas.getBoundingClientRect();
+
+    const dpr = window.devicePixelRatio || 1;
+    const backingWidth = Math.round(rect.width * dpr);
+    const backingHeight = Math.round(rect.height * dpr);
+    const margin = 28 * dpr;
+    const availableWidth = backingWidth - margin * 2;
+    const availableHeight = backingHeight - margin * 2;
+    const scale = Math.min(availableWidth / selectedPage.widthPx, availableHeight / selectedPage.heightPx);
+    const offsetX = (backingWidth - selectedPage.widthPx * scale) / 2;
+    const offsetY = (backingHeight - selectedPage.heightPx * scale) / 2;
+
+    if (!Number.isFinite(scale) || scale <= 0) {
+      return null;
+    }
+
     const x = (clientX - rect.left) * dpr;
     const y = (clientY - rect.top) * dpr;
     const pageX = (x - offsetX) / scale;
@@ -1091,10 +1043,6 @@ export function useCollageEditor() {
     }
 
     return { x: pageX, y: pageY };
-  }
-
-  function pagePointFromMouse(event: MouseEvent<HTMLCanvasElement>): { x: number; y: number } | null {
-    return pagePointFromClient(event.clientX, event.clientY);
   }
 
   function resolveManualPlacementSize(image: ImageItem): {
@@ -1195,11 +1143,18 @@ export function useCollageEditor() {
       return null;
     }
 
-    const transform = previewTransformRef.current;
+    const viewport = previewViewportRef.current;
     let handleHitRadiusPx = 0;
-    if (transform && typeof transform.dpr === 'number' && typeof transform.scale === 'number') {
-      const { dpr, scale } = transform;
-      if (typeof dpr === 'number' && typeof scale === 'number') {
+    if (viewport) {
+      const rect = viewport.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      const backingWidth = Math.round(rect.width * dpr);
+      const backingHeight = Math.round(rect.height * dpr);
+      const margin = 28 * dpr;
+      const availableWidth = backingWidth - margin * 2;
+      const availableHeight = backingHeight - margin * 2;
+      const scale = Math.min(availableWidth / selectedPage.widthPx, availableHeight / selectedPage.heightPx);
+      if (Number.isFinite(scale) && scale > 0) {
         handleHitRadiusPx = SELECT_HANDLE_HIT_RADIUS_CSS_PX * dpr / scale;
       }
     }
@@ -1270,11 +1225,18 @@ export function useCollageEditor() {
     const selectedItem = selectedImageId
       ? selectedPage?.items.find((item) => item.imageId === selectedImageId) ?? null
       : null;
-    const transform = previewTransformRef.current;
     let handleHitRadiusPx = 0;
-    if (transform && typeof transform.dpr === 'number' && typeof transform.scale === 'number') {
-      const { dpr, scale } = transform;
-      if (typeof dpr === 'number' && typeof scale === 'number') {
+    const viewport = previewViewportRef.current;
+    if (viewport && selectedPage) {
+      const rect = viewport.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      const backingWidth = Math.round(rect.width * dpr);
+      const backingHeight = Math.round(rect.height * dpr);
+      const margin = 28 * dpr;
+      const availableWidth = backingWidth - margin * 2;
+      const availableHeight = backingHeight - margin * 2;
+      const scale = Math.min(availableWidth / selectedPage.widthPx, availableHeight / selectedPage.heightPx);
+      if (Number.isFinite(scale) && scale > 0) {
         handleHitRadiusPx = SELECT_HANDLE_HIT_RADIUS_CSS_PX * dpr / scale;
       }
     }
@@ -1302,6 +1264,7 @@ export function useCollageEditor() {
       if (interactionResizeHandle) {
         // Corner handle: resize
         const { fixedHorizontal, fixedVertical } = getHandleFixedEdges(interactionResizeHandle);
+        setHoveredResizeHandle(interactionResizeHandle);
         dragStateRef.current = {
           type: 'resize',
           imageId: interactionTarget.imageId,
@@ -1337,6 +1300,7 @@ export function useCollageEditor() {
         return;
       } else {
         // Body: move
+        setHoveredResizeHandle(null);
         dragStateRef.current = {
           type: 'move',
           imageId: interactionTarget.imageId,
@@ -1406,6 +1370,7 @@ export function useCollageEditor() {
     }
 
     if (interactionMode === 'move') {
+      setHoveredResizeHandle(null);
       dragStateRef.current = {
         type: 'move',
         imageId: interactionTarget.imageId,
@@ -1835,29 +1800,19 @@ export function useCollageEditor() {
     }
   }
 
-  function onCanvasMouseLeave(): void {
-    // Do not end an active drag — pointer capture on the mouse pointer keeps
-    // delivering pointermove/pointerup even outside the canvas element, so
-    // the drag will be ended cleanly by onCanvasPointerUp instead.
-    if (mousePointerCapturedRef.current) {
-      return;
-    }
+  function onPreviewMouseLeave(): void {
     handleCanvasInteractionEnd();
   }
 
-  function onCanvasMouseDown(event: MouseEvent<HTMLCanvasElement>): void {
-    // Skip if already handled by onCanvasPointerDown (which set pointer capture).
-    if (mousePointerCapturedRef.current) {
-      return;
-    }
-    handleCanvasInteractionStart(event.clientX, event.clientY);
+  function onPreviewMouseDown(clientX: number, clientY: number): void {
+    handleCanvasInteractionStart(clientX, clientY);
   }
 
-  function onCanvasDoubleClick(event: MouseEvent<HTMLCanvasElement>): void {
+  function onPreviewDoubleClick(clientX: number, clientY: number): void {
     if (interactionMode !== 'select') {
       return;
     }
-    const point = pagePointFromMouse(event);
+    const point = pagePointFromClient(clientX, clientY);
     if (!point) {
       return;
     }
@@ -1871,15 +1826,35 @@ export function useCollageEditor() {
     }
   }
 
-  function onCanvasMouseMove(event: MouseEvent<HTMLCanvasElement>): void {
-    // Skip if pointer events are already tracking this mouse interaction.
-    if (mousePointerCapturedRef.current) {
-      return;
+  function resolveCanvasCursor(): string {
+    if ((interactionMode === 'select' || interactionMode === 'resize') && hoveredResizeHandle) {
+      return getCursorForHandle(hoveredResizeHandle);
     }
+
+    if ((interactionMode === 'select' || interactionMode === 'move') && dragActive && isMoveDrag(dragStateRef.current)) {
+      return 'grabbing';
+    }
+
+    if ((interactionMode === 'select' || interactionMode === 'move') && hoveredImageId) {
+      return dragActive ? 'grabbing' : 'grab';
+    }
+
+    if (interactionMode === 'crop') {
+      return dragActive ? 'grabbing' : 'grab';
+    }
+
+    if (interactionMode === 'replace') {
+      return dragActive ? 'grabbing' : 'copy';
+    }
+
+    return 'default';
+  }
+
+  function onPreviewMouseMove(clientX: number, clientY: number, shiftKey: boolean): void {
     pendingInteractionMoveRef.current = {
-      clientX: event.clientX,
-      clientY: event.clientY,
-      shiftKey: event.shiftKey,
+      clientX,
+      clientY,
+      shiftKey,
     };
 
     if (interactionMoveFrameRef.current !== null) {
@@ -1898,88 +1873,15 @@ export function useCollageEditor() {
     });
   }
 
-  function onCanvasMouseUp(event?: MouseEvent<HTMLCanvasElement>): void {
+  function onPreviewMouseUp(clientX?: number, clientY?: number): void {
     if (interactionMoveFrameRef.current !== null) {
       window.cancelAnimationFrame(interactionMoveFrameRef.current);
       interactionMoveFrameRef.current = null;
       pendingInteractionMoveRef.current = null;
     }
-    // Skip if the drag was already ended by onCanvasPointerUp (pointer capture path).
     if (dragStateRef.current) {
-      handleCanvasInteractionEnd(event?.clientX, event?.clientY);
+      handleCanvasInteractionEnd(clientX, clientY);
     }
-  }
-
-  function onCanvasPointerDown(event: PointerEvent<HTMLCanvasElement>): void {
-    if (event.pointerType === 'mouse') {
-      // Use pointer capture for mouse so that pointermove/pointerup keep firing
-      // even when the cursor moves outside the canvas element during a drag.
-      // Do NOT call preventDefault() here — that would suppress mousedown and
-      // thereby also prevent dblclick (used for crop mode activation).
-      event.currentTarget.setPointerCapture(event.pointerId);
-      mousePointerCapturedRef.current = true;
-      handleCanvasInteractionStart(event.clientX, event.clientY);
-      return;
-    }
-    event.preventDefault();
-    event.currentTarget.setPointerCapture(event.pointerId);
-    handleCanvasInteractionStart(event.clientX, event.clientY);
-  }
-
-  function onCanvasPointerMove(event: PointerEvent<HTMLCanvasElement>): void {
-    if (event.pointerType !== 'mouse') {
-      event.preventDefault();
-    }
-    pendingInteractionMoveRef.current = {
-      clientX: event.clientX,
-      clientY: event.clientY,
-      shiftKey: event.shiftKey,
-    };
-
-    if (interactionMoveFrameRef.current !== null) {
-      return;
-    }
-
-    interactionMoveFrameRef.current = window.requestAnimationFrame(() => {
-      interactionMoveFrameRef.current = null;
-      const pending = pendingInteractionMoveRef.current;
-      if (!pending) {
-        return;
-      }
-
-      pendingInteractionMoveRef.current = null;
-      handleCanvasInteractionMove(pending.clientX, pending.clientY, { shiftKey: pending.shiftKey });
-    });
-  }
-
-  function onCanvasPointerUp(event: PointerEvent<HTMLCanvasElement>): void {
-    if (event.pointerType === 'mouse') {
-      mousePointerCapturedRef.current = false;
-    }
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-    if (interactionMoveFrameRef.current !== null) {
-      window.cancelAnimationFrame(interactionMoveFrameRef.current);
-      interactionMoveFrameRef.current = null;
-      pendingInteractionMoveRef.current = null;
-    }
-    handleCanvasInteractionEnd(event.clientX, event.clientY);
-  }
-
-  function onCanvasPointerCancel(event: PointerEvent<HTMLCanvasElement>): void {
-    if (event.pointerType === 'mouse') {
-      mousePointerCapturedRef.current = false;
-    }
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-    if (interactionMoveFrameRef.current !== null) {
-      window.cancelAnimationFrame(interactionMoveFrameRef.current);
-      interactionMoveFrameRef.current = null;
-      pendingInteractionMoveRef.current = null;
-    }
-    handleCanvasInteractionEnd();
   }
 
 
@@ -1994,27 +1896,125 @@ export function useCollageEditor() {
     }
 
     const currentPlacement = selectedPlacedItem;
-    if (!currentPlacement) {
+    if (!currentPlacement || !selectedPage) {
+      return;
+    }
+
+    const placement = placementByImageId.get(selectedImageId);
+    if (!placement) {
+      return;
+    }
+
+    const { pageIndex, itemIndex } = placement;
+    const page = pages[pageIndex];
+    if (!page) {
       return;
     }
 
     const pxPerCm = cmToPx(1);
-    const currentWidthCm = currentPlacement.width / pxPerCm;
-    const currentHeightCm = currentPlacement.height / pxPerCm;
-    const requestedMaxWidthCm = currentWidthCm * scaleFactor;
-    const requestedMaxHeightCm = currentHeightCm * scaleFactor;
-    const canvasWidthCm = currentPlacement && selectedPage ? selectedPage.widthPx / pxPerCm : currentImage.maxWidthCm;
-    const canvasHeightCm = currentPlacement && selectedPage ? selectedPage.heightPx / pxPerCm : currentImage.maxHeightCm;
-    const nextMaxWidthCm = Math.max(minImageCm, Math.min(canvasWidthCm, requestedMaxWidthCm));
-    const nextMaxHeightCm = Math.max(minImageCm, Math.min(canvasHeightCm, requestedMaxHeightCm));
+    const frameThicknessPx = currentImage.frameEnabled ? currentImage.frameThicknessPx : 0;
+    const centerX = currentPlacement.x + currentPlacement.width / 2;
+    const centerY = currentPlacement.y + currentPlacement.height / 2;
 
-    const nextImages = images.map((image) => (image.id === selectedImageId ? {
-      ...image,
-      maxWidthCm: Number(nextMaxWidthCm.toFixed(2)),
-      maxHeightCm: Number(nextMaxHeightCm.toFixed(2)),
-    } : image));
+    const requestedMaxWidthCm = currentImage.maxWidthCm * scaleFactor;
+    const requestedMaxHeightCm = currentImage.maxHeightCm * scaleFactor;
 
-    regenerateLayout(resolveMaxPages(), true, nextImages);
+    const maxTotalWidthFromCenter = Math.max(1, Math.min(centerX, page.widthPx - centerX) * 2);
+    const maxTotalHeightFromCenter = Math.max(1, Math.min(centerY, page.heightPx - centerY) * 2);
+    const maxContentWidthFromCenter = Math.max(1, maxTotalWidthFromCenter - frameThicknessPx * 2);
+    const maxContentHeightFromCenter = Math.max(1, maxTotalHeightFromCenter - frameThicknessPx * 2);
+
+    const centerLimitedMaxWidthCm = maxContentWidthFromCenter / pxPerCm;
+    const centerLimitedMaxHeightCm = maxContentHeightFromCenter / pxPerCm;
+
+    const nextMaxWidthCm = Math.max(
+      minImageCm,
+      Math.min(centerLimitedMaxWidthCm, requestedMaxWidthCm),
+    );
+    const nextMaxHeightCm = Math.max(
+      minImageCm,
+      Math.min(centerLimitedMaxHeightCm, requestedMaxHeightCm),
+    );
+
+    const nextContent = computeContentBox(
+      currentImage.naturalWidth,
+      currentImage.naturalHeight,
+      nextMaxWidthCm,
+      nextMaxHeightCm,
+    );
+    const nextCrop = computeCropMetrics(
+      currentImage.naturalWidth,
+      currentImage.naturalHeight,
+      nextContent.widthPx,
+      nextContent.heightPx,
+    );
+
+    const nextWidth = nextContent.widthPx + frameThicknessPx * 2;
+    const nextHeight = nextContent.heightPx + frameThicknessPx * 2;
+    const nextX = centerX - nextWidth / 2;
+    const nextY = centerY - nextHeight / 2;
+    const candidateRect = { x: nextX, y: nextY, width: nextWidth, height: nextHeight };
+
+    const collides = page.items
+      .filter((item) => item.imageId !== selectedImageId)
+      .some((item) => rectanglesTouchOrOverlap(candidateRect, item));
+
+    if (collides) {
+      setResizeLimitNotice('Cannot resize from center: neighboring images are too close.');
+      return;
+    }
+
+    setPages((currentPages) =>
+      currentPages.map((currentPage, index) => {
+        if (index !== pageIndex) {
+          return currentPage;
+        }
+
+        const nextItems = [...currentPage.items];
+        nextItems[itemIndex] = {
+          ...nextItems[itemIndex],
+          x: nextX,
+          y: nextY,
+          width: nextWidth,
+          height: nextHeight,
+          contentWidthPx: nextContent.widthPx,
+          contentHeightPx: nextContent.heightPx,
+          frameThicknessPx,
+          drawnImageWidthPx: nextCrop.drawnImageWidthPx,
+          drawnImageHeightPx: nextCrop.drawnImageHeightPx,
+          maxOffsetX: nextCrop.maxOffsetX,
+          maxOffsetY: nextCrop.maxOffsetY,
+        };
+
+        return {
+          ...currentPage,
+          items: nextItems,
+        };
+      }),
+    );
+
+    setImages((current) =>
+      current.map((image) => {
+        if (image.id !== selectedImageId) {
+          return image;
+        }
+
+        const clamped = clampOffsets(image.offsetX, image.offsetY, nextCrop.maxOffsetX, nextCrop.maxOffsetY);
+        return {
+          ...image,
+          maxWidthCm: Number(nextMaxWidthCm.toFixed(2)),
+          maxHeightCm: Number(nextMaxHeightCm.toFixed(2)),
+          renderWidthPx: nextContent.widthPx,
+          renderHeightPx: nextContent.heightPx,
+          cropMaxOffsetX: nextCrop.maxOffsetX,
+          cropMaxOffsetY: nextCrop.maxOffsetY,
+          offsetX: clamped.offsetX,
+          offsetY: clamped.offsetY,
+        };
+      }),
+    );
+
+    setResizeLimitNotice('');
   }
 
   function resetSelectedCrop(): void {
@@ -2492,6 +2492,8 @@ export function useCollageEditor() {
     pages,
     itemById,
     imageById,
+    imageZoomLevels,
+    imagePanOffsets,
     maxImageCm,
     setMaxImageCm,
     minImageCm,
@@ -2510,8 +2512,10 @@ export function useCollageEditor() {
     selectedPlacedItem,
     selectedImageId,
     hoveredImageId,
+    drawerSelectedImageId,
     dragActive,
     moveOutsideCanvas,
+    moveCollisionImageIds,
     hasPlacedItems,
     hasUnplacedImages,
     selectedPageIndex,
@@ -2520,6 +2524,10 @@ export function useCollageEditor() {
     oversizedImageIds,
     resizeLimitNotice,
     resizeCurrentDimensions,
+    canvasCursor: resolveCanvasCursor(),
+    resizeFeedback,
+    resizeSnapGuides,
+    resizeSnapActive,
     error,
     notice,
     saveState,
@@ -2534,7 +2542,11 @@ export function useCollageEditor() {
     undoActionLabel: undoAction?.label ?? null,
     undoActionDescription: undoAction?.description ?? null,
     showSelectionControls,
-    previewCanvasRef,
+    replaceAnimationTick,
+    replacePointer,
+    swapTargetInvalid,
+    canvasPlacementPreview,
+    previewViewportRef,
     canvasPresetId,
     setCanvasPresetId,
     layoutPresetId,
@@ -2561,15 +2573,11 @@ export function useCollageEditor() {
     enhanceAllImages,
     restoreOriginalImage,
     enhancingImageIds,
-    onCanvasMouseDown,
-    onCanvasMouseMove,
-    onCanvasMouseUp,
-    onCanvasMouseLeave,
-    onCanvasDoubleClick,
-    onCanvasPointerDown,
-    onCanvasPointerMove,
-    onCanvasPointerUp,
-    onCanvasPointerCancel,
+    onPreviewMouseDown,
+    onPreviewMouseMove,
+    onPreviewMouseUp,
+    onPreviewMouseLeave,
+    onPreviewDoubleClick,
     onCanvasDragOver,
     onCanvasDrop,
     onCanvasDragLeave,

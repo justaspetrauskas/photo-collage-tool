@@ -1,27 +1,46 @@
 import { motion } from 'framer-motion';
 import { useInView } from 'react-intersection-observer';
+import { Stage, Layer, Group, Rect, Line, Text, Image as KonvaImage } from 'react-konva';
 import type {
   DragEventHandler,
-  MouseEventHandler,
   MutableRefObject,
-  PointerEventHandler,
 } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../../shared/ui/Button';
 import { Panel } from '../../../shared/ui/Panel';
-import { CANVAS_CM, CANVAS_SIZE_PX, cmToPx } from '../model/constants';
-import { drawPagePreview } from '../model/renderEngine';
-import type { ImageItem, InteractionMode, PageLayout } from '../model/types';
+import { CANVAS_CM, CANVAS_SIZE_PX, cmToPx, EDITOR_LENGTH_UNIT, formatSizeFromPx } from '../model/constants';
+import { clampOffsets } from '../model/layoutEngine';
+import type { ImageItem, InteractionMode, PageLayout, ResizeSnapGuide } from '../model/types';
+import { getSelectHandlePositions, getZoomPanBounds, resolveZoomPanOffset } from '../interactions';
+import { konvaNodeIds } from '../lib/konvaNodeIds';
 import { UploadCloud } from 'lucide-react';
 
 const MAX_IMAGES = 24;
+
+interface ResizeFeedback {
+  baseRect: { x: number; y: number; width: number; height: number };
+  currentRect: { x: number; y: number; width: number; height: number };
+  intent: 'expand' | 'shrink' | 'steady';
+}
+
+interface CanvasPlacementPreview {
+  imageId: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  valid: boolean;
+}
 
 interface CollagePreviewProps {
   pages: PageLayout[];
   itemById: Map<string, ImageItem>;
   imageById: Map<string, HTMLImageElement>;
+  imageZoomLevels: Record<string, number>;
+  imagePanOffsets: Record<string, { x: number; y: number }>;
   selectedImageId: string | null;
   hoveredImageId: string | null;
+  drawerSelectedImageId: string | null;
   selectedImageName: string | null;
   showSelectionControls: boolean;
   onCloseSelectionControls: () => void;
@@ -29,24 +48,29 @@ interface CollagePreviewProps {
   interactionMode: InteractionMode;
   dragActive: boolean;
   moveOutsideCanvas: boolean;
+  moveCollisionImageIds: string[];
+  resizeCurrentDimensions: { width: number; height: number } | null;
+  resizeFeedback: ResizeFeedback | null;
+  resizeSnapGuides: ResizeSnapGuide[];
+  resizeSnapActive: boolean;
+  replaceAnimationTick: number;
+  replacePointer: { x: number; y: number } | null;
+  swapTargetInvalid: boolean;
+  canvasPlacementPreview: CanvasPlacementPreview | null;
   onSetInteractionMode: (mode: InteractionMode) => void;
   onExpandSelectedImage: (factor: number) => void;
   onResetSelectedCrop: () => void;
   selectedPageIndex: number;
   onSelectPage: (index: number) => void;
-  previewCanvasRef: MutableRefObject<HTMLCanvasElement | null>;
-  onMouseDown: MouseEventHandler<HTMLCanvasElement>;
-  onMouseMove: MouseEventHandler<HTMLCanvasElement>;
-  onMouseUp: MouseEventHandler<HTMLCanvasElement>;
-  onMouseLeave: MouseEventHandler<HTMLCanvasElement>;
-  onDoubleClick: MouseEventHandler<HTMLCanvasElement>;
-  onPointerDown: PointerEventHandler<HTMLCanvasElement>;
-  onPointerMove: PointerEventHandler<HTMLCanvasElement>;
-  onPointerUp: PointerEventHandler<HTMLCanvasElement>;
-  onPointerCancel: PointerEventHandler<HTMLCanvasElement>;
-  onDragOver: DragEventHandler<HTMLCanvasElement>;
-  onDrop: DragEventHandler<HTMLCanvasElement>;
-  onDragLeave: DragEventHandler<HTMLCanvasElement>;
+  previewViewportRef: MutableRefObject<HTMLElement | null>;
+  onPreviewMouseDown: (clientX: number, clientY: number) => void;
+  onPreviewMouseMove: (clientX: number, clientY: number, shiftKey: boolean) => void;
+  onPreviewMouseUp: (clientX?: number, clientY?: number) => void;
+  onPreviewMouseLeave: () => void;
+  onPreviewDoubleClick: (clientX: number, clientY: number) => void;
+  onDragOver: DragEventHandler<HTMLElement>;
+  onDrop: DragEventHandler<HTMLElement>;
+  onDragLeave: DragEventHandler<HTMLElement>;
   onUploadFileList: (files: File[]) => Promise<void>;
   hasUnplacedImages: boolean;
   onGenerateLayout: () => void;
@@ -62,19 +86,35 @@ interface PageCanvasCardProps {
   onVisible: (index: number) => void;
   onJumpToPage: (index: number) => void;
   registerContainerRef: (index: number, node: HTMLElement | null) => void;
-  registerCanvasRef: (index: number, node: HTMLCanvasElement | null) => void;
-  onMouseDown: MouseEventHandler<HTMLCanvasElement>;
-  onMouseMove: MouseEventHandler<HTMLCanvasElement>;
-  onMouseUp: MouseEventHandler<HTMLCanvasElement>;
-  onMouseLeave: MouseEventHandler<HTMLCanvasElement>;
-  onDoubleClick: MouseEventHandler<HTMLCanvasElement>;
-  onPointerDown: PointerEventHandler<HTMLCanvasElement>;
-  onPointerMove: PointerEventHandler<HTMLCanvasElement>;
-  onPointerUp: PointerEventHandler<HTMLCanvasElement>;
-  onPointerCancel: PointerEventHandler<HTMLCanvasElement>;
-  onDragOver: DragEventHandler<HTMLCanvasElement>;
-  onDrop: DragEventHandler<HTMLCanvasElement>;
-  onDragLeave: DragEventHandler<HTMLCanvasElement>;
+  registerViewportRef: (index: number, node: HTMLElement | null) => void;
+  previewLogicalSize: number;
+  itemById: Map<string, ImageItem>;
+  imageById: Map<string, HTMLImageElement>;
+  imageZoomLevels: Record<string, number>;
+  imagePanOffsets: Record<string, { x: number; y: number }>;
+  selectedImageId: string | null;
+  hoveredImageId: string | null;
+  drawerSelectedImageId: string | null;
+  interactionMode: InteractionMode;
+  dragActive: boolean;
+  moveOutsideCanvas: boolean;
+  moveCollisionImageIds: string[];
+  resizeCurrentDimensions: { width: number; height: number } | null;
+  resizeFeedback: ResizeFeedback | null;
+  resizeSnapGuides: ResizeSnapGuide[];
+  resizeSnapActive: boolean;
+  replaceAnimationTick: number;
+  replacePointer: { x: number; y: number } | null;
+  swapTargetInvalid: boolean;
+  canvasPlacementPreview: CanvasPlacementPreview | null;
+  onPreviewMouseDown: (clientX: number, clientY: number) => void;
+  onPreviewMouseMove: (clientX: number, clientY: number, shiftKey: boolean) => void;
+  onPreviewMouseUp: (clientX?: number, clientY?: number) => void;
+  onPreviewMouseLeave: () => void;
+  onPreviewDoubleClick: (clientX: number, clientY: number) => void;
+  onDragOver: DragEventHandler<HTMLElement>;
+  onDrop: DragEventHandler<HTMLElement>;
+  onDragLeave: DragEventHandler<HTMLElement>;
   showPlacementHints: boolean;
   canvasCursor?: string;
 }
@@ -87,22 +127,54 @@ function PageCanvasCard({
   onVisible,
   onJumpToPage,
   registerContainerRef,
-  registerCanvasRef,
-  onMouseDown,
-  onMouseMove,
-  onMouseUp,
-  onMouseLeave,
-  onDoubleClick,
-  onPointerDown,
-  onPointerMove,
-  onPointerUp,
-  onPointerCancel,
+  registerViewportRef,
+  previewLogicalSize,
+  itemById,
+  imageById,
+  imageZoomLevels,
+  imagePanOffsets,
+  selectedImageId,
+  hoveredImageId,
+  drawerSelectedImageId,
+  interactionMode,
+  dragActive,
+  moveOutsideCanvas,
+  moveCollisionImageIds,
+  resizeCurrentDimensions,
+  resizeFeedback,
+  resizeSnapGuides,
+  resizeSnapActive,
+  replaceAnimationTick,
+  replacePointer,
+  swapTargetInvalid,
+  canvasPlacementPreview,
+  onPreviewMouseDown,
+  onPreviewMouseMove,
+  onPreviewMouseUp,
+  onPreviewMouseLeave,
+  onPreviewDoubleClick,
   onDragOver,
   onDrop,
   onDragLeave,
   showPlacementHints,
   canvasCursor,
 }: PageCanvasCardProps) {
+  const stageWidth = Math.max(1, previewLogicalSize);
+  const stageHeight = Math.max(1, previewLogicalSize);
+  const marginPx = 28;
+  const availableWidth = stageWidth - marginPx * 2;
+  const availableHeight = stageHeight - marginPx * 2;
+  const stageScale = Math.min(availableWidth / page.widthPx, availableHeight / page.heightPx);
+  const drawWidth = page.widthPx * stageScale;
+  const drawHeight = page.heightPx * stageScale;
+  const pageOffsetX = (stageWidth - drawWidth) / 2;
+  const pageOffsetY = (stageHeight - drawHeight) / 2;
+  const selectedPlacedItem = selectedImageId
+    ? page.items.find((item) => item.imageId === selectedImageId) ?? null
+    : null;
+  const selectedHandles = selectedPlacedItem ? getSelectHandlePositions(selectedPlacedItem) : null;
+  const replacePulse = 0.55 + 0.45 * Math.sin(replaceAnimationTick / 130);
+
   const { ref: inViewRef, inView } = useInView({
     threshold: 0.62,
     root: scrollRoot,
@@ -137,24 +209,433 @@ function PageCanvasCard({
       </button>
       <div className="rounded-2xl p-2 backdrop-blur-md">
         <div className="relative inline-block">
-          <canvas
-            className={`h-auto max-w-full touch-none rounded-xl ${isActive ? '' : 'pointer-events-none'} `}
+          <div
+            className={`touch-none rounded-xl ${isActive ? '' : 'pointer-events-none'}`}
             style={{ cursor: isActive ? (canvasCursor ?? 'default') : 'default' }}
-            ref={(node) => registerCanvasRef(index, node)}
-            onMouseDown={isActive ? onMouseDown : undefined}
-            onMouseMove={isActive ? onMouseMove : undefined}
-            onMouseUp={isActive ? onMouseUp : undefined}
-            onMouseLeave={isActive ? onMouseLeave : undefined}
-            onDoubleClick={isActive ? onDoubleClick : undefined}
-            onPointerDown={isActive ? onPointerDown : undefined}
-            onPointerMove={isActive ? onPointerMove : undefined}
-            onPointerUp={isActive ? onPointerUp : undefined}
-            onPointerCancel={isActive ? onPointerCancel : undefined}
+            ref={(node) => registerViewportRef(index, node)}
+            onMouseDown={isActive ? (event) => onPreviewMouseDown(event.clientX, event.clientY) : undefined}
+            onMouseMove={isActive ? (event) => onPreviewMouseMove(event.clientX, event.clientY, event.shiftKey) : undefined}
+            onMouseUp={isActive ? (event) => onPreviewMouseUp(event.clientX, event.clientY) : undefined}
+            onMouseLeave={isActive ? () => onPreviewMouseLeave() : undefined}
+            onDoubleClick={isActive ? (event) => onPreviewDoubleClick(event.clientX, event.clientY) : undefined}
             onDragOver={isActive ? onDragOver : undefined}
             onDrop={isActive ? onDrop : undefined}
             onDragLeave={isActive ? onDragLeave : undefined}
             aria-label={`Collage page ${page.id}`}
-          />
+          >
+            <Stage width={stageWidth} height={stageHeight} className="h-auto max-w-full rounded-xl" id={konvaNodeIds.pageStage(page.id)}>
+              <Layer>
+                <Group id={konvaNodeIds.page(page.id)} x={pageOffsetX} y={pageOffsetY} scaleX={stageScale} scaleY={stageScale}>
+                  <Rect x={0} y={0} width={page.widthPx} height={page.heightPx} fill="#ffffff" listening={false} />
+                  {page.items.map((placed) => {
+                    const imageItem = itemById.get(placed.imageId);
+                    const imageBitmap = imageById.get(placed.imageId);
+                    if (!imageItem || !imageBitmap) {
+                      return null;
+                    }
+
+                    const frameThicknessPx = placed.frameThicknessPx;
+                    const innerX = placed.x + frameThicknessPx;
+                    const innerY = placed.y + frameThicknessPx;
+                    const innerWidth = placed.contentWidthPx;
+                    const innerHeight = placed.contentHeightPx;
+                    const clampedOffsets = clampOffsets(imageItem.offsetX, imageItem.offsetY, placed.maxOffsetX, placed.maxOffsetY);
+                    const zoom = imageZoomLevels[placed.imageId] ?? 1;
+                    const panRatio = imagePanOffsets[placed.imageId];
+
+                    let drawX: number;
+                    let drawY: number;
+                    let drawW: number;
+                    let drawH: number;
+
+                    if (zoom > 1) {
+                      drawW = placed.drawnImageWidthPx * zoom;
+                      drawH = placed.drawnImageHeightPx * zoom;
+                      drawX = innerX + innerWidth / 2 * (1 - zoom) - clampedOffsets.offsetX * zoom;
+                      drawY = innerY + innerHeight / 2 * (1 - zoom) - clampedOffsets.offsetY * zoom;
+                      const pan = resolveZoomPanOffset(
+                        panRatio,
+                        getZoomPanBounds(
+                          {
+                            contentWidthPx: placed.contentWidthPx,
+                            contentHeightPx: placed.contentHeightPx,
+                            drawnImageWidthPx: placed.drawnImageWidthPx,
+                            drawnImageHeightPx: placed.drawnImageHeightPx,
+                          },
+                          zoom,
+                        ),
+                      );
+                      drawX += pan.x;
+                      drawY += pan.y;
+                    } else {
+                      drawW = placed.drawnImageWidthPx;
+                      drawH = placed.drawnImageHeightPx;
+                      drawX = innerX - clampedOffsets.offsetX;
+                      drawY = innerY - clampedOffsets.offsetY;
+                    }
+
+                    const isHovered = hoveredImageId === placed.imageId && selectedImageId !== placed.imageId;
+                    const isSelected = selectedImageId === placed.imageId;
+                    const isDrawerSelected =
+                      drawerSelectedImageId === placed.imageId &&
+                      selectedImageId !== placed.imageId &&
+                      hoveredImageId !== placed.imageId;
+
+                    return (
+                      <Group key={placed.imageId} id={konvaNodeIds.image(placed.imageId)}>
+                        {frameThicknessPx > 0 ? (
+                          <Rect x={placed.x} y={placed.y} width={placed.width} height={placed.height} fill="#ffffff" listening={false} />
+                        ) : null}
+                        <Group clipX={innerX} clipY={innerY} clipWidth={innerWidth} clipHeight={innerHeight} listening={false}>
+                          <KonvaImage
+                            id={konvaNodeIds.imageBitmap(placed.imageId)}
+                            image={imageBitmap}
+                            x={drawX}
+                            y={drawY}
+                            width={drawW}
+                            height={drawH}
+                            listening={false}
+                          />
+                        </Group>
+                        {isHovered ? (
+                          <Rect
+                            id={konvaNodeIds.imageHover(placed.imageId)}
+                            x={placed.x}
+                            y={placed.y}
+                            width={placed.width}
+                            height={placed.height}
+                            stroke="rgba(16, 57, 92, 0.78)"
+                            strokeWidth={1.5 / stageScale}
+                            dash={[6 / stageScale, 4 / stageScale]}
+                            listening={false}
+                          />
+                        ) : null}
+                        {isSelected ? (
+                          <Rect
+                            id={konvaNodeIds.imageSelection(placed.imageId)}
+                            x={placed.x}
+                            y={placed.y}
+                            width={placed.width}
+                            height={placed.height}
+                            fill="rgba(252, 197, 21, 0.12)"
+                            stroke="rgba(252, 197, 21, 0.92)"
+                            strokeWidth={2 / stageScale}
+                            listening={false}
+                          />
+                        ) : null}
+                        {isDrawerSelected ? (
+                          <Rect
+                            id={konvaNodeIds.imageDrawerSelected(placed.imageId)}
+                            x={placed.x}
+                            y={placed.y}
+                            width={placed.width}
+                            height={placed.height}
+                            stroke="rgba(250, 204, 21, 0.65)"
+                            strokeWidth={2.5 / stageScale}
+                            listening={false}
+                          />
+                        ) : null}
+                      </Group>
+                    );
+                  })}
+                  {canvasPlacementPreview ? (
+                    <Rect
+                      id={konvaNodeIds.placementPreview(canvasPlacementPreview.imageId)}
+                      x={canvasPlacementPreview.x}
+                      y={canvasPlacementPreview.y}
+                      width={canvasPlacementPreview.width}
+                      height={canvasPlacementPreview.height}
+                      fill={canvasPlacementPreview.valid ? 'rgba(34, 197, 94, 0.14)' : 'rgba(239, 68, 68, 0.14)'}
+                      stroke={canvasPlacementPreview.valid ? 'rgba(34, 197, 94, 0.9)' : 'rgba(239, 68, 68, 0.9)'}
+                      strokeWidth={2 / stageScale}
+                      dash={[10 / stageScale, 7 / stageScale]}
+                      listening={false}
+                    />
+                  ) : null}
+                  {(interactionMode === 'resize' || interactionMode === 'select') &&
+                  dragActive &&
+                  resizeSnapGuides.length > 0
+                    ? resizeSnapGuides.map((guide, index) => (
+                        <Line
+                          key={`resize-guide-${index}`}
+                          id={konvaNodeIds.resizeGuide(index)}
+                          points={
+                            guide.orientation === 'vertical'
+                              ? [guide.value, 0, guide.value, page.heightPx]
+                              : [0, guide.value, page.widthPx, guide.value]
+                          }
+                          stroke={resizeSnapActive ? 'rgba(252, 197, 21, 0.95)' : 'rgba(252, 197, 21, 0.7)'}
+                          strokeWidth={(resizeSnapActive ? 2.5 : 1.8) / stageScale}
+                          dash={[8 / stageScale, 5 / stageScale]}
+                          listening={false}
+                        />
+                      ))
+                    : null}
+                  {selectedPlacedItem && moveOutsideCanvas && (interactionMode === 'move' || interactionMode === 'select') ? (
+                    <Group id={konvaNodeIds.moveOutside(selectedPlacedItem.imageId)} listening={false}>
+                      <Rect
+                        x={selectedPlacedItem.x}
+                        y={selectedPlacedItem.y}
+                        width={selectedPlacedItem.width}
+                        height={selectedPlacedItem.height}
+                        stroke="rgba(239, 68, 68, 0.9)"
+                        strokeWidth={2 / stageScale}
+                        dash={[9 / stageScale, 6 / stageScale]}
+                      />
+                      <Line
+                        points={[
+                          selectedPlacedItem.x,
+                          selectedPlacedItem.y,
+                          selectedPlacedItem.x + selectedPlacedItem.width,
+                          selectedPlacedItem.y + selectedPlacedItem.height,
+                        ]}
+                        stroke="rgba(239, 68, 68, 0.95)"
+                        strokeWidth={2.4 / stageScale}
+                      />
+                      <Line
+                        points={[
+                          selectedPlacedItem.x + selectedPlacedItem.width,
+                          selectedPlacedItem.y,
+                          selectedPlacedItem.x,
+                          selectedPlacedItem.y + selectedPlacedItem.height,
+                        ]}
+                        stroke="rgba(239, 68, 68, 0.95)"
+                        strokeWidth={2.4 / stageScale}
+                      />
+                    </Group>
+                  ) : null}
+                  {selectedPlacedItem && moveCollisionImageIds.length > 0 && (interactionMode === 'move' || interactionMode === 'select') ? (
+                    <Group id={konvaNodeIds.moveCollision(selectedPlacedItem.imageId)} listening={false}>
+                      <Rect
+                        x={selectedPlacedItem.x}
+                        y={selectedPlacedItem.y}
+                        width={selectedPlacedItem.width}
+                        height={selectedPlacedItem.height}
+                        stroke="rgba(251, 191, 36, 0.95)"
+                        strokeWidth={2 / stageScale}
+                        dash={[8 / stageScale, 4 / stageScale]}
+                      />
+                      {moveCollisionImageIds.map((collisionId) => {
+                        const collided = page.items.find((item) => item.imageId === collisionId);
+                        if (!collided) {
+                          return null;
+                        }
+                        return (
+                          <Group key={collisionId}>
+                            <Rect
+                              x={collided.x}
+                              y={collided.y}
+                              width={collided.width}
+                              height={collided.height}
+                              fill="rgba(251, 191, 36, 0.16)"
+                            />
+                            <Rect
+                              x={collided.x}
+                              y={collided.y}
+                              width={collided.width}
+                              height={collided.height}
+                              stroke="rgba(251, 191, 36, 0.95)"
+                              strokeWidth={2.2 / stageScale}
+                              dash={[7 / stageScale, 5 / stageScale]}
+                            />
+                          </Group>
+                        );
+                      })}
+                    </Group>
+                  ) : null}
+                  {resizeFeedback && (interactionMode === 'resize' || interactionMode === 'select') ? (
+                    <Group id={konvaNodeIds.resizeFeedback} listening={false}>
+                      <Rect
+                        x={resizeFeedback.baseRect.x}
+                        y={resizeFeedback.baseRect.y}
+                        width={resizeFeedback.baseRect.width}
+                        height={resizeFeedback.baseRect.height}
+                        stroke="rgba(148, 163, 184, 0.9)"
+                        strokeWidth={1.6 / stageScale}
+                        dash={[8 / stageScale, 5 / stageScale]}
+                      />
+                      <Rect
+                        x={resizeFeedback.currentRect.x}
+                        y={resizeFeedback.currentRect.y}
+                        width={resizeFeedback.currentRect.width}
+                        height={resizeFeedback.currentRect.height}
+                        fill="rgba(252, 197, 21, 0.12)"
+                        stroke="rgba(252, 197, 21, 0.92)"
+                        strokeWidth={2 / stageScale}
+                      />
+                    </Group>
+                  ) : null}
+                  {selectedPlacedItem && !resizeCurrentDimensions ? (
+                    <Group id={konvaNodeIds.selectedSizeLabel(selectedPlacedItem.imageId)} listening={false}>
+                      {(() => {
+                        const label = formatSizeFromPx(
+                          selectedPlacedItem.contentWidthPx,
+                          selectedPlacedItem.contentHeightPx,
+                          EDITOR_LENGTH_UNIT,
+                        );
+                        const fontSize = 11 / stageScale;
+                        const padX = 6 / stageScale;
+                        const labelHeight = 18 / stageScale;
+                        const labelWidth = label.length * (fontSize * 0.58) + padX * 2;
+                        const labelX = selectedPlacedItem.x + 6 / stageScale;
+                        const labelY = selectedPlacedItem.y + 6 / stageScale;
+                        return (
+                          <>
+                            <Rect x={labelX} y={labelY} width={labelWidth} height={labelHeight} fill="rgba(15, 23, 42, 0.9)" />
+                            <Text x={labelX + padX} y={labelY + 3 / stageScale} text={label} fontSize={fontSize} fill="#fff7db" />
+                          </>
+                        );
+                      })()}
+                    </Group>
+                  ) : null}
+                  {selectedPlacedItem && resizeCurrentDimensions && (interactionMode === 'resize' || interactionMode === 'select') ? (
+                    <Group id={konvaNodeIds.resizeSizeLabel(selectedPlacedItem.imageId)} listening={false}>
+                      {(() => {
+                        const label = formatSizeFromPx(
+                          resizeCurrentDimensions.width,
+                          resizeCurrentDimensions.height,
+                          EDITOR_LENGTH_UNIT,
+                        );
+                        const fontSize = 11 / stageScale;
+                        const padX = 6 / stageScale;
+                        const labelHeight = 18 / stageScale;
+                        const labelWidth = label.length * (fontSize * 0.58) + padX * 2;
+                        const labelX = selectedPlacedItem.x + 6 / stageScale;
+                        const labelY = selectedPlacedItem.y + 6 / stageScale;
+                        return (
+                          <>
+                            <Rect x={labelX} y={labelY} width={labelWidth} height={labelHeight} fill="rgba(10, 122, 62, 0.92)" />
+                            <Text x={labelX + padX} y={labelY + 3 / stageScale} text={label} fontSize={fontSize} fill="#ffffff" />
+                          </>
+                        );
+                      })()}
+                    </Group>
+                  ) : null}
+                  {interactionMode === 'replace' &&
+                  dragActive &&
+                  hoveredImageId &&
+                  selectedImageId &&
+                  hoveredImageId !== selectedImageId
+                    ? (() => {
+                        const source = page.items.find((item) => item.imageId === selectedImageId);
+                        const target = page.items.find((item) => item.imageId === hoveredImageId);
+                        if (!source || !target) {
+                          return null;
+                        }
+                        const sourceX = source.x + source.width / 2;
+                        const sourceY = source.y + source.height / 2;
+                        const targetX = target.x + target.width / 2;
+                        const targetY = target.y + target.height / 2;
+                        const strokeColor = swapTargetInvalid
+                          ? `rgba(239, 68, 68, ${0.55 + replacePulse * 0.3})`
+                          : `rgba(252, 197, 21, ${0.55 + replacePulse * 0.3})`;
+                        const arrowColor = swapTargetInvalid ? 'rgba(239, 68, 68, 0.92)' : 'rgba(252, 197, 21, 0.92)';
+                        const angle = Math.atan2(targetY - sourceY, targetX - sourceX);
+                        const arrowSize = 8 / stageScale;
+                        const inset = 3 / stageScale;
+                        return (
+                          <Group id={konvaNodeIds.replaceFeedback(selectedImageId, hoveredImageId)} listening={false}>
+                            <Line
+                              points={[sourceX, sourceY, targetX, targetY]}
+                              stroke={strokeColor}
+                              strokeWidth={(2 + replacePulse * 1.1) / stageScale}
+                              dash={[8 / stageScale, 6 / stageScale]}
+                              dashOffset={-(replaceAnimationTick / 20) / stageScale}
+                            />
+                            <Line
+                              points={[
+                                targetX,
+                                targetY,
+                                targetX - arrowSize * Math.cos(angle - Math.PI / 6),
+                                targetY - arrowSize * Math.sin(angle - Math.PI / 6),
+                                targetX - arrowSize * Math.cos(angle + Math.PI / 6),
+                                targetY - arrowSize * Math.sin(angle + Math.PI / 6),
+                              ]}
+                              closed
+                              fill={arrowColor}
+                            />
+                            <Rect
+                              x={target.x + inset}
+                              y={target.y + inset}
+                              width={target.width - inset * 2}
+                              height={target.height - inset * 2}
+                              fill={`rgba(34, 139, 84, ${0.12 + replacePulse * 0.1})`}
+                              stroke={`rgba(10, 122, 62, ${0.65 + replacePulse * 0.25})`}
+                              strokeWidth={(2 + replacePulse) / stageScale}
+                              dash={[10 / stageScale, 7 / stageScale]}
+                              dashOffset={-(replaceAnimationTick / 18) / stageScale}
+                            />
+                            <Rect
+                              x={target.x + 6 / stageScale}
+                              y={target.y + 6 / stageScale}
+                              width={122 / stageScale}
+                              height={18 / stageScale}
+                              fill="rgba(10, 122, 62, 0.9)"
+                            />
+                            <Text
+                              x={target.x + 12 / stageScale}
+                              y={target.y + 9 / stageScale}
+                              text="Replace target"
+                              fontSize={11 / stageScale}
+                              fill="#ffffff"
+                            />
+                          </Group>
+                        );
+                      })()
+                    : null}
+                  {interactionMode === 'replace' && dragActive && replacePointer ? (
+                    <Group id={konvaNodeIds.replacePointerTooltip} listening={false}>
+                      {(() => {
+                        const label = swapTargetInvalid ? 'Cannot swap these photos' : 'Swap with this photo';
+                        const padX = 7 / stageScale;
+                        const height = 18 / stageScale;
+                        const x = replacePointer.x + 12 / stageScale;
+                        const y = replacePointer.y - 12 / stageScale;
+                        const fontSize = 11 / stageScale;
+                        const width = label.length * (fontSize * 0.58) + padX * 2;
+                        return (
+                          <>
+                            <Rect
+                              x={x}
+                              y={y - height}
+                              width={width}
+                              height={height}
+                              fill={swapTargetInvalid ? 'rgba(60, 10, 10, 0.9)' : 'rgba(20, 26, 40, 0.9)'}
+                            />
+                            <Text
+                              x={x + padX}
+                              y={y - height + 3 / stageScale}
+                              text={label}
+                              fontSize={fontSize}
+                              fill={swapTargetInvalid ? '#fecaca' : '#fff7db'}
+                            />
+                          </>
+                        );
+                      })()}
+                    </Group>
+                  ) : null}
+                  {selectedPlacedItem && selectedHandles ? (
+                    Object.entries(selectedHandles)
+                      .filter(([handle]) => handle === 'nw' || handle === 'ne' || handle === 'sw' || handle === 'se')
+                      .map(([handle, position]) => (
+                        <Rect
+                          key={handle}
+                          id={konvaNodeIds.handle(selectedPlacedItem.imageId, handle)}
+                          x={position.x - 4 / stageScale}
+                          y={position.y - 4 / stageScale}
+                          width={8 / stageScale}
+                          height={8 / stageScale}
+                          fill="#ffffff"
+                          stroke="rgba(252, 197, 21, 0.95)"
+                          strokeWidth={1.5 / stageScale}
+                          listening={false}
+                        />
+                      ))
+                  ) : null}
+                </Group>
+              </Layer>
+            </Stage>
+          </div>
           {showPlacementHints ? (
             <div
               className="pointer-events-none absolute inset-2 flex items-center justify-center rounded-xl border-2 border-dashed border-amber-300/70 bg-amber-300/10 animate-pulse motion-reduce:animate-none"
@@ -176,8 +657,11 @@ export function CollagePreview({
   pages,
   itemById,
   imageById,
+  imageZoomLevels,
+  imagePanOffsets,
   selectedImageId,
   hoveredImageId,
+  drawerSelectedImageId,
   selectedImageName,
   showSelectionControls,
   onCloseSelectionControls,
@@ -185,21 +669,26 @@ export function CollagePreview({
   interactionMode,
   dragActive,
   moveOutsideCanvas,
+  moveCollisionImageIds,
+  resizeCurrentDimensions,
+  resizeFeedback,
+  resizeSnapGuides,
+  resizeSnapActive,
+  replaceAnimationTick,
+  replacePointer,
+  swapTargetInvalid,
+  canvasPlacementPreview,
   onSetInteractionMode,
   onExpandSelectedImage,
   onResetSelectedCrop,
   selectedPageIndex,
   onSelectPage,
-  previewCanvasRef,
-  onMouseDown,
-  onMouseMove,
-  onMouseUp,
-  onMouseLeave,
-  onDoubleClick,
-  onPointerDown,
-  onPointerMove,
-  onPointerUp,
-  onPointerCancel,
+  previewViewportRef,
+  onPreviewMouseDown,
+  onPreviewMouseMove,
+  onPreviewMouseUp,
+  onPreviewMouseLeave,
+  onPreviewDoubleClick,
   onDragOver,
   onDrop,
   onDragLeave,
@@ -209,12 +698,18 @@ export function CollagePreview({
   imagesCount,
   canvasCursor,
 }: CollagePreviewProps) {
-  const pageCanvasRefs = useRef<Array<HTMLCanvasElement | null>>([]);
+  const pageViewportRefs = useRef<Array<HTMLElement | null>>([]);
   const pageContainerRefs = useRef<Array<HTMLElement | null>>([]);
   const previewBodyRef = useRef<HTMLDivElement | null>(null);
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const [scrollRoot, setScrollRoot] = useState<Element | null>(null);
   const [uploadDragOver, setUploadDragOver] = useState(false);
+  const [previewLogicalSize, setPreviewLogicalSize] = useState<number>(() => {
+    if (typeof window === 'undefined') {
+      return 900;
+    }
+    return Math.round(Math.min(window.innerWidth * 0.9, 900));
+  });
   const hasSelection = Boolean(selectedImageId);
   const hasPlacedItems = pages.some((page) => page.items.length > 0);
   const showOnboardingHints = !hasPlacedItems && imagesCount === 0;
@@ -305,9 +800,17 @@ export function CollagePreview({
   ]);
 
   useEffect(() => {
-    pageCanvasRefs.current.length = pages.length;
+    pageViewportRefs.current.length = pages.length;
     pageContainerRefs.current.length = pages.length;
   }, [pages.length]);
+
+  useEffect(() => {
+    const onResize = () => {
+      setPreviewLogicalSize(Math.round(Math.min(window.innerWidth * 0.9, 900)));
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   useEffect(() => {
     const rootEl = scrollRoot as HTMLElement | null;
@@ -368,38 +871,8 @@ export function CollagePreview({
   }, [scrollRoot, pages.length, selectedPageIndex, onSelectPage]);
 
   useEffect(() => {
-    pages.forEach((page, index) => {
-      const canvas = pageCanvasRefs.current[index];
-      if (!canvas) {
-        return;
-      }
-
-      const isActive = index === selectedPageIndex;
-      if (isActive) {
-        previewCanvasRef.current = canvas;
-        return;
-      }
-
-      drawPagePreview(canvas, page, itemById, imageById, {
-        selectedImageId: null,
-        hoveredImageId: null,
-        interactionMode,
-        dragActive: false,
-        moveOutsideCanvas: false,
-      });
-    });
-  }, [
-    pages,
-    itemById,
-    imageById,
-    selectedPageIndex,
-    selectedImageId,
-    hoveredImageId,
-    interactionMode,
-    dragActive,
-    moveOutsideCanvas,
-    previewCanvasRef,
-  ]);
+    previewViewportRef.current = pageViewportRefs.current[selectedPageIndex] ?? null;
+  }, [selectedPageIndex, pages.length, previewViewportRef]);
 
   const helperText = hasUnplacedImages
     ? 'Follow the core flow: generate the layout first, then fine-tune individual photos only when needed.'
@@ -557,21 +1030,37 @@ export function CollagePreview({
                   registerContainerRef={(pageIndex, node) => {
                     pageContainerRefs.current[pageIndex] = node;
                   }}
-                  registerCanvasRef={(pageIndex, node) => {
-                    pageCanvasRefs.current[pageIndex] = node;
+                  registerViewportRef={(pageIndex, node) => {
+                    pageViewportRefs.current[pageIndex] = node;
                     if (pageIndex === selectedPageIndex) {
-                      previewCanvasRef.current = node;
+                      previewViewportRef.current = node;
                     }
                   }}
-                  onMouseDown={onMouseDown}
-                  onMouseMove={onMouseMove}
-                  onMouseUp={onMouseUp}
-                  onMouseLeave={onMouseLeave}
-                  onDoubleClick={onDoubleClick}
-                  onPointerDown={onPointerDown}
-                  onPointerMove={onPointerMove}
-                  onPointerUp={onPointerUp}
-                  onPointerCancel={onPointerCancel}
+                  previewLogicalSize={previewLogicalSize}
+                  itemById={itemById}
+                  imageById={imageById}
+                  imageZoomLevels={imageZoomLevels}
+                  imagePanOffsets={imagePanOffsets}
+                  selectedImageId={index === selectedPageIndex ? selectedImageId : null}
+                  hoveredImageId={index === selectedPageIndex ? hoveredImageId : null}
+                  drawerSelectedImageId={index === selectedPageIndex ? drawerSelectedImageId : null}
+                  interactionMode={interactionMode}
+                  dragActive={dragActive && index === selectedPageIndex}
+                  moveOutsideCanvas={moveOutsideCanvas && index === selectedPageIndex}
+                  moveCollisionImageIds={index === selectedPageIndex ? moveCollisionImageIds : []}
+                  resizeCurrentDimensions={index === selectedPageIndex ? resizeCurrentDimensions : null}
+                  resizeFeedback={index === selectedPageIndex ? resizeFeedback : null}
+                  resizeSnapGuides={index === selectedPageIndex ? resizeSnapGuides : []}
+                  resizeSnapActive={index === selectedPageIndex ? resizeSnapActive : false}
+                  replaceAnimationTick={replaceAnimationTick}
+                  replacePointer={index === selectedPageIndex ? replacePointer : null}
+                  swapTargetInvalid={index === selectedPageIndex ? swapTargetInvalid : false}
+                  canvasPlacementPreview={index === selectedPageIndex ? canvasPlacementPreview : null}
+                  onPreviewMouseDown={onPreviewMouseDown}
+                  onPreviewMouseMove={onPreviewMouseMove}
+                  onPreviewMouseUp={onPreviewMouseUp}
+                  onPreviewMouseLeave={onPreviewMouseLeave}
+                  onPreviewDoubleClick={onPreviewDoubleClick}
                   onDragOver={onDragOver}
                   onDrop={onDrop}
                   onDragLeave={onDragLeave}

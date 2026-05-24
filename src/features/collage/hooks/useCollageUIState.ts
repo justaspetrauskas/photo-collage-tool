@@ -52,13 +52,10 @@ export function useCollageUIState() {
   });
 
   // Animation and pointer refs
-  const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const previewTransformRef = useRef<import('../model/types').PreviewTransform | null>(null);
-  const previewRenderFrameRef = useRef<number | null>(null);
+  const previewViewportRef = useRef<HTMLElement | null>(null);
   const interactionMoveFrameRef = useRef<number | null>(null);
   const pendingInteractionMoveRef = useRef<{ clientX: number; clientY: number; shiftKey: boolean } | null>(null);
   const dragStateRef = useRef<import('../../../shared/drag/types').DragState | null>(null);
-  const mousePointerCapturedRef = useRef<boolean>(false);
   const knownImageSrcsRef = useRef<Set<string>>(new Set());
 
   return {
@@ -93,13 +90,10 @@ export function useCollageUIState() {
     drawerSelectedImageId, setDrawerSelectedImageId,
     imageZoomLevels, setImageZoomLevels,
     imagePanOffsets, setImagePanOffsets,
-    previewCanvasRef,
-    previewTransformRef,
-    previewRenderFrameRef,
+    previewViewportRef,
     interactionMoveFrameRef,
     pendingInteractionMoveRef,
     dragStateRef,
-    mousePointerCapturedRef,
     knownImageSrcsRef,
   };
 }

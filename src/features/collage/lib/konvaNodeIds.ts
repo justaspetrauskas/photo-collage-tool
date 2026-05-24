@@ -1,0 +1,20 @@
+export const konvaNodeIds = {
+  pageStage: (pageId: string): string => `page-stage-${pageId}`,
+  page: (pageId: string): string => `page-${pageId}`,
+  image: (imageId: string): string => `image-${imageId}`,
+  imageBitmap: (imageId: string): string => `image-bitmap-${imageId}`,
+  imageHover: (imageId: string): string => `image-hover-${imageId}`,
+  imageSelection: (imageId: string): string => `image-selection-${imageId}`,
+  imageDrawerSelected: (imageId: string): string => `image-drawer-selected-${imageId}`,
+  placementPreview: (imageId: string): string => `placement-preview-${imageId}`,
+  resizeGuide: (index: number): string => `resize-guide-${index}`,
+  moveOutside: (imageId: string): string => `move-outside-${imageId}`,
+  moveCollision: (imageId: string): string => `move-collision-${imageId}`,
+  resizeFeedback: 'resize-feedback',
+  selectedSizeLabel: (imageId: string): string => `selected-size-label-${imageId}`,
+  resizeSizeLabel: (imageId: string): string => `resize-size-label-${imageId}`,
+  replaceFeedback: (sourceImageId: string, targetImageId: string): string =>
+    `replace-feedback-${sourceImageId}-${targetImageId}`,
+  replacePointerTooltip: 'replace-pointer-tooltip',
+  handle: (imageId: string, handle: string): string => `handle-${imageId}-${handle}`,
+};

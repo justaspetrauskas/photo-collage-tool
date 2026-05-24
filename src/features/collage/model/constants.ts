@@ -8,12 +8,33 @@ export const DEFAULT_MIN_IMAGE_CM = 3;
 export const DEFAULT_FRAME_MM = 4;
 export const DEFAULT_GRID_SPACING_CM = 1;
 
+export type EditorLengthUnit = 'cm';
+export const EDITOR_LENGTH_UNIT: EditorLengthUnit = 'cm';
+
 export function cmToPx(cm: number): number {
   return (cm / CM_PER_INCH) * DPI;
 }
 
 export function mmToPx(mm: number): number {
   return cmToPx(mm / 10);
+}
+
+export function pxToEditorUnit(px: number, unit: EditorLengthUnit = EDITOR_LENGTH_UNIT): number {
+  if (unit === 'cm') {
+    return (px / DPI) * CM_PER_INCH;
+  }
+  return px;
+}
+
+export function formatSizeFromPx(
+  widthPx: number,
+  heightPx: number,
+  unit: EditorLengthUnit = EDITOR_LENGTH_UNIT,
+  fractionDigits = 1,
+): string {
+  const width = pxToEditorUnit(widthPx, unit).toFixed(fractionDigits);
+  const height = pxToEditorUnit(heightPx, unit).toFixed(fractionDigits);
+  return `${width} x ${height} ${unit}`;
 }
 
 export type CanvasSizePresetId =

@@ -55,7 +55,7 @@ export function useManualPlacementHandlers(params: {
     setNotice,
   } = params;
 
-  function onCanvasDragOver(event: DragEvent<HTMLCanvasElement>): void {
+  function onCanvasDragOver(event: DragEvent<HTMLElement>): void {
     event.preventDefault();
     const imageId = manualPlacementDragImageId ?? event.dataTransfer.getData('application/x-collage-image-id');
     if (!imageId || !selectedPage) {
@@ -96,7 +96,7 @@ export function useManualPlacementHandlers(params: {
     });
   }
 
-  function onCanvasDrop(event: DragEvent<HTMLCanvasElement>): void {
+  function onCanvasDrop(event: DragEvent<HTMLElement>): void {
     event.preventDefault();
     const imageId = manualPlacementDragImageId ?? event.dataTransfer.getData('application/x-collage-image-id');
     const image = itemById.get(imageId);
