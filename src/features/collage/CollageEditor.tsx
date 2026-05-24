@@ -3,7 +3,7 @@ import { LeftLibraryPanel } from './components/LeftLibraryPanel';
 import { RightInspectorPanel } from './components/RightInspectorPanel';
 import { CollagePreview } from './components/CollagePreview';
 import { WorkflowStatusCard } from './components/WorkflowStatusCard';
-import { useCollageEditor } from './hooks/useCollageEditor';
+import { useCollageEditor } from './hooks/editor/useCollageEditor';
 import { useEditorUIStore } from './store/editorUIStore';
 import { Button } from '../../shared/ui/Button';
 import { useEffect, useState } from 'react';

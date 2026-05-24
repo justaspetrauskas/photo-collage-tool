@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import type { ImageItem, PositionedImage, PaginationMode, InteractionMode } from '../model/types';
-import type { CanvasSizePresetId, LayoutPresetId } from '../model/constants';
+import type { ImageItem, PositionedImage, PaginationMode, InteractionMode } from '../../model/types';
+import type { CanvasSizePresetId, LayoutPresetId } from '../../model/constants';
 
 export function useCollageState(initial?: Partial<ReturnType<typeof getDefaultState>>) {
   const [images, setImages] = useState<ImageItem[]>(initial?.images ?? []);

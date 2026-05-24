@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
-import { CANVAS_SIZE_PRESETS, LAYOUT_PRESETS, cmToPx, type CanvasSizePresetId } from '../model/constants';
-import type { ImageItem, PageLayout, PositionedImage } from '../model/types';
+import { CANVAS_SIZE_PRESETS, LAYOUT_PRESETS, cmToPx, type CanvasSizePresetId } from '../../model/constants';
+import type { ImageItem, PageLayout, PositionedImage } from '../../model/types';
 import type { SessionMetrics, WorkflowStage } from './useCollageEditor';
 
 type PlacementInfo = { pageIndex: number; itemIndex: number; item: PositionedImage };

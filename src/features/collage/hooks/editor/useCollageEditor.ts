@@ -1,4 +1,4 @@
-import { enhanceImageWithAI, type EnhanceOptions, type EnhancePreset } from '../lib/openaiImageEdit';
+import { enhanceImageWithAI, type EnhanceOptions, type EnhancePreset } from '../../lib/openaiImageEdit';
 import { useEffect } from 'react';
 import type { ChangeEvent, DragEvent } from 'react';
 import {
@@ -13,24 +13,33 @@ import {
   type LayoutPresetId,
   mmToPx,
   type CanvasSizePresetId,
-} from '../model/constants';
-import { buildPaginatedLayout, clampOffsets } from '../model/layoutEngine';
-import { renderPageToExportCanvas } from '../model/renderEngine';
-import { useEditorUIStore } from '../store/editorUIStore';
+} from '../../model/constants';
+import { buildPaginatedLayout, clampOffsets } from '../../model/layoutEngine';
+import { renderPageToExportCanvas } from '../../model/renderEngine';
+import { useEditorUIStore } from '../../store/editorUIStore';
 import { useCollageState } from './useCollageState';
 import { useCollageUIState } from './useCollageUIState';
 import { useCollageDerivedState } from './useCollageDerivedState';
+import { useCollageEditorLifecycle } from './useCollageEditorLifecycle';
+import { useCollageEditorLayoutEffects } from './useCollageEditorLayoutEffects';
+import { useCollageEditorAutosave, useCollageEditorHydration } from './useCollageEditorPersistence';
+import { useCollageInteractionEnd } from './useCollageInteractionEnd';
+import { useCollageInteractionStart } from './useCollageInteractionStart';
+import { useCollageInteractionMove } from './useCollageInteractionMove';
+import { useCollagePreviewInteractions } from './useCollagePreviewInteractions';
 import { useManualPlacementHandlers } from './useManualPlacementHandlers';
 import {
   canvasToBlob,
-  elapsedTicks,
-  pageHasOverlap,
+  computeHandleHitRadiusPx,
+  findClosestSwapTargetAtPoint,
+  findHitItemAtPoint,
+  pagePointFromClientForViewport,
   randomId,
   rectanglesTouchOrOverlap,
-} from './collageEditorUtils';
-import { computeContentBox, computeCropMetrics } from '../../../shared/math/sizing';
-import { fileToImage, blobToImage } from '../lib/fileToImage';
-import { loadSnapshot, saveSnapshot, clearSnapshot } from '../lib/persistence';
+} from '../collageEditorUtils';
+import { computeContentBox, computeCropMetrics } from '../../../../shared/math/sizing';
+import { fileToImage } from '../../lib/fileToImage';
+import { clearSnapshot } from '../../lib/persistence';
 import {
   calculateOutsideRatio,
   getCanvasSnapPosition,
@@ -39,28 +48,23 @@ import {
   getPreferredPushAxis,
   canSwapImages,
   calculateZoomPanOffset,
-  getZoomPanBounds,
   getResizeAssistSnap,
   getHandleAtPoint,
-  getHandleFixedEdges,
-  getCursorForHandle,
   calculateCropOffsets,
   calculateNewPosition,
-} from '../interactions';
+} from '../../interactions';
 
-import type { HandleType } from '../interactions';
-import type { DragState } from '../../../shared/drag/types';
-import { isCropDrag, isMoveDrag, isPanDrag, isReplaceDrag, isResizeDrag } from '../../../shared/drag/types';
+import type { HandleType } from '../../interactions';
+import type { DragState } from '../../../../shared/drag/types';
+import { isCropDrag, isMoveDrag, isPanDrag, isReplaceDrag, isResizeDrag } from '../../../../shared/drag/types';
 import type {
   ImageItem,
   PositionedImage,
   PageLayout,
-  PersistedEditorSnapshot,
-  PersistedImageItem,
-} from '../model/types';
+} from '../../model/types';
 
 // --- Types and Interfaces ---
-import { computeSmartDropSize, resolveSmartFraming } from '../lib/editorLayoutUtils';
+import { computeSmartDropSize, resolveSmartFraming } from '../../lib/editorLayoutUtils';
 
 export type WorkflowStage = 'upload' | 'generate' | 'edit' | 'export';
 
@@ -387,246 +391,51 @@ export function useCollageEditor() {
 
   const shouldRunAnimationLoop = (dragActive && interactionMode === 'replace') || Boolean(swapAnimation);
 
-  useEffect(() => {
-    if (!shouldRunAnimationLoop) {
-      return;
-    }
+  useCollageEditorLifecycle({
+    shouldRunAnimationLoop,
+    setReplaceAnimationTick,
+    swapAnimation,
+    replaceAnimationTick,
+    clearSwapAnimation: () => setSwapAnimation(null),
+    interactionMoveFrameRef,
+    images,
+    knownImageSrcsRef,
+  });
 
-    let frameId = 0;
-    const animate = () => {
-      setReplaceAnimationTick((tick) => (tick + 1) % 10000);
-      frameId = window.requestAnimationFrame(animate);
-    };
+  useCollageEditorHydration({
+    setImages,
+    setPages,
+    setOverflowImageIds,
+    setOversizedImageIds,
+    setMaxImageCm,
+    setMinImageCm,
+    setFrameMm,
+    setGridModeEnabled,
+    setAutoCompactPages,
+    setPaginationMode,
+    setInteractionModeState,
+    setAssistedPageCount,
+    setSelectedPageIndex,
+    setLayoutPresetId,
+    setCanvasPresetId,
+    setCustomCanvasWidthCm,
+    setCustomCanvasHeightCm,
+    setSelectedImageId,
+    setShowSelectionControls,
+    setLastSavedAt,
+    setRestoredFromSnapshot,
+    setNotice,
+    setError,
+    setIsHydrated,
+    setSaveState,
+  });
 
-    frameId = window.requestAnimationFrame(animate);
-    return () => window.cancelAnimationFrame(frameId);
-  }, [shouldRunAnimationLoop]);
-
-  useEffect(() => {
-    if (!swapAnimation) {
-      return;
-    }
-
-    if (elapsedTicks(replaceAnimationTick, swapAnimation.startedTick) >= swapAnimation.durationTicks) {
-      setSwapAnimation(null);
-    }
-  }, [replaceAnimationTick, swapAnimation]);
-
-  useEffect(() => {
-    return () => {
-      if (interactionMoveFrameRef.current !== null) {
-        window.cancelAnimationFrame(interactionMoveFrameRef.current);
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    const currentSrcs = new Set<string>();
-    for (const image of images) {
-      currentSrcs.add(image.src);
-      currentSrcs.add(image.originalSrc);
-    }
-    for (const previousSrc of knownImageSrcsRef.current) {
-      if (!currentSrcs.has(previousSrc) && typeof previousSrc === 'string') {
-        URL.revokeObjectURL(previousSrc);
-      }
-    }
-    knownImageSrcsRef.current = currentSrcs;
-  }, [images]);
-
-  useEffect(() => {
-    return () => {
-      for (const src of knownImageSrcsRef.current) {
-        if (typeof src === 'string') URL.revokeObjectURL(src);
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function hydrateFromIndexedDb() {
-      try {
-        const snapshot = await loadSnapshot();
-        if (!snapshot || cancelled) {
-          return;
-        }
-
-        const hydratedImages = await Promise.all(
-          snapshot.images.map(async (savedImage) => {
-            const restored = await blobToImage(savedImage.sourceBlob);
-            const baseItem: ImageItem = {
-              ...savedImage,
-              originalSrc: restored.src,
-              src: restored.src,
-              bitmap: restored.image,
-              sourceBlob: restored.blob,
-            };
-
-            // If enhanced version was saved, restore it
-            if (savedImage.enhancedSrcBlob) {
-              try {
-                const enhanced = await blobToImage(savedImage.enhancedSrcBlob);
-                return {
-                  ...baseItem,
-                  src: enhanced.src,
-                  bitmap: enhanced.image,
-                };
-              } catch {
-                // If enhanced blob fails to load, fall back to original
-                return baseItem;
-              }
-            }
-
-            return baseItem;
-          }),
-        );
-
-        if (cancelled) {
-          for (const image of hydratedImages) {
-            URL.revokeObjectURL(image.src);
-          }
-          return;
-        }
-
-        setImages(hydratedImages);
-        setPages(snapshot.pages);
-        setOverflowImageIds(snapshot.overflowImageIds);
-        setOversizedImageIds(snapshot.oversizedImageIds);
-        setMaxImageCm(snapshot.settings.maxImageCm);
-        setMinImageCm(snapshot.settings.minImageCm);
-        setFrameMm(snapshot.settings.frameMm);
-        setGridModeEnabled(snapshot.settings.gridModeEnabled);
-        setAutoCompactPages(snapshot.settings.autoCompactPages ?? true);
-        setPaginationMode(snapshot.settings.paginationMode);
-        setInteractionModeState(snapshot.settings.interactionMode ?? 'select');
-        setAssistedPageCount(snapshot.settings.assistedPageCount);
-        setSelectedPageIndex(snapshot.settings.selectedPageIndex);
-        if (snapshot.settings.layoutPresetId) {
-          const validLayoutPresetIds = new Set(LAYOUT_PRESETS.map((preset) => preset.id));
-          if (validLayoutPresetIds.has(snapshot.settings.layoutPresetId)) {
-            setLayoutPresetId(snapshot.settings.layoutPresetId);
-          }
-        }
-        if (snapshot.settings.canvasPresetId) {
-          const VALID_PRESET_IDS = CANVAS_SIZE_PRESETS.map((p) => p.id);
-          const id = snapshot.settings.canvasPresetId;
-          if (VALID_PRESET_IDS.includes(id as CanvasSizePresetId)) {
-            setCanvasPresetId(id as CanvasSizePresetId);
-          }
-        }
-        if (typeof snapshot.settings.customCanvasWidthCm === 'number') {
-          setCustomCanvasWidthCm(snapshot.settings.customCanvasWidthCm);
-        }
-        if (typeof snapshot.settings.customCanvasHeightCm === 'number') {
-          setCustomCanvasHeightCm(snapshot.settings.customCanvasHeightCm);
-        }
-        // Explicitly clear selected image state on hydration to avoid stale selections
-        setSelectedImageId(null);
-        setShowSelectionControls(false);
-        setLastSavedAt(snapshot.savedAt);
-        setRestoredFromSnapshot(true);
-        setNotice({
-          tone: 'info',
-          text: 'Saved project restored. Continue with your last collage or export when ready.',
-        });
-      } catch {
-        setError('Could not restore saved project state from local storage.');
-      } finally {
-        if (!cancelled) {
-          setIsHydrated(true);
-          setSaveState('idle');
-        }
-      }
-    }
-
-    void hydrateFromIndexedDb();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!isHydrated) {
-      return;
-    }
-
-    setSaveState('saving');
-    const timeoutId = window.setTimeout(async () => {
-      const persistedImages: PersistedImageItem[] = await Promise.all(
-        images.map(async (image) => {
-          const persisted: PersistedImageItem = {
-            id: image.id,
-            fileName: image.fileName,
-            sourceBlob: image.sourceBlob,
-            naturalWidth: image.naturalWidth,
-            naturalHeight: image.naturalHeight,
-            maxWidthCm: image.maxWidthCm,
-            maxHeightCm: image.maxHeightCm,
-            frameEnabled: image.frameEnabled,
-            frameThicknessPx: image.frameThicknessPx,
-            renderWidthPx: image.renderWidthPx,
-            renderHeightPx: image.renderHeightPx,
-            offsetX: image.offsetX,
-            offsetY: image.offsetY,
-            cropMaxOffsetX: image.cropMaxOffsetX,
-            cropMaxOffsetY: image.cropMaxOffsetY,
-          };
-
-          // If image has been enhanced, convert the data URL to blob and store it
-          if (image.src !== image.originalSrc && image.src.startsWith('data:')) {
-            try {
-              const response = await fetch(image.src);
-              const enhancedBlob = await response.blob();
-              persisted.enhancedSrcBlob = enhancedBlob;
-            } catch {
-              // If conversion fails, we'll lose the enhancement on next load
-              // but the app will remain functional
-            }
-          }
-
-          return persisted;
-        }),
-      );
-
-      const snapshot: PersistedEditorSnapshot = {
-        version: 1,
-        savedAt: Date.now(),
-        settings: {
-          maxImageCm,
-          minImageCm,
-          frameMm,
-          gridModeEnabled,
-          autoCompactPages,
-          paginationMode,
-          interactionMode,
-          assistedPageCount,
-          selectedPageIndex,
-          layoutPresetId,
-          canvasPresetId,
-          customCanvasWidthCm,
-          customCanvasHeightCm,
-        },
-        pages,
-        overflowImageIds,
-        oversizedImageIds,
-        images: persistedImages,
-      };
-
-      try {
-        await saveSnapshot(snapshot);
-        setLastSavedAt(snapshot.savedAt);
-        setSaveState('saved');
-      } catch {
-        setSaveState('error');
-        setError('We could not save your latest changes locally. Please keep this tab open and try again.');
-      }
-    }, 500);
-
-    return () => window.clearTimeout(timeoutId);
-  }, [
+  useCollageEditorAutosave({
     isHydrated,
+    images,
+    pages,
+    overflowImageIds,
+    oversizedImageIds,
     maxImageCm,
     minImageCm,
     frameMm,
@@ -637,26 +446,32 @@ export function useCollageEditor() {
     assistedPageCount,
     selectedPageIndex,
     layoutPresetId,
-    pages,
-    overflowImageIds,
-    oversizedImageIds,
-    images,
     canvasPresetId,
     customCanvasWidthCm,
     customCanvasHeightCm,
-  ]);
+    setLastSavedAt,
+    setSaveState,
+    setError,
+  });
 
-  useEffect(() => {
-    if (!isHydrated || !images.length || !pages.length) {
-      return;
-    }
-
-    if (!pages.some(pageHasOverlap)) {
-      return;
-    }
-
-    regenerateLayout(resolveMaxPages(), true, images);
-  }, [isHydrated, images, pages, paginationMode, assistedPageCount, minImageCm, autoCompactPages]);
+  useCollageEditorLayoutEffects({
+    isHydrated,
+    images,
+    pages,
+    frameMm,
+    canvasPresetId,
+    customCanvasWidthCm,
+    customCanvasHeightCm,
+    paginationMode,
+    assistedPageCount,
+    minImageCm,
+    autoCompactPages,
+    setImages,
+    setPages,
+    regenerateLayout,
+    resolveMaxPages,
+    resolveCanvasDimensions,
+  });
 
   async function onUploadFiles(event: ChangeEvent<HTMLInputElement>): Promise<void> {
     const files = Array.from(event.target.files ?? []);
@@ -733,49 +548,6 @@ export function useCollageEditor() {
       text: 'Project sizing rules updated. Generate layout again if you want every page reflowed.',
     });
   }
-
-  // Keep canvas frames in sync with global frame width changes.
-  useEffect(() => {
-    if (!isHydrated || !images.length) {
-      return;
-    }
-
-    const nextFrameThicknessPx = mmToPx(frameMm);
-    const nextImages = images.map((image) => ({
-      ...image,
-      frameThicknessPx: nextFrameThicknessPx,
-    }));
-
-    setImages(nextImages);
-
-    if (pages.some((page) => page.items.length > 0)) {
-      regenerateLayout(resolveMaxPages(), true, nextImages);
-    }
-  }, [frameMm]);
-
-  // When canvas preset or custom dimensions change, update page sizes and regenerate layout.
-  // `images` and `pages` are intentionally omitted from deps to avoid an infinite loop:
-  // the effect updates pages, which would re-trigger the effect if pages were a dep.
-  // This mirrors the same pattern used in the frameMm effect above.
-  useEffect(() => {
-    if (!isHydrated) {
-      return;
-    }
-
-    const { widthPx, heightPx } = resolveCanvasDimensions();
-
-    setPages((currentPages) =>
-      currentPages.map((page) => ({
-        ...page,
-        widthPx,
-        heightPx,
-      })),
-    );
-
-    if (images.length && pages.some((page) => page.items.length > 0)) {
-      regenerateLayout(resolveMaxPages(), true, images);
-    }
-  }, [canvasPresetId, customCanvasWidthCm, customCanvasHeightCm]);
 
   function focusImageOnCanvas(imageId: string): void {
     setSelectedImageId(imageId);
@@ -1010,39 +782,7 @@ export function useCollageEditor() {
     if (!viewport || !selectedPage) {
       return null;
     }
-
-    const rect = viewport.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) {
-      return null;
-    }
-
-    const dpr = window.devicePixelRatio || 1;
-    const backingWidth = Math.round(rect.width * dpr);
-    const backingHeight = Math.round(rect.height * dpr);
-    const margin = 28 * dpr;
-    const availableWidth = backingWidth - margin * 2;
-    const availableHeight = backingHeight - margin * 2;
-    const scale = Math.min(availableWidth / selectedPage.widthPx, availableHeight / selectedPage.heightPx);
-    const offsetX = (backingWidth - selectedPage.widthPx * scale) / 2;
-    const offsetY = (backingHeight - selectedPage.heightPx * scale) / 2;
-
-    if (!Number.isFinite(scale) || scale <= 0) {
-      return null;
-    }
-
-    const x = (clientX - rect.left) * dpr;
-    const y = (clientY - rect.top) * dpr;
-    const pageX = (x - offsetX) / scale;
-    const pageY = (y - offsetY) / scale;
-
-    if (
-      !options.allowOutsideCanvas &&
-      (pageX < 0 || pageY < 0 || pageX > selectedPage.widthPx || pageY > selectedPage.heightPx)
-    ) {
-      return null;
-    }
-
-    return { x: pageX, y: pageY };
+    return pagePointFromClientForViewport(clientX, clientY, viewport, selectedPage, options);
   }
 
   function resolveManualPlacementSize(image: ImageItem): {
@@ -1120,20 +860,7 @@ export function useCollageEditor() {
     if (!selectedPage) {
       return null;
     }
-
-    for (let i = selectedPage.items.length - 1; i >= 0; i -= 1) {
-      const placed = selectedPage.items[i];
-      if (
-        pagePoint.x >= placed.x &&
-        pagePoint.x <= placed.x + placed.width &&
-        pagePoint.y >= placed.y &&
-        pagePoint.y <= placed.y + placed.height
-      ) {
-        return placed;
-      }
-    }
-
-    return null;
+    return findHitItemAtPoint(selectedPage, pagePoint);
   }
 
   function findCornerHandleTarget(
@@ -1144,20 +871,9 @@ export function useCollageEditor() {
     }
 
     const viewport = previewViewportRef.current;
-    let handleHitRadiusPx = 0;
-    if (viewport) {
-      const rect = viewport.getBoundingClientRect();
-      const dpr = window.devicePixelRatio || 1;
-      const backingWidth = Math.round(rect.width * dpr);
-      const backingHeight = Math.round(rect.height * dpr);
-      const margin = 28 * dpr;
-      const availableWidth = backingWidth - margin * 2;
-      const availableHeight = backingHeight - margin * 2;
-      const scale = Math.min(availableWidth / selectedPage.widthPx, availableHeight / selectedPage.heightPx);
-      if (Number.isFinite(scale) && scale > 0) {
-        handleHitRadiusPx = SELECT_HANDLE_HIT_RADIUS_CSS_PX * dpr / scale;
-      }
-    }
+    const handleHitRadiusPx = viewport
+      ? computeHandleHitRadiusPx(viewport, selectedPage, SELECT_HANDLE_HIT_RADIUS_CSS_PX)
+      : 0;
 
     if (handleHitRadiusPx <= 0) {
       return null;
@@ -1180,633 +896,90 @@ export function useCollageEditor() {
     if (!selectedPage) {
       return null;
     }
-
-    const maxSnapDistancePx = 44;
-    let bestTarget: PositionedImage | null = null;
-    let bestDistance = Number.POSITIVE_INFINITY;
-
-    for (const placed of selectedPage.items) {
-      if (placed.imageId === sourceImageId) {
-        continue;
-      }
-
-      const frame = placed.frameThicknessPx;
-      const innerX = placed.x + frame;
-      const innerY = placed.y + frame;
-      const innerW = placed.contentWidthPx;
-      const innerH = placed.contentHeightPx;
-
-      const clampedX = Math.max(innerX, Math.min(pagePoint.x, innerX + innerW));
-      const clampedY = Math.max(innerY, Math.min(pagePoint.y, innerY + innerH));
-      const distance = Math.hypot(pagePoint.x - clampedX, pagePoint.y - clampedY);
-
-      if (distance < bestDistance) {
-        bestDistance = distance;
-        bestTarget = placed;
-      }
-    }
-
-    if (!bestTarget) {
-      return null;
-    }
-
-    return bestDistance <= maxSnapDistancePx ? bestTarget : null;
+    return findClosestSwapTargetAtPoint(selectedPage, pagePoint, sourceImageId);
   }
 
-  // --- Drag Start: Only allow one drag at a time, mode guards for handle/body ---
-  function handleCanvasInteractionStart(clientX: number, clientY: number): void {
-    if (dragActive) return; // Only one drag at a time
-    const point = pagePointFromClient(clientX, clientY);
-    if (!point) {
-      clearSelection();
-      return;
-    }
+  const { handleCanvasInteractionStart } = useCollageInteractionStart({
+    dragActive,
+    interactionMode,
+    selectedPage,
+    selectedImageId,
+    itemById,
+    imageZoomLevels,
+    imagePanOffsets,
+    pagePointFromClient,
+    findCornerHandleTarget,
+    findHitItem,
+    clearSelection,
+    dragStateRef,
+    setSelectedImageId,
+    setDrawerSelectedImageId,
+    setHoveredImageId,
+    setShowSelectionControls,
+    setHoveredResizeHandle,
+    setDragActive,
+    setResizeFeedback,
+    setResizeSnapGuides,
+    setResizeSnapActive,
+    setMoveOutsideCanvas,
+    setMoveCollisionImageIds,
+    setReplacePointer,
+  });
 
-    const selectedItem = selectedImageId
-      ? selectedPage?.items.find((item) => item.imageId === selectedImageId) ?? null
-      : null;
-    let handleHitRadiusPx = 0;
-    const viewport = previewViewportRef.current;
-    if (viewport && selectedPage) {
-      const rect = viewport.getBoundingClientRect();
-      const dpr = window.devicePixelRatio || 1;
-      const backingWidth = Math.round(rect.width * dpr);
-      const backingHeight = Math.round(rect.height * dpr);
-      const margin = 28 * dpr;
-      const availableWidth = backingWidth - margin * 2;
-      const availableHeight = backingHeight - margin * 2;
-      const scale = Math.min(availableWidth / selectedPage.widthPx, availableHeight / selectedPage.heightPx);
-      if (Number.isFinite(scale) && scale > 0) {
-        handleHitRadiusPx = SELECT_HANDLE_HIT_RADIUS_CSS_PX * dpr / scale;
-      }
-    }
-    const handleTarget = interactionMode === 'select' ? findCornerHandleTarget(point) : null;
-    const hit = findHitItem(point);
-    const interactionTarget = handleTarget?.item ?? hit ?? null;
-    const interactionResizeHandle = interactionMode === 'select' ? handleTarget?.handle ?? null : null;
-    if (!interactionTarget) {
-      clearSelection();
-      return;
-    }
+  const { handleCanvasInteractionMove } = useCollageInteractionMove({
+    interactionMode,
+    dragStateRef,
+    dragActive,
+    hoveredImageId,
+    hoveredResizeHandle,
+    selectedPage,
+    pages,
+    itemById,
+    placementByImageId,
+    pagePointFromClient,
+    findCornerHandleTarget,
+    findHitItem,
+    findClosestSwapTarget,
+    updateImage,
+    setImagePan,
+    setHoveredImageId,
+    setHoveredResizeHandle,
+    setReplacePointer,
+    setSwapTargetInvalid,
+    setMoveOutsideCanvas,
+    setMoveCollisionImageIds,
+    setPages,
+    setImages,
+    setResizeCurrentDimensions,
+    setResizeFeedback,
+    setResizeSnapGuides,
+    setResizeSnapActive,
+    setResizeLimitNotice,
+    minImageCm,
+  });
 
-    setSelectedImageId(interactionTarget.imageId);
-    setDrawerSelectedImageId(interactionTarget.imageId);
-    setHoveredImageId(interactionTarget.imageId);
-    setShowSelectionControls(true);
-
-    const item = itemById.get(interactionTarget.imageId);
-    if (!item) {
-      return;
-    }
-
-    // --- Mode guards: only allow resize from corner handle, move from body ---
-    if (interactionMode === 'select') {
-      if (interactionResizeHandle) {
-        // Corner handle: resize
-        const { fixedHorizontal, fixedVertical } = getHandleFixedEdges(interactionResizeHandle);
-        setHoveredResizeHandle(interactionResizeHandle);
-        dragStateRef.current = {
-          type: 'resize',
-          imageId: interactionTarget.imageId,
-          startX: point.x,
-          startY: point.y,
-          fixedHorizontal,
-          fixedVertical,
-          baseMaxWidthCm: item.maxWidthCm,
-          baseMaxHeightCm: item.maxHeightCm,
-          baseX: interactionTarget.x,
-          baseY: interactionTarget.y,
-          baseWidth: interactionTarget.width,
-          baseHeight: interactionTarget.height,
-        };
-        setDragActive(true);
-        setResizeFeedback({
-          baseRect: {
-            x: interactionTarget.x,
-            y: interactionTarget.y,
-            width: interactionTarget.width,
-            height: interactionTarget.height,
-          },
-          currentRect: {
-            x: interactionTarget.x,
-            y: interactionTarget.y,
-            width: interactionTarget.width,
-            height: interactionTarget.height,
-          },
-          intent: 'steady',
-        });
-        setResizeSnapGuides([]);
-        setResizeSnapActive(false);
-        return;
-      } else {
-        // Body: move
-        setHoveredResizeHandle(null);
-        dragStateRef.current = {
-          type: 'move',
-          imageId: interactionTarget.imageId,
-          startX: point.x,
-          startY: point.y,
-          baseX: interactionTarget.x,
-          baseY: interactionTarget.y,
-        };
-        setDragActive(true);
-        setMoveOutsideCanvas(false);
-        setMoveCollisionImageIds([]);
-
-        return;
-      }
-    }
-
-    // --- Other modes (crop, replace, move): preserve existing logic ---
-    if (interactionMode === 'crop') {
-      const zoom = imageZoomLevels[interactionTarget.imageId] ?? 1;
-      if (zoom > 1) {
-        const pan = imagePanOffsets[interactionTarget.imageId] ?? { x: 0, y: 0 };
-        const bounds = getZoomPanBounds(
-          {
-            contentWidthPx: interactionTarget.contentWidthPx,
-            contentHeightPx: interactionTarget.contentHeightPx,
-            drawnImageWidthPx: interactionTarget.drawnImageWidthPx,
-            drawnImageHeightPx: interactionTarget.drawnImageHeightPx,
-          },
-          zoom,
-        );
-        setDragActive(true);
-        dragStateRef.current = {
-          type: 'pan',
-          imageId: interactionTarget.imageId,
-          startX: point.x,
-          startY: point.y,
-          basePanX: pan.x,
-          basePanY: pan.y,
-          maxPanX: bounds.maxX,
-          maxPanY: bounds.maxY,
-        };
-        return;
-      }
-
-      setDragActive(true);
-      dragStateRef.current = {
-        type: 'crop',
-        imageId: interactionTarget.imageId,
-        startX: point.x,
-        startY: point.y,
-        baseOffsetX: item.offsetX,
-        baseOffsetY: item.offsetY,
-        maxOffsetX: interactionTarget.maxOffsetX,
-        maxOffsetY: interactionTarget.maxOffsetY,
-      };
-      return;
-    }
-
-    if (interactionMode === 'replace') {
-      dragStateRef.current = {
-        type: 'replace',
-        sourceImageId: interactionTarget.imageId,
-      };
-      setReplacePointer(point);
-      setDragActive(true);
-      return;
-    }
-
-    if (interactionMode === 'move') {
-      setHoveredResizeHandle(null);
-      dragStateRef.current = {
-        type: 'move',
-        imageId: interactionTarget.imageId,
-        startX: point.x,
-        startY: point.y,
-        baseX: interactionTarget.x,
-        baseY: interactionTarget.y,
-      };
-      setDragActive(true);
-      setMoveOutsideCanvas(false);
-      setMoveCollisionImageIds([]);
-      return;
-    }
-  }
-
-  function handleCanvasInteractionMove(
-    clientX: number,
-    clientY: number,
-    modifiers: { shiftKey: boolean } = { shiftKey: false },
-  ): void {
-    const point = pagePointFromClient(clientX, clientY, { allowOutsideCanvas: dragActive });
-    if (!point) {
-      if (!dragActive && hoveredImageId !== null) {
-        setHoveredImageId(null);
-      }
-      if (!dragActive && hoveredResizeHandle !== null) {
-        setHoveredResizeHandle(null);
-      }
-      // if (!dragActive && interactionMode === 'select') {
-      //   setCanvasCursor('default');
-      // }
-      return;
-    }
-
-    const hit = findHitItem(point);
-    if (!dragActive) {
-      const handleTarget = interactionMode === 'select' ? findCornerHandleTarget(point) : null;
-      const hoverResizeHandle = handleTarget?.handle ?? null;
-      const hoverResizeImageId = handleTarget?.item.imageId ?? null;
-
-      setHoveredResizeHandle(hoverResizeHandle);
-      setHoveredImageId(hoverResizeImageId ?? (hit?.imageId ?? null));
-
-      // In 'select' mode, update the canvas cursor based on what's under the pointer.
-      // (Cursor management removed for clean code and cross-platform compatibility)
-    }
-
-    if (interactionMode === 'crop' && isPanDrag(dragStateRef.current)) {
-      const drag = dragStateRef.current;
-      const pan = calculateZoomPanOffset(
-        drag.startX,
-        drag.startY,
-        point.x,
-        point.y,
-        drag.basePanX,
-        drag.basePanY,
-        {
-          maxX: drag.maxPanX,
-          maxY: drag.maxPanY,
-        },
-      );
-      setImagePan(drag.imageId, pan.x, pan.y);
-      return;
-    }
-
-    if (interactionMode === 'crop' && isCropDrag(dragStateRef.current)) {
-      const drag = dragStateRef.current;
-      const offsets = calculateCropOffsets(
-        drag.startX,
-        drag.startY,
-        point.x,
-        point.y,
-        drag.baseOffsetX,
-        drag.baseOffsetY,
-        drag.maxOffsetX,
-        drag.maxOffsetY,
-      );
-
-      updateImage(drag.imageId, {
-        offsetX: Math.round(offsets.offsetX),
-        offsetY: Math.round(offsets.offsetY),
-      });
-      return;
-    }
-
-    if (interactionMode === 'replace' && isReplaceDrag(dragStateRef.current)) {
-      const drag = dragStateRef.current;
-      setReplacePointer(point);
-      const target = point
-        ? findClosestSwapTarget(point, drag.sourceImageId)
-        : null;
-      setHoveredImageId(target?.imageId ?? null);
-      if (target && selectedPage) {
-        const sourceIndex = selectedPage.items.findIndex((item) => item.imageId === drag.sourceImageId);
-        const targetIndex = selectedPage.items.findIndex((item) => item.imageId === target.imageId);
-        if (sourceIndex !== -1 && targetIndex !== -1) {
-          const otherItems = selectedPage.items.filter((_, i) => i !== sourceIndex && i !== targetIndex);
-          setSwapTargetInvalid(!canSwapImages(selectedPage.items[sourceIndex], selectedPage.items[targetIndex], otherItems));
-        } else {
-          setSwapTargetInvalid(false);
-        }
-      } else {
-        setSwapTargetInvalid(false);
-      }
-      return;
-    }
-
-    if ((interactionMode === 'move' || interactionMode === 'select') && isMoveDrag(dragStateRef.current)) {
-      const drag = dragStateRef.current;
-      const position = calculateNewPosition(
-        drag.startX,
-        drag.startY,
-        point.x,
-        point.y,
-        drag.baseX,
-        drag.baseY,
-      );
-
-      const placement = placementByImageId.get(drag.imageId);
-      if (!placement) {
-        return;
-      }
-
-      const { pageIndex, itemIndex } = placement;
-      const page = pages[pageIndex];
-      if (!page) {
-        return;
-      }
-
-      const item = page.items[itemIndex];
-      if (!item) {
-        return;
-      }
-      const snapResult = getCanvasSnapPosition(position.x, position.y, item.width, item.height, page.widthPx, page.heightPx);
-      const effectivePosition = snapResult.snapped ? { x: snapResult.x, y: snapResult.y } : position;
-      const isOutsideCanvas = isPositionOutsideCanvas(
-        effectivePosition.x,
-        effectivePosition.y,
-        item.width,
-        item.height,
-        page.widthPx,
-        page.heightPx,
-      );
-
-      setMoveOutsideCanvas(isOutsideCanvas);
-
-      if (!isOutsideCanvas) {
-        const movingRect = {
-          x: effectivePosition.x,
-          y: effectivePosition.y,
-          width: item.width,
-          height: item.height,
-        };
-        const collisionIds = page.items
-          .filter((other) => other.imageId !== drag.imageId && rectanglesTouchOrOverlap(movingRect, other))
-          .map((other) => other.imageId);
-        setMoveCollisionImageIds(collisionIds);
-      } else {
-        setMoveCollisionImageIds([]);
-      }
-
-      if (!isOutsideCanvas) {
-        setPages((currentPages) =>
-          currentPages.map((currentPage, index) => {
-            if (index !== pageIndex) {
-              return currentPage;
-            }
-
-            const nextItems = [...currentPage.items];
-            nextItems[itemIndex] = {
-              ...nextItems[itemIndex],
-                x: effectivePosition.x,
-                y: effectivePosition.y,
-            };
-
-            return {
-              ...currentPage,
-              items: nextItems,
-            };
-          }),
-        );
-      }
-      return;
-    }
-
-    if ((interactionMode === 'resize' || interactionMode === 'select') && isResizeDrag(dragStateRef.current)) {
-      const drag = dragStateRef.current;
-      const deltaX = drag.fixedHorizontal === 'left' ? point.x - drag.startX : drag.startX - point.x;
-      const deltaY = drag.fixedVertical === 'top' ? point.y - drag.startY : drag.startY - point.y;
-      const preferredPushAxis = getPreferredPushAxis(deltaX, deltaY);
-
-      // Convert deltas from pixels to cm and lock scaling to preserve aspect ratio.
-      const deltaXCm = deltaX / cmToPx(1);
-      const deltaYCm = deltaY / cmToPx(1);
-      const dominantDeltaCm = Math.abs(deltaXCm) >= Math.abs(deltaYCm) ? deltaXCm : deltaYCm;
-      const resizeIntent = dominantDeltaCm > 0.01 ? 'expand' : dominantDeltaCm < -0.01 ? 'shrink' : 'steady';
-
-      const targetImage = itemById.get(drag.imageId);
-      if (!targetImage) {
-        return;
-      }
-
-      const placement = placementByImageId.get(drag.imageId);
-      if (!placement) {
-        return;
-      }
-
-      const { pageIndex, itemIndex } = placement;
-      const page = pages[pageIndex];
-      if (!page || !page.items[itemIndex]) {
-        return;
-      }
-
-      const snappingEnabled = !modifiers.shiftKey;
-      const assist = getResizeAssistSnap({
-        baseRect: { x: drag.baseX, y: drag.baseY, width: drag.baseWidth, height: drag.baseHeight },
-        fixedHorizontal: drag.fixedHorizontal,
-        fixedVertical: drag.fixedVertical,
-        requestedDeltaCm: dominantDeltaCm,
-        neighbors: page.items.filter((item) => item.imageId !== drag.imageId),
-        pxPerCm: cmToPx(1),
-        thresholdPx: 12,
-        includeDimensionMatches: true,
-      });
-      const effectiveDeltaCm = snappingEnabled && assist.snapped ? assist.deltaCm : dominantDeltaCm;
-      const requestedMaxWidthCm = drag.baseMaxWidthCm + effectiveDeltaCm;
-      const requestedMaxHeightCm = drag.baseMaxHeightCm + effectiveDeltaCm;
-
-      const clampedRequestedMaxWidthCm = Math.max(minImageCm, requestedMaxWidthCm);
-      const clampedRequestedMaxHeightCm = Math.max(minImageCm, requestedMaxHeightCm);
-      setResizeSnapGuides(snappingEnabled ? assist.guides : []);
-      setResizeSnapActive(snappingEnabled && assist.snapped);
-      setResizeLimitNotice('');
-
-      const anchorX = drag.fixedHorizontal === 'left' ? drag.baseX : drag.baseX + drag.baseWidth;
-      const anchorY = drag.fixedVertical === 'top' ? drag.baseY : drag.baseY + drag.baseHeight;
-
-      const tryApplyResize = (candidateMaxWidthCm: number, candidateMaxHeightCm: number) => {
-        const nextContent = computeContentBox(
-          targetImage.naturalWidth,
-          targetImage.naturalHeight,
-          candidateMaxWidthCm,
-          candidateMaxHeightCm,
-        );
-        const nextFrameThicknessPx = targetImage.frameEnabled ? targetImage.frameThicknessPx : 0;
-        const nextWidth = nextContent.widthPx + nextFrameThicknessPx * 2;
-        const nextHeight = nextContent.heightPx + nextFrameThicknessPx * 2;
-        const nextX = drag.fixedHorizontal === 'left' ? anchorX : anchorX - nextWidth;
-        const nextY = drag.fixedVertical === 'top' ? anchorY : anchorY - nextHeight;
-        const candidate = {
-          x: nextX,
-          y: nextY,
-          width: nextWidth,
-          height: nextHeight,
-        };
-
-        const pushedItems = resolvePushLayout(page.items, itemIndex, candidate, preferredPushAxis, page.widthPx, page.heightPx);
-        if (!pushedItems) {
-          return null;
-        }
-
-        const nextCrop = computeCropMetrics(
-          targetImage.naturalWidth,
-          targetImage.naturalHeight,
-          nextContent.widthPx,
-          nextContent.heightPx,
-        );
-
-        const patchedItems = [...pushedItems];
-        patchedItems[itemIndex] = {
-          ...patchedItems[itemIndex],
-          x: nextX,
-          y: nextY,
-          width: candidate.width,
-          height: candidate.height,
-          contentWidthPx: nextContent.widthPx,
-          contentHeightPx: nextContent.heightPx,
-          frameThicknessPx: nextFrameThicknessPx,
-          drawnImageWidthPx: nextCrop.drawnImageWidthPx,
-          drawnImageHeightPx: nextCrop.drawnImageHeightPx,
-          maxOffsetX: nextCrop.maxOffsetX,
-          maxOffsetY: nextCrop.maxOffsetY,
-        };
-
-        return {
-          nextItems: patchedItems,
-          content: nextContent,
-          crop: nextCrop,
-          rect: candidate,
-          maxWidthCm: candidateMaxWidthCm,
-          maxHeightCm: candidateMaxHeightCm,
-        };
-      };
-
-      let resolved = tryApplyResize(clampedRequestedMaxWidthCm, clampedRequestedMaxHeightCm);
-      let scaledDownByBorder = false;
-
-      if (!resolved && (clampedRequestedMaxWidthCm > drag.baseMaxWidthCm || clampedRequestedMaxHeightCm > drag.baseMaxHeightCm)) {
-        let low = 0;
-        let high = 1;
-        let best: ReturnType<typeof tryApplyResize> = null;
-
-        for (let i = 0; i < 14; i += 1) {
-          const mid = (low + high) / 2;
-          const midWidthCm = drag.baseMaxWidthCm + (clampedRequestedMaxWidthCm - drag.baseMaxWidthCm) * mid;
-          const midHeightCm = drag.baseMaxHeightCm + (clampedRequestedMaxHeightCm - drag.baseMaxHeightCm) * mid;
-          const candidate = tryApplyResize(midWidthCm, midHeightCm);
-
-          if (candidate) {
-            best = candidate;
-            low = mid;
-          } else {
-            high = mid;
-          }
-        }
-
-        if (best) {
-          resolved = best;
-          scaledDownByBorder = true;
-        }
-      }
-
-      if (!resolved) {
-        setResizeFeedback({
-          baseRect: { x: drag.baseX, y: drag.baseY, width: drag.baseWidth, height: drag.baseHeight },
-          currentRect: { x: drag.baseX, y: drag.baseY, width: drag.baseWidth, height: drag.baseHeight },
-          intent: resizeIntent,
-        });
-        setResizeLimitNotice('Cannot resize further: neighboring images are pinned by the canvas border.');
-        return;
-      }
-
-      // Update current dimensions for label display (content only)
-      setResizeCurrentDimensions({ width: resolved.content.widthPx, height: resolved.content.heightPx });
-      setResizeFeedback({
-        baseRect: { x: drag.baseX, y: drag.baseY, width: drag.baseWidth, height: drag.baseHeight },
-        currentRect: {
-          x: resolved.rect.x,
-          y: resolved.rect.y,
-          width: resolved.rect.width,
-          height: resolved.rect.height,
-        },
-        intent: resizeIntent,
-      });
-
-      setPages((currentPages) => currentPages.map((currentPage, index) => {
-        if (index !== pageIndex) {
-          return currentPage;
-        }
-
-        return {
-          ...currentPage,
-          items: resolved.nextItems,
-        };
-      }));
-
-      setImages((current) => current.map((image) => {
-        if (image.id !== drag.imageId) {
-          return image;
-        }
-
-        const clampedOffsets = clampOffsets(image.offsetX, image.offsetY, resolved.crop.maxOffsetX, resolved.crop.maxOffsetY);
-        return {
-          ...image,
-          maxWidthCm: Number(resolved.maxWidthCm.toFixed(2)),
-          maxHeightCm: Number(resolved.maxHeightCm.toFixed(2)),
-          renderWidthPx: resolved.content.widthPx,
-          renderHeightPx: resolved.content.heightPx,
-          cropMaxOffsetX: resolved.crop.maxOffsetX,
-          cropMaxOffsetY: resolved.crop.maxOffsetY,
-          offsetX: clampedOffsets.offsetX,
-          offsetY: clampedOffsets.offsetY,
-        };
-      }));
-
-      if (requestedMaxWidthCm < minImageCm || requestedMaxHeightCm < minImageCm) {
-        setResizeLimitNotice('Minimum image size reached.');
-      } else if (scaledDownByBorder) {
-        setResizeLimitNotice('Resize limited by canvas border after pushing neighboring images.');
-      } else {
-        setResizeLimitNotice('');
-      }
-    }
-  }
-
-  function handleCanvasInteractionEnd(clientX?: number, clientY?: number): void {
-    if (
-      interactionMode === 'replace' &&
-      isReplaceDrag(dragStateRef.current) &&
-      typeof clientX === 'number' &&
-      typeof clientY === 'number'
-    ) {
-      const point = pagePointFromClient(clientX, clientY);
-      const target = point
-        ? findClosestSwapTarget(point, dragStateRef.current.sourceImageId)
-        : null;
-
-      const targetImageId = target?.imageId ?? hoveredImageId;
-      if (targetImageId && targetImageId !== dragStateRef.current.sourceImageId) {
-        swapImagesOnSelectedPage(dragStateRef.current.sourceImageId, targetImageId);
-        setInteractionModeState('select');
-        setNotice({
-          tone: 'success',
-          text: 'Photos swapped. You are back in Edit mode.',
-        });
-      }
-    }
-
-    if ((interactionMode === 'move' || interactionMode === 'select') && isMoveDrag(dragStateRef.current) && moveOutsideCanvas) {
-      const imageIdToRemove = dragStateRef.current.imageId;
-      removeFromCanvas(imageIdToRemove);
-    }
-
-    dragStateRef.current = null;
-    setDragActive(false);
-    setReplacePointer(null);
-    setSwapTargetInvalid(false);
-    setMoveOutsideCanvas(false);
-    setMoveCollisionImageIds([]);
-    setResizeCurrentDimensions(null);
-    setResizeFeedback(null);
-    setResizeSnapGuides([]);
-    setResizeSnapActive(false);
-    setHoveredResizeHandle(null);
-    if (interactionMode === 'select') {
-      // setCanvasCursor removed (no-op)
-    }
-  }
-
-  function onPreviewMouseLeave(): void {
-    handleCanvasInteractionEnd();
-  }
-
-  function onPreviewMouseDown(clientX: number, clientY: number): void {
-    handleCanvasInteractionStart(clientX, clientY);
-  }
+  const { handleCanvasInteractionEnd } = useCollageInteractionEnd({
+    interactionMode,
+    dragStateRef,
+    hoveredImageId,
+    moveOutsideCanvas,
+    pagePointFromClient,
+    findClosestSwapTarget,
+    swapImagesOnSelectedPage,
+    setInteractionModeState,
+    setNotice,
+    removeFromCanvas,
+    setDragActive,
+    setReplacePointer,
+    setSwapTargetInvalid,
+    setMoveOutsideCanvas,
+    setMoveCollisionImageIds,
+    setResizeCurrentDimensions,
+    setResizeFeedback,
+    setResizeSnapGuides,
+    setResizeSnapActive,
+    setHoveredResizeHandle,
+  });
 
   function onPreviewDoubleClick(clientX: number, clientY: number): void {
     if (interactionMode !== 'select') {
@@ -1826,63 +999,24 @@ export function useCollageEditor() {
     }
   }
 
-  function resolveCanvasCursor(): string {
-    if ((interactionMode === 'select' || interactionMode === 'resize') && hoveredResizeHandle) {
-      return getCursorForHandle(hoveredResizeHandle);
-    }
-
-    if ((interactionMode === 'select' || interactionMode === 'move') && dragActive && isMoveDrag(dragStateRef.current)) {
-      return 'grabbing';
-    }
-
-    if ((interactionMode === 'select' || interactionMode === 'move') && hoveredImageId) {
-      return dragActive ? 'grabbing' : 'grab';
-    }
-
-    if (interactionMode === 'crop') {
-      return dragActive ? 'grabbing' : 'grab';
-    }
-
-    if (interactionMode === 'replace') {
-      return dragActive ? 'grabbing' : 'copy';
-    }
-
-    return 'default';
-  }
-
-  function onPreviewMouseMove(clientX: number, clientY: number, shiftKey: boolean): void {
-    pendingInteractionMoveRef.current = {
-      clientX,
-      clientY,
-      shiftKey,
-    };
-
-    if (interactionMoveFrameRef.current !== null) {
-      return;
-    }
-
-    interactionMoveFrameRef.current = window.requestAnimationFrame(() => {
-      interactionMoveFrameRef.current = null;
-      const pending = pendingInteractionMoveRef.current;
-      if (!pending) {
-        return;
-      }
-
-      pendingInteractionMoveRef.current = null;
-      handleCanvasInteractionMove(pending.clientX, pending.clientY, { shiftKey: pending.shiftKey });
-    });
-  }
-
-  function onPreviewMouseUp(clientX?: number, clientY?: number): void {
-    if (interactionMoveFrameRef.current !== null) {
-      window.cancelAnimationFrame(interactionMoveFrameRef.current);
-      interactionMoveFrameRef.current = null;
-      pendingInteractionMoveRef.current = null;
-    }
-    if (dragStateRef.current) {
-      handleCanvasInteractionEnd(clientX, clientY);
-    }
-  }
+  const {
+    canvasCursor,
+    onPreviewMouseLeave,
+    onPreviewMouseDown,
+    onPreviewMouseMove,
+    onPreviewMouseUp,
+  } = useCollagePreviewInteractions({
+    interactionMode,
+    hoveredResizeHandle,
+    dragActive,
+    hoveredImageId,
+    dragStateRef,
+    interactionMoveFrameRef,
+    pendingInteractionMoveRef,
+    handleCanvasInteractionStart,
+    handleCanvasInteractionMove,
+    handleCanvasInteractionEnd,
+  });
 
 
   function expandSelectedImage(scaleFactor: number): void {
@@ -2524,7 +1658,7 @@ export function useCollageEditor() {
     oversizedImageIds,
     resizeLimitNotice,
     resizeCurrentDimensions,
-    canvasCursor: resolveCanvasCursor(),
+    canvasCursor,
     resizeFeedback,
     resizeSnapGuides,
     resizeSnapActive,

@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import type { NoticeMessage, UndoAction, BatchEnhanceProgress, SessionMetrics, EditorUndoSnapshot, ResizeFeedback, SwapAnimation, CanvasPlacementPreview } from './useCollageEditor';
-import type { HandleType } from '../interactions';
-import type { ResizeSnapGuide } from '../model/types';
+import type { HandleType } from '../../interactions';
+import type { ResizeSnapGuide } from '../../model/types';
 
 export function useCollageUIState() {
     const [drawerSelectedImageId, setDrawerSelectedImageId] = useState<string | null>(null);
@@ -55,7 +55,7 @@ export function useCollageUIState() {
   const previewViewportRef = useRef<HTMLElement | null>(null);
   const interactionMoveFrameRef = useRef<number | null>(null);
   const pendingInteractionMoveRef = useRef<{ clientX: number; clientY: number; shiftKey: boolean } | null>(null);
-  const dragStateRef = useRef<import('../../../shared/drag/types').DragState | null>(null);
+  const dragStateRef = useRef<import('../../../../shared/drag/types').DragState | null>(null);
   const knownImageSrcsRef = useRef<Set<string>>(new Set());
 
   return {

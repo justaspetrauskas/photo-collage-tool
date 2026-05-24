@@ -1,7 +1,7 @@
 import type { Dispatch, DragEvent, SetStateAction } from 'react';
-import { computeSmartDropSize } from '../lib/editorLayoutUtils';
-import { clampOffsets } from '../model/layoutEngine';
-import type { ImageItem, PageLayout, PositionedImage } from '../model/types';
+import { computeSmartDropSize } from '../../lib/editorLayoutUtils';
+import { clampOffsets } from '../../model/layoutEngine';
+import type { ImageItem, PageLayout, PositionedImage } from '../../model/types';
 import type { CanvasPlacementPreview, NoticeMessage } from './useCollageEditor';
 
 export function useManualPlacementHandlers(params: {
