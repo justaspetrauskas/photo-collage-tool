@@ -146,10 +146,8 @@ export function CollageEditor() {
                 selectedImageId={editor.selectedImageId}
                 hoveredImageId={editor.hoveredImageId}
                 selectedImageName={editor.selectedImage?.fileName ?? null}
-                selectedImageWidth={selectedPlacedItem?.width ?? null}
-                selectedImageHeight={selectedPlacedItem?.height ?? null}
                 showSelectionControls={editor.showSelectionControls}
-                onCloseSelectionControls={() => editor.setShowSelectionControls(false)}
+                onCloseSelectionControls={editor.clearSelection}
                 resizeLimitNotice={editor.resizeLimitNotice}
                 interactionMode={editor.interactionMode}
                 dragActive={editor.dragActive}
@@ -294,7 +292,7 @@ export function CollageEditor() {
               <Button variant="soft" onClick={() => editor.expandSelectedImage(1.1)} className="min-h-9 px-2.5 py-1.5 text-sm">+</Button>
               <Button variant="soft" onClick={() => editor.expandSelectedImage(0.9)} className="min-h-9 px-2.5 py-1.5 text-sm">−</Button>
               <button
-                onClick={() => editor.setShowSelectionControls(false)}
+                onClick={editor.clearSelection}
                 className="flex min-h-9 min-w-9 flex-shrink-0 items-center justify-center rounded-xl border border-muted/40 p-1 transition-colors hover:border-muted/60 hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70"
                 aria-label="Close controls"
                 title="Close (Esc)"

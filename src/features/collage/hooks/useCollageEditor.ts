@@ -1,3 +1,17 @@
+// ---
+// Canonical Drag Lifecycle (mouse/touch/stylus parity)
+//
+// 1. Hover: pointer enters canvas, hit-test for handle/body, update hover state and cursor/feedback.
+// 2. Drag Start: pointer down on handle (resize) or body (move), set drag state, pointer capture.
+// 3. Drag Move: pointer move, update geometry, snap/collision, feedback.
+// 4. Drag End: pointer up, commit geometry, clear drag state, reset feedback.
+// 5. Drag Cancel: pointer cancel/leave, revert drag state, reset feedback.
+//
+// All pointer/mouse/touch paths must:
+// - Use pointer capture for drag continuity (mouse/touch parity).
+// - Reset hover/feedback/cursor state on all terminal paths (up/cancel/leave).
+// - Only allow one drag at a time (mode guards).
+// ---
 import { enhanceImageWithAI, type EnhanceOptions, type EnhancePreset } from '../lib/openaiImageEdit';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, DragEvent, MouseEvent, PointerEvent } from 'react';
@@ -59,6 +73,7 @@ import {
   getHandleAtPoint,
   getHandleFixedEdges,
   getCursorForHandle,
+  type HandleType,
 } from '../interactions';
 import { computeSmartDropSize, resolveSmartFraming } from '../lib/editorLayoutUtils';
 
@@ -73,7 +88,6 @@ function pageHasOverlap(page: { items: Array<{ x: number; y: number; width: numb
   }
   return false;
 }
-
 type ResizeFeedback = {
   baseRect: { x: number; y: number; width: number; height: number };
   currentRect: { x: number; y: number; width: number; height: number };
@@ -249,6 +263,7 @@ export function useCollageEditor() {
   const [resizeFeedback, setResizeFeedback] = useState<ResizeFeedback | null>(null);
   const [resizeSnapGuides, setResizeSnapGuides] = useState<ResizeSnapGuide[]>([]);
   const [resizeSnapActive, setResizeSnapActive] = useState<boolean>(false);
+  const [hoveredResizeHandle, setHoveredResizeHandle] = useState<HandleType | null>(null);
   const [enhancingImageIds, setEnhancingImageIds] = useState<Set<string>>(new Set());
   const [canvasPlacementPreview, setCanvasPlacementPreview] = useState<CanvasPlacementPreview | null>(null);
   const [manualPlacementDragImageId, setManualPlacementDragImageId] = useState<string | null>(null);
@@ -257,7 +272,7 @@ export function useCollageEditor() {
   const [customCanvasWidthCm, setCustomCanvasWidthCm] = useState<number>(20);
   const [customCanvasHeightCm, setCustomCanvasHeightCm] = useState<number>(20);
   const [layoutPresetId, setLayoutPresetId] = useState<LayoutPresetId>(DEFAULT_LAYOUT_PRESET_ID);
-  const [canvasCursor, setCanvasCursor] = useState<string>('cursor-default');
+  const [canvasCursor, setCanvasCursor] = useState<string>('default');
   const [notice, setNotice] = useState<NoticeMessage | null>(null);
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
@@ -536,6 +551,7 @@ export function useCollageEditor() {
         resizeFeedback,
         resizeSnapGuides,
         resizeSnapActive,
+        hoveredResizeHandle,
         swapAnimation,
         replacePointer,
         swapTargetInvalid,
@@ -551,7 +567,7 @@ export function useCollageEditor() {
         previewRenderFrameRef.current = null;
       }
     };
-  }, [selectedPage, itemById, imageById, gridModeEnabled, selectedImageId, hoveredImageId, drawerSelectedImageId, imageZoomLevels, imagePanOffsets, interactionMode, dragActive, moveOutsideCanvas, moveCollisionImageIds, resizeCurrentDimensions, resizeFeedback, resizeSnapGuides, resizeSnapActive, swapAnimation, replacePointer, swapTargetInvalid, canvasPlacementPreview, replaceAnimationTick]);
+  }, [selectedPage, itemById, imageById, gridModeEnabled, selectedImageId, hoveredImageId, drawerSelectedImageId, imageZoomLevels, imagePanOffsets, interactionMode, dragActive, moveOutsideCanvas, moveCollisionImageIds, resizeCurrentDimensions, resizeFeedback, resizeSnapGuides, resizeSnapActive, hoveredResizeHandle, swapAnimation, replacePointer, swapTargetInvalid, canvasPlacementPreview, replaceAnimationTick]);
 
   useEffect(() => {
     return () => {
@@ -946,7 +962,40 @@ function rectanglesTouchOrOverlap(
 
   function updateImage(id: string, patch: Partial<ImageItem>): void {
     focusImageOnCanvas(id);
-    setImages((current) => current.map((image) => (image.id === id ? { ...image, ...patch } : image)));
+    const nextImages = images.map((image) => (image.id === id ? { ...image, ...patch } : image));
+    setImages(nextImages);
+
+    const affectsPlacedLayout =
+      patch.frameEnabled !== undefined ||
+      patch.frameThicknessPx !== undefined ||
+      patch.maxWidthCm !== undefined ||
+      patch.maxHeightCm !== undefined;
+
+    if (affectsPlacedLayout && placementByImageId.has(id)) {
+      regenerateLayout(resolveMaxPages(), true, nextImages);
+    }
+  }
+
+  function clearSelection(): void {
+    dragStateRef.current = null;
+    setSelectedImageId(null);
+    setHoveredImageId(null);
+    setDrawerSelectedImageId(null);
+    setShowSelectionControls(false);
+    setDragActive(false);
+    setResizeCurrentDimensions(null);
+    setResizeFeedback(null);
+    setResizeSnapGuides([]);
+    setResizeSnapActive(false);
+    setHoveredResizeHandle(null);
+    setReplacePointer(null);
+    setSwapTargetInvalid(false);
+    setMoveOutsideCanvas(false);
+    setMoveCollisionImageIds([]);
+    setHoveredResizeHandle(null);
+    setHoveredImageId(null);
+    setCanvasCursor('default');
+    setInteractionModeState('select');
   }
 
   function swapImagesOnSelectedPage(sourceImageId: string, targetImageId: string): void {
@@ -1202,11 +1251,6 @@ function rectanglesTouchOrOverlap(
       return null;
     }
 
-    const transform = previewTransformRef.current;
-    const handleHitRadiusPx = transform
-      ? SELECT_HANDLE_HIT_RADIUS_CSS_PX * transform.dpr / transform.scale
-      : 0;
-
     for (let i = selectedPage.items.length - 1; i >= 0; i -= 1) {
       const placed = selectedPage.items[i];
       if (
@@ -1217,14 +1261,35 @@ function rectanglesTouchOrOverlap(
       ) {
         return placed;
       }
+    }
 
-      if (
-        placed.imageId === selectedImageId &&
-        handleHitRadiusPx > 0 &&
-        getHandleAtPoint(pagePoint, placed, handleHitRadiusPx, { cornersOnly: true })
-      ) {
-        return placed;
-      }
+    return null;
+  }
+
+  function findCornerHandleTarget(
+    pagePoint: { x: number; y: number },
+  ): { item: PositionedImage; handle: ReturnType<typeof getHandleAtPoint> } | null {
+    if (!selectedPage || !selectedImageId) {
+      return null;
+    }
+
+    const transform = previewTransformRef.current;
+    const handleHitRadiusPx = transform
+      ? SELECT_HANDLE_HIT_RADIUS_CSS_PX * transform.dpr / transform.scale
+      : 0;
+
+    if (handleHitRadiusPx <= 0) {
+      return null;
+    }
+
+    const selectedPlacedItem = selectedPage.items.find((item) => item.imageId === selectedImageId);
+    if (!selectedPlacedItem) {
+      return null;
+    }
+
+    const handle = getHandleAtPoint(pagePoint, selectedPlacedItem, handleHitRadiusPx, { cornersOnly: true });
+    if (handle) {
+      return { item: selectedPlacedItem, handle };
     }
 
     return null;
@@ -1267,16 +1332,12 @@ function rectanglesTouchOrOverlap(
     return bestDistance <= maxSnapDistancePx ? bestTarget : null;
   }
 
+  // --- Drag Start: Only allow one drag at a time, mode guards for handle/body ---
   function handleCanvasInteractionStart(clientX: number, clientY: number): void {
+    if (dragActive) return; // Only one drag at a time
     const point = pagePointFromClient(clientX, clientY);
     if (!point) {
-      setSelectedImageId(null);
-      setDrawerSelectedImageId(null);
-      setHoveredImageId(null);
-      setDragActive(false);
-      setShowSelectionControls(false);
-      setResizeSnapGuides([]);
-      setResizeSnapActive(false);
+      clearSelection();
       return;
     }
 
@@ -1287,24 +1348,12 @@ function rectanglesTouchOrOverlap(
     const handleHitRadiusPx = transform
       ? SELECT_HANDLE_HIT_RADIUS_CSS_PX * transform.dpr / transform.scale
       : 0;
-    const selectedHandle = interactionMode === 'select' && selectedItem && handleHitRadiusPx > 0
-      ? getHandleAtPoint(point, selectedItem, handleHitRadiusPx, { cornersOnly: true })
-      : null;
-    const selectedResizeHandle = selectedHandle;
-
+    const handleTarget = interactionMode === 'select' ? findCornerHandleTarget(point) : null;
     const hit = findHitItem(point);
-    const interactionTarget = hit ?? (selectedResizeHandle ? selectedItem : null);
-    const interactionResizeHandle = interactionMode === 'select' && interactionTarget && handleHitRadiusPx > 0
-      ? getHandleAtPoint(point, interactionTarget, handleHitRadiusPx, { cornersOnly: true })
-      : null;
+    const interactionTarget = handleTarget?.item ?? hit ?? null;
+    const interactionResizeHandle = interactionMode === 'select' ? handleTarget?.handle ?? null : null;
     if (!interactionTarget) {
-      setSelectedImageId(null);
-      setDrawerSelectedImageId(null);
-      setHoveredImageId(null);
-      setDragActive(false);
-      setShowSelectionControls(false);
-      setResizeSnapGuides([]);
-      setResizeSnapActive(false);
+      clearSelection();
       return;
     }
 
@@ -1318,6 +1367,63 @@ function rectanglesTouchOrOverlap(
       return;
     }
 
+    // --- Mode guards: only allow resize from corner handle, move from body ---
+    if (interactionMode === 'select') {
+      if (interactionResizeHandle) {
+        // Corner handle: resize
+        const { fixedHorizontal, fixedVertical } = getHandleFixedEdges(interactionResizeHandle);
+        dragStateRef.current = {
+          type: 'resize',
+          imageId: interactionTarget.imageId,
+          startX: point.x,
+          startY: point.y,
+          fixedHorizontal,
+          fixedVertical,
+          baseMaxWidthCm: item.maxWidthCm,
+          baseMaxHeightCm: item.maxHeightCm,
+          baseX: interactionTarget.x,
+          baseY: interactionTarget.y,
+          baseWidth: interactionTarget.width,
+          baseHeight: interactionTarget.height,
+        };
+        setDragActive(true);
+        setResizeFeedback({
+          baseRect: {
+            x: interactionTarget.x,
+            y: interactionTarget.y,
+            width: interactionTarget.width,
+            height: interactionTarget.height,
+          },
+          currentRect: {
+            x: interactionTarget.x,
+            y: interactionTarget.y,
+            width: interactionTarget.width,
+            height: interactionTarget.height,
+          },
+          intent: 'steady',
+        });
+        setResizeSnapGuides([]);
+        setResizeSnapActive(false);
+        return;
+      } else {
+        // Body: move
+        dragStateRef.current = {
+          type: 'move',
+          imageId: interactionTarget.imageId,
+          startX: point.x,
+          startY: point.y,
+          baseX: interactionTarget.x,
+          baseY: interactionTarget.y,
+        };
+        setDragActive(true);
+        setMoveOutsideCanvas(false);
+        setMoveCollisionImageIds([]);
+        setCanvasCursor('grabbing');
+        return;
+      }
+    }
+
+    // --- Other modes (crop, replace, move): preserve existing logic ---
     if (interactionMode === 'crop') {
       const zoom = imageZoomLevels[interactionTarget.imageId] ?? 1;
       if (zoom > 1) {
@@ -1383,96 +1489,6 @@ function rectanglesTouchOrOverlap(
       setMoveCollisionImageIds([]);
       return;
     }
-
-    if (interactionMode === 'select') {
-      // Check if the click lands on a resize handle (corner or edge) of the interaction target.
-      if (interactionResizeHandle) {
-        const { fixedHorizontal, fixedVertical } = getHandleFixedEdges(interactionResizeHandle);
-        dragStateRef.current = {
-          type: 'resize',
-          imageId: interactionTarget.imageId,
-          startX: point.x,
-          startY: point.y,
-          fixedHorizontal,
-          fixedVertical,
-          baseMaxWidthCm: item.maxWidthCm,
-          baseMaxHeightCm: item.maxHeightCm,
-          baseX: interactionTarget.x,
-          baseY: interactionTarget.y,
-          baseWidth: interactionTarget.width,
-          baseHeight: interactionTarget.height,
-        };
-        setDragActive(true);
-        setResizeFeedback({
-          baseRect: {
-            x: interactionTarget.x,
-            y: interactionTarget.y,
-            width: interactionTarget.width,
-            height: interactionTarget.height,
-          },
-          currentRect: {
-            x: interactionTarget.x,
-            y: interactionTarget.y,
-            width: interactionTarget.width,
-            height: interactionTarget.height,
-          },
-          intent: 'steady',
-        });
-        setResizeSnapGuides([]);
-        setResizeSnapActive(false);
-        return;
-      }
-      // No corner handle hit — start a move drag.
-      dragStateRef.current = {
-        type: 'move',
-        imageId: interactionTarget.imageId,
-        startX: point.x,
-        startY: point.y,
-        baseX: interactionTarget.x,
-        baseY: interactionTarget.y,
-      };
-      setDragActive(true);
-      setMoveOutsideCanvas(false);
-      setMoveCollisionImageIds([]);
-      setCanvasCursor('cursor-grabbing');
-      return;
-    }
-
-    const fixedHorizontal = point.x >= interactionTarget.x + interactionTarget.width / 2 ? 'left' : 'right';
-    const fixedVertical = point.y >= interactionTarget.y + interactionTarget.height / 2 ? 'top' : 'bottom';
-
-    dragStateRef.current = {
-      type: 'resize',
-      imageId: interactionTarget.imageId,
-      startX: point.x,
-      startY: point.y,
-      fixedHorizontal,
-      fixedVertical,
-      baseMaxWidthCm: item.maxWidthCm,
-      baseMaxHeightCm: item.maxHeightCm,
-      baseX: interactionTarget.x,
-      baseY: interactionTarget.y,
-      baseWidth: interactionTarget.width,
-      baseHeight: interactionTarget.height,
-    };
-    setDragActive(true);
-    setResizeFeedback({
-      baseRect: {
-        x: interactionTarget.x,
-        y: interactionTarget.y,
-        width: interactionTarget.width,
-        height: interactionTarget.height,
-      },
-      currentRect: {
-        x: interactionTarget.x,
-        y: interactionTarget.y,
-        width: interactionTarget.width,
-        height: interactionTarget.height,
-      },
-      intent: 'steady',
-    });
-    setResizeSnapGuides([]);
-    setResizeSnapActive(false);
   }
 
   function handleCanvasInteractionMove(
@@ -1485,34 +1501,22 @@ function rectanglesTouchOrOverlap(
       if (!dragActive && hoveredImageId !== null) {
         setHoveredImageId(null);
       }
+      if (!dragActive && hoveredResizeHandle !== null) {
+        setHoveredResizeHandle(null);
+      }
       if (!dragActive && interactionMode === 'select') {
-        setCanvasCursor('cursor-default');
+        setCanvasCursor('default');
       }
       return;
     }
 
     const hit = findHitItem(point);
     if (!dragActive) {
-      const transform = previewTransformRef.current;
-      const selectedItem = selectedImageId
-        ? selectedPage?.items.find((item) => item.imageId === selectedImageId) ?? null
-        : null;
-      const handleHitRadiusPx = transform
-        ? SELECT_HANDLE_HIT_RADIUS_CSS_PX * transform.dpr / transform.scale
-        : 0;
-      const selectedResizeHandle = interactionMode === 'select' && selectedItem && handleHitRadiusPx > 0
-        ? getHandleAtPoint(point, selectedItem, handleHitRadiusPx, { cornersOnly: true })
-        : null;
-      const hitResizeHandle = interactionMode === 'select' && hit && handleHitRadiusPx > 0
-        ? getHandleAtPoint(point, hit, handleHitRadiusPx, { cornersOnly: true })
-        : null;
-      const hoverResizeHandle = selectedResizeHandle ?? hitResizeHandle;
-      const hoverResizeImageId = selectedResizeHandle && selectedItem
-        ? selectedItem.imageId
-        : hitResizeHandle && hit
-          ? hit.imageId
-          : null;
+      const handleTarget = interactionMode === 'select' ? findCornerHandleTarget(point) : null;
+      const hoverResizeHandle = handleTarget?.handle ?? null;
+      const hoverResizeImageId = handleTarget?.item.imageId ?? null;
 
+      setHoveredResizeHandle(hoverResizeHandle);
       setHoveredImageId(hoverResizeImageId ?? (hit?.imageId ?? null));
 
       // In 'select' mode, update the canvas cursor based on what's under the pointer.
@@ -1520,9 +1524,9 @@ function rectanglesTouchOrOverlap(
         if (hoverResizeHandle) {
           setCanvasCursor(getCursorForHandle(hoverResizeHandle));
         } else if (hit) {
-          setCanvasCursor('cursor-grab');
+          setCanvasCursor('grab');
         } else {
-          setCanvasCursor('cursor-default');
+          setCanvasCursor('default');
         }
       }
     }
@@ -1893,57 +1897,6 @@ function rectanglesTouchOrOverlap(
       removeFromCanvas(imageIdToRemove);
     }
 
-    if ((interactionMode === 'move' || interactionMode === 'select') && isMoveDrag(dragStateRef.current) && !moveOutsideCanvas) {
-      const imageId = dragStateRef.current.imageId;
-      const pageIndex = pages.findIndex((page) => page.items.some((item) => item.imageId === imageId));
-      if (pageIndex >= 0) {
-        const page = pages[pageIndex];
-        const itemIndex = page.items.findIndex((item) => item.imageId === imageId);
-        if (itemIndex >= 0) {
-          const item = page.items[itemIndex];
-          const outsideRatio = calculateOutsideRatio(item.x, item.y, item.width, item.height, page.widthPx, page.heightPx);
-
-          if (outsideRatio > 0 && outsideRatio < 0.05) {
-            const snappedX = Math.max(0, Math.min(page.widthPx - item.width, item.x));
-            const snappedY = Math.max(0, Math.min(page.heightPx - item.height, item.y));
-
-            if (snappedX !== item.x || snappedY !== item.y) {
-              setPages((currentPages) =>
-                currentPages.map((currentPage, currentPageIndex) => {
-                  if (currentPageIndex !== pageIndex) {
-                    return currentPage;
-                  }
-
-                  const nextItems = [...currentPage.items];
-                  nextItems[itemIndex] = {
-                    ...nextItems[itemIndex],
-                    x: snappedX,
-                    y: snappedY,
-                  };
-
-                  return {
-                    ...currentPage,
-                    items: nextItems,
-                  };
-                }),
-              );
-
-              setSwapAnimation({
-                startedTick: replaceAnimationTick,
-                durationTicks: 12,
-                transitions: {
-                  [imageId]: {
-                    from: { x: item.x, y: item.y },
-                    to: { x: snappedX, y: snappedY },
-                  },
-                },
-              });
-            }
-          }
-        }
-      }
-    }
-
     dragStateRef.current = null;
     setDragActive(false);
     setReplacePointer(null);
@@ -1954,8 +1907,9 @@ function rectanglesTouchOrOverlap(
     setResizeFeedback(null);
     setResizeSnapGuides([]);
     setResizeSnapActive(false);
+    setHoveredResizeHandle(null);
     if (interactionMode === 'select') {
-      setCanvasCursor('cursor-default');
+      setCanvasCursor('default');
     }
   }
 
@@ -1967,10 +1921,6 @@ function rectanglesTouchOrOverlap(
       return;
     }
     handleCanvasInteractionEnd();
-    setHoveredImageId(null);
-    if (interactionMode === 'select') {
-      setCanvasCursor('cursor-default');
-    }
   }
 
   function onCanvasMouseDown(event: MouseEvent<HTMLCanvasElement>): void {
@@ -2108,7 +2058,6 @@ function rectanglesTouchOrOverlap(
       pendingInteractionMoveRef.current = null;
     }
     handleCanvasInteractionEnd();
-    setHoveredImageId(null);
   }
 
   function onCanvasDragOver(event: DragEvent<HTMLCanvasElement>): void {
@@ -2294,9 +2243,7 @@ function rectanglesTouchOrOverlap(
         if (pageIndex !== selectedPageIndex) {
           return {
             ...page,
-            items: replaceSelected
-              ? withoutImage.filter((item) => item.imageId !== replaceTarget?.imageId)
-              : withoutImage,
+            items: withoutImage,
           };
         }
 
@@ -2519,12 +2466,16 @@ function rectanglesTouchOrOverlap(
     setSwapAnimation(null);
     setReplacePointer(null);
     setSwapTargetInvalid(false);
-    setCanvasPlacementPreview(null);
-    setManualPlacementDragImageId(null);
     dragStateRef.current = null;
     setMoveOutsideCanvas(false);
     setMoveCollisionImageIds([]);
-    setInteractionModeState('select');
+    setCanvasPresetId(DEFAULT_CANVAS_PRESET_ID);
+    setLayoutPresetId(DEFAULT_LAYOUT_PRESET_ID);
+    setCustomCanvasWidthCm(20);
+    setCustomCanvasHeightCm(20);
+    setSaveState('idle');
+    setLastSavedAt(null);
+    setRestoredFromSnapshot(false);
     setUndoAction(null);
     setLastExportSummary('');
   }
@@ -2852,6 +2803,7 @@ function rectanglesTouchOrOverlap(
     void clearSnapshot();
   }
 
+  // --- END useCollageEditor function ---
   return {
     images,
     pages,
@@ -2943,7 +2895,8 @@ function rectanglesTouchOrOverlap(
     placeImageOnSelectedPage,
     expandSelectedImage,
     resetSelectedCrop,
+    clearSelection,
     setShowSelectionControls,
     canvasCursor,
-  };
+  }
 }

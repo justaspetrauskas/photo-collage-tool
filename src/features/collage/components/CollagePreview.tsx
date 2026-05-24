@@ -23,8 +23,6 @@ interface CollagePreviewProps {
   selectedImageId: string | null;
   hoveredImageId: string | null;
   selectedImageName: string | null;
-  selectedImageWidth: number | null;
-  selectedImageHeight: number | null;
   showSelectionControls: boolean;
   onCloseSelectionControls: () => void;
   resizeLimitNotice: string;
@@ -78,7 +76,6 @@ interface PageCanvasCardProps {
   onDrop: DragEventHandler<HTMLCanvasElement>;
   onDragLeave: DragEventHandler<HTMLCanvasElement>;
   showPlacementHints: boolean;
-  selectedSizeLabel: string | null;
   canvasCursor?: string;
 }
 
@@ -104,7 +101,6 @@ function PageCanvasCard({
   onDrop,
   onDragLeave,
   showPlacementHints,
-  selectedSizeLabel,
   canvasCursor,
 }: PageCanvasCardProps) {
   const { ref: inViewRef, inView } = useInView({
@@ -141,13 +137,9 @@ function PageCanvasCard({
       </button>
       <div className="rounded-2xl p-2 backdrop-blur-md">
         <div className="relative inline-block">
-          {isActive && selectedSizeLabel ? (
-            <div className="pointer-events-none absolute -top-7 left-0 rounded-md border border-amber-200/30 bg-black/65 px-2 py-1 text-[10px] font-semibold tracking-[0.04em] text-amber-100">
-              {selectedSizeLabel}
-            </div>
-          ) : null}
           <canvas
-            className={`h-auto max-w-full touch-none rounded-xl ${isActive ? (canvasCursor ?? 'cursor-default') : 'pointer-events-none'} `}
+            className={`h-auto max-w-full touch-none rounded-xl ${isActive ? '' : 'pointer-events-none'} `}
+            style={{ cursor: isActive ? (canvasCursor ?? 'default') : 'default' }}
             ref={(node) => registerCanvasRef(index, node)}
             onMouseDown={isActive ? onMouseDown : undefined}
             onMouseMove={isActive ? onMouseMove : undefined}
@@ -187,8 +179,6 @@ export function CollagePreview({
   selectedImageId,
   hoveredImageId,
   selectedImageName,
-  selectedImageWidth,
-  selectedImageHeight,
   showSelectionControls,
   onCloseSelectionControls,
   resizeLimitNotice,
@@ -226,10 +216,6 @@ export function CollagePreview({
   const [scrollRoot, setScrollRoot] = useState<Element | null>(null);
   const [uploadDragOver, setUploadDragOver] = useState(false);
   const hasSelection = Boolean(selectedImageId);
-  const selectedSizeLabel =
-    hasSelection && selectedImageWidth !== null && selectedImageHeight !== null
-      ? `${Math.max(1, Math.round(selectedImageWidth))} × ${Math.max(1, Math.round(selectedImageHeight))} px`
-      : null;
   const hasPlacedItems = pages.some((page) => page.items.length > 0);
   const showOnboardingHints = !hasPlacedItems && imagesCount === 0;
   const showGenerateGuidance = !hasPlacedItems && imagesCount > 0;
@@ -590,7 +576,6 @@ export function CollagePreview({
                   onDrop={onDrop}
                   onDragLeave={onDragLeave}
                   showPlacementHints={dragActive}
-                  selectedSizeLabel={index === selectedPageIndex ? selectedSizeLabel : null}
                   canvasCursor={index === selectedPageIndex ? canvasCursor : undefined}
                 />
               ))}

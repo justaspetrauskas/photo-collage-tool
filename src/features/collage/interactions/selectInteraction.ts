@@ -41,23 +41,27 @@ export function getHandleAtPoint(
   hitRadiusPx: number,
   options: { cornersOnly?: boolean } = {},
 ): HandleType | null {
-  const handles = getSelectHandlePositions(item);
   const handleOrder: HandleType[] = options.cornersOnly
     ? ['nw', 'ne', 'sw', 'se']
     : ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
 
   if (options.cornersOnly) {
+    const handleSize = hitRadiusPx;
+    const half = handleSize / 2;
     let bestCorner: HandleType | null = null;
     let bestScore = Number.POSITIVE_INFINITY;
 
     for (const type of handleOrder) {
-      const pos = handles[type];
-      const dx = Math.abs(point.x - pos.x);
-      const dy = Math.abs(point.y - pos.y);
+      const boxX = type === 'nw' || type === 'sw' ? item.x - half : item.x + item.width - half;
+      const boxY = type === 'nw' || type === 'ne' ? item.y - half : item.y + item.height - half;
+      const insideBox =
+        point.x >= boxX &&
+        point.x <= boxX + handleSize &&
+        point.y >= boxY &&
+        point.y <= boxY + handleSize;
 
-      // Corner-only mode matches a square hover/click zone around each visible handle.
-      if (dx <= hitRadiusPx && dy <= hitRadiusPx) {
-        const score = Math.max(dx, dy);
+      if (insideBox) {
+        const score = Math.max(point.x - boxX, point.y - boxY);
         if (score < bestScore) {
           bestScore = score;
           bestCorner = type;
@@ -67,6 +71,8 @@ export function getHandleAtPoint(
 
     return bestCorner;
   }
+
+  const handles = getSelectHandlePositions(item);
 
   let bestHandle: HandleType | null = null;
   let bestDist = hitRadiusPx;
@@ -169,16 +175,16 @@ export function isCornerHandle(handle: HandleType): handle is 'nw' | 'ne' | 'sw'
   return handle === 'nw' || handle === 'ne' || handle === 'sw' || handle === 'se';
 }
 
-/** Returns the Tailwind CSS cursor class for a given handle type. */
+/** Returns the CSS cursor value for a given handle type. */
 export function getCursorForHandle(handle: HandleType): string {
   switch (handle) {
-    case 'nw': return 'cursor-nw-resize';
-    case 'ne': return 'cursor-ne-resize';
-    case 'sw': return 'cursor-sw-resize';
-    case 'se': return 'cursor-se-resize';
-    case 'n':  return 'cursor-n-resize';
-    case 's':  return 'cursor-s-resize';
-    case 'e':  return 'cursor-e-resize';
-    case 'w':  return 'cursor-w-resize';
+    case 'nw': return 'nw-resize';
+    case 'ne': return 'ne-resize';
+    case 'sw': return 'sw-resize';
+    case 'se': return 'se-resize';
+    case 'n':  return 'n-resize';
+    case 's':  return 's-resize';
+    case 'e':  return 'e-resize';
+    case 'w':  return 'w-resize';
   }
 }

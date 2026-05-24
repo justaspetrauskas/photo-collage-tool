@@ -1,6 +1,7 @@
 import { clampOffsets } from './layoutEngine';
+import { CM_PER_INCH, DPI } from './constants';
 import type { ImageItem, InteractionMode, PageLayout, PreviewTransform, ResizeSnapGuide } from './types';
-import { getZoomPanBounds, resolveZoomPanOffset } from '../interactions';
+import { getZoomPanBounds, resolveZoomPanOffset, getSelectHandlePositions, type HandleType } from '../interactions';
 
 interface PreviewOptions {
   gridEnabled?: boolean;
@@ -22,6 +23,7 @@ interface PreviewOptions {
   } | null;
   resizeSnapGuides?: ResizeSnapGuide[];
   resizeSnapActive?: boolean;
+  hoveredResizeHandle?: HandleType | null;
   swapAnimation?: {
     startedTick: number;
     durationTicks: number;
@@ -236,6 +238,7 @@ function drawSelectionFeedback(
   dragActive: boolean,
   scale: number,
   dpr: number,
+  hoveredResizeHandle: HandleType | null,
   resizeFeedback?: PreviewOptions['resizeFeedback'],
 ): void {
   const selected = page.items.find((item) => item.imageId === selectedImageId);
@@ -288,11 +291,71 @@ function drawSelectionFeedback(
       ctx.strokeStyle = interactionColor;
       ctx.strokeRect(cx - half, cy - half, hSize, hSize);
     }
+
+    if (hoveredResizeHandle) {
+      const hoveredHandlePosition = getSelectHandlePositions(selected)[hoveredResizeHandle];
+      const iconRadius = (7 * dpr) / scale;
+      const shaft = (5 * dpr) / scale;
+      const head = (2.2 * dpr) / scale;
+      const isForwardDiagonal = hoveredResizeHandle === 'nw' || hoveredResizeHandle === 'se';
+      const dx = isForwardDiagonal ? shaft : shaft;
+      const dy = isForwardDiagonal ? shaft : -shaft;
+      const directionByHandle: Record<HandleType, { x: number; y: number }> = {
+        nw: { x: -1, y: -1 },
+        n: { x: 0, y: -1 },
+        ne: { x: 1, y: -1 },
+        e: { x: 1, y: 0 },
+        se: { x: 1, y: 1 },
+        s: { x: 0, y: 1 },
+        sw: { x: -1, y: 1 },
+        w: { x: -1, y: 0 },
+      };
+      const direction = directionByHandle[hoveredResizeHandle];
+      const magnitude = Math.hypot(direction.x, direction.y) || 1;
+      const offsetDistance = half + iconRadius + (4 * dpr) / scale;
+      const iconCenterX = hoveredHandlePosition.x + (direction.x / magnitude) * offsetDistance;
+      const iconCenterY = hoveredHandlePosition.y + (direction.y / magnitude) * offsetDistance;
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(iconCenterX, iconCenterY, iconRadius, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(252, 197, 21, 0.92)';
+      ctx.fill();
+
+      ctx.strokeStyle = '#0f172a';
+      ctx.lineWidth = 1.6 / scale;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+
+      const x1 = iconCenterX - dx;
+      const y1 = iconCenterY - dy;
+      const x2 = iconCenterX + dx;
+      const y2 = iconCenterY + dy;
+
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+
+      const ux = (x2 - x1) / Math.hypot(x2 - x1, y2 - y1);
+      const uy = (y2 - y1) / Math.hypot(x2 - x1, y2 - y1);
+      const px = -uy;
+      const py = ux;
+
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x1 + ux * head + px * head, y1 + uy * head + py * head);
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x1 + ux * head - px * head, y1 + uy * head - py * head);
+
+      ctx.moveTo(x2, y2);
+      ctx.lineTo(x2 - ux * head + px * head, y2 - uy * head + py * head);
+      ctx.moveTo(x2, y2);
+      ctx.lineTo(x2 - ux * head - px * head, y2 - uy * head - py * head);
+      ctx.stroke();
+      ctx.restore();
+    }
   } else if (interactionMode === 'resize') {
     const handleSize = 9;
     const half = handleSize / 2;
-    const handleX = selected.x + selected.width;
-    const handleY = selected.y + selected.height;
     const corners = [
       [selected.x, selected.y],
       [selected.x + selected.width, selected.y],
@@ -311,8 +374,8 @@ function drawSelectionFeedback(
 
     const iconStroke = resizeFeedback?.intent === 'shrink' ? 'rgba(255, 248, 220, 0.98)' : interactionColor;
     const arrowSpan = 10 / scale;
-    const arrowBaseX = handleX - 7 / scale;
-    const arrowBaseY = handleY - 7 / scale;
+    const arrowBaseX = selected.x + selected.width - 7 / scale;
+    const arrowBaseY = selected.y + selected.height - 7 / scale;
 
     ctx.strokeStyle = iconStroke;
     ctx.lineWidth = 1.8 / scale;
@@ -507,6 +570,44 @@ function drawResizeLabel(
   const boxHeight = 18 / scale;
   const boxX = selected.x + labelInset;
   const boxY = selected.y + labelInset;
+
+  ctx.fillStyle = 'rgba(20, 26, 40, 0.72)';
+  ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(label, boxX + labelPaddingX, boxY + boxHeight / 2 + 0.5 / scale);
+
+  ctx.restore();
+}
+
+function drawSelectedSizeLabel(
+  ctx: CanvasRenderingContext2D,
+  page: PageLayout,
+  selectedImageId: string,
+  scale: number,
+): void {
+  const selected = page.items.find((item) => item.imageId === selectedImageId);
+  if (!selected) {
+    return;
+  }
+
+  const pxPerCm = DPI / CM_PER_INCH;
+  const widthCm = selected.width / pxPerCm;
+  const heightCm = selected.height / pxPerCm;
+  const label = `${widthCm.toFixed(2)} × ${heightCm.toFixed(2)} cm`;
+  const labelPaddingX = 7 / scale;
+  const boxHeight = 18 / scale;
+  const margin = 6 / scale;
+
+  ctx.save();
+  ctx.font = `600 ${12 / scale}px ui-sans-serif, system-ui, sans-serif`;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+
+  const textWidth = ctx.measureText(label).width;
+  const boxWidth = textWidth + labelPaddingX * 2;
+  const boxX = Math.max(0, Math.min(selected.x, Math.max(0, page.widthPx - boxWidth)));
+  const boxY = selected.y - boxHeight - margin >= 0 ? selected.y - boxHeight - margin : selected.y + margin;
 
   ctx.fillStyle = 'rgba(20, 26, 40, 0.72)';
   ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
@@ -815,8 +916,13 @@ export function drawPagePreview(
       options.dragActive ?? false,
       scale,
       dpr,
+      options.hoveredResizeHandle ?? null,
       options.resizeFeedback,
     );
+
+    if (!options.resizeCurrentDimensions) {
+      drawSelectedSizeLabel(ctx, page, options.selectedImageId, scale);
+    }
 
     if (options.resizeFeedback && (options.interactionMode === 'resize' || options.interactionMode === 'select')) {
       drawResizeFeedback(ctx, options.resizeFeedback, scale);
