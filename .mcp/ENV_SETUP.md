@@ -1,60 +1,31 @@
 # Environment Variables
 
-This file documents the environment variables used by the photo collage tool.
+This file documents the environment variables used for the optional Linear MCP integration.
 
-## MCP / Linear Integration
+## Linear MCP Integration
 
-### LINEAR_API_KEY
+### `LINEAR_API_KEY`
 
-**Purpose:** Authenticate with Linear API for project documentation sync  
-**Required:** Yes (if using Linear features)  
-**Value Type:** String (API key from Linear settings)
+**Purpose:** Authenticate with Linear when using MCP tools in this workspace.
 
-**Setup:**
+**Required:** Yes, if you want Linear project updates or issue management.
+
+**Example:**
+
 ```bash
 LINEAR_API_KEY=lin_pat_xxxxxxxxxxxxxxxxxxxx
 ```
 
-Get your key from: https://linear.app/settings/api
-
-## Copy to .env.local
+## `.env.local`
 
 Create a `.env.local` file in the project root:
 
 ```bash
-# Linear API Integration
 LINEAR_API_KEY=your_linear_api_key_here
 ```
 
-**⚠️ Important:** Never commit `.env.local` to git. It's already in `.gitignore`.
+## Notes
 
-## Optional Features
-
-### Canvas Export Directory
-
-If you want to set a default export directory (future feature):
-
-```bash
-EXPORT_DIR=/path/to/exports
-```
-
-### Development Debug
-
-For development logging:
-
-```bash
-DEBUG=collage:*
-```
-
-## Verification
-
-To verify your Linear API key is set correctly:
-
-1. Check `.env.local` exists and has `LINEAR_API_KEY`
-2. Run the application
-3. Try to create a Linear issue or query workspace data
-
-If connection fails, check:
-- API key is not expired
-- Linear account has workspace access
-- Key has correct permissions
+- Do not commit `.env.local`.
+- The app itself runs without Linear configuration.
+- Add additional environment variables here only if the workspace starts using them.
