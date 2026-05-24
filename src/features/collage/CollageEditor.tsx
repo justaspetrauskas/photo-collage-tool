@@ -174,7 +174,6 @@ export function CollageEditor() {
                  hasUnplacedImages={editor.hasUnplacedImages}
                  onGenerateLayout={editor.onGenerateLayout}
                  imagesCount={editor.images.length}
-                 canvasCursor={editor.canvasCursor}
                />
             </main>
           </div>

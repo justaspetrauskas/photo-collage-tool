@@ -1,19 +1,5 @@
-// ---
-// Canonical Drag Lifecycle (mouse/touch/stylus parity)
-//
-// 1. Hover: pointer enters canvas, hit-test for handle/body, update hover state and cursor/feedback.
-// 2. Drag Start: pointer down on handle (resize) or body (move), set drag state, pointer capture.
-// 3. Drag Move: pointer move, update geometry, snap/collision, feedback.
-// 4. Drag End: pointer up, commit geometry, clear drag state, reset feedback.
-// 5. Drag Cancel: pointer cancel/leave, revert drag state, reset feedback.
-//
-// All pointer/mouse/touch paths must:
-// - Use pointer capture for drag continuity (mouse/touch parity).
-// - Reset hover/feedback/cursor state on all terminal paths (up/cancel/leave).
-// - Only allow one drag at a time (mode guards).
-// ---
 import { enhanceImageWithAI, type EnhanceOptions, type EnhancePreset } from '../lib/openaiImageEdit';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect } from 'react';
 import type { ChangeEvent, DragEvent, MouseEvent, PointerEvent } from 'react';
 import {
   CANVAS_SIZE_PRESETS,
@@ -32,35 +18,21 @@ import {
 import { buildPaginatedLayout, clampOffsets } from '../model/layoutEngine';
 import { drawPagePreview, renderPageToExportCanvas } from '../model/renderEngine';
 import { useEditorUIStore } from '../store/editorUIStore';
-import type {
-  ImageItem,
-  InteractionMode,
-  PaginationMode,
-  PersistedEditorSnapshot,
-  PersistedImageItem,
-  PositionedImage,
-  PreviewTransform,
-  ResizeSnapGuide,
-} from '../model/types';
-import { blobToImage, fileToImage } from '../lib/fileToImage';
-import { clearSnapshot, loadSnapshot, saveSnapshot } from '../lib/persistence';
+import { useCollageState } from './useCollageState';
+import { useCollageUIState } from './useCollageUIState';
+import { useCollageDerivedState } from './useCollageDerivedState';
+import { useManualPlacementHandlers } from './useManualPlacementHandlers';
 import {
-  type DragState,
-  isCropDrag,
-  isMoveDrag,
-  isPanDrag,
-  isReplaceDrag,
-  isResizeDrag,
-} from '../../../shared/drag';
+  canvasToBlob,
+  elapsedTicks,
+  pageHasOverlap,
+  randomId,
+  rectanglesTouchOrOverlap,
+} from './collageEditorUtils';
+import { computeContentBox, computeCropMetrics } from '../../../shared/math/sizing';
+import { fileToImage, blobToImage } from '../lib/fileToImage';
+import { loadSnapshot, saveSnapshot, clearSnapshot } from '../lib/persistence';
 import {
-  rectanglesOverlap,
-  isInsideCanvas,
-  computeContentBox,
-  computeCropMetrics,
-} from '../../../shared/math';
-import {
-  calculateCropOffsets,
-  calculateNewPosition,
   calculateOutsideRatio,
   getCanvasSnapPosition,
   isPositionOutsideCanvas,
@@ -72,67 +44,74 @@ import {
   getResizeAssistSnap,
   getHandleAtPoint,
   getHandleFixedEdges,
-  getCursorForHandle,
-  type HandleType,
+  calculateCropOffsets,
+  calculateNewPosition,
 } from '../interactions';
+
+import type { HandleType } from '../interactions';
+import type { DragState } from '../../../shared/drag/types';
+import { isCropDrag, isMoveDrag, isPanDrag, isReplaceDrag, isResizeDrag } from '../../../shared/drag/types';
+import type {
+  ImageItem,
+  PositionedImage,
+  PageLayout,
+  PreviewTransform,
+  PersistedEditorSnapshot,
+  PersistedImageItem,
+} from '../model/types';
+
+// --- Types and Interfaces ---
 import { computeSmartDropSize, resolveSmartFraming } from '../lib/editorLayoutUtils';
 
-function pageHasOverlap(page: { items: Array<{ x: number; y: number; width: number; height: number }> }): boolean {
-  for (let i = 0; i < page.items.length; i += 1) {
-    const current = page.items[i];
-    for (let j = i + 1; j < page.items.length; j += 1) {
-      if (rectanglesOverlap(current, page.items[j])) {
-        return true;
-      }
-    }
-  }
-  return false;
+export type WorkflowStage = 'upload' | 'generate' | 'edit' | 'export';
+
+export interface NoticeMessage {
+  tone: 'info' | 'success' | 'error';
+  text: string;
 }
-type ResizeFeedback = {
+
+export interface UndoAction {
+  label: string;
+  description: string;
+  restore: () => void;
+}
+
+export interface BatchEnhanceProgress {
+  completed: number;
+  total: number;
+  preset: EnhancePreset;
+}
+
+export interface SessionMetrics {
+  uploads: number;
+  layoutGenerations: number;
+  modeSwitches: number;
+  exportsCompleted: number;
+  exportFailures: number;
+  enhancementRuns: number;
+  enhancementFailures: number;
+  removedFromCanvas: number;
+  removedPages: number;
+  destructiveConfirms: number;
+  destructiveCancels: number;
+  firstUploadAt: number | null;
+  firstLayoutAt: number | null;
+  firstExportAt: number | null;
+}
+
+export interface ResizeFeedback {
   baseRect: { x: number; y: number; width: number; height: number };
   currentRect: { x: number; y: number; width: number; height: number };
   intent: 'expand' | 'shrink' | 'steady';
-};
+}
 
-type SwapAnimation = {
+export interface SwapAnimation {
   startedTick: number;
   durationTicks: number;
-  transitions: Record<
-    string,
-    {
-      from: { x: number; y: number };
-      to: { x: number; y: number };
-    }
-  >;
-};
-
-function elapsedTicks(currentTick: number, startTick: number): number {
-  return currentTick >= startTick ? currentTick - startTick : 10000 - startTick + currentTick;
+  transitions: Record<string, { from: { x: number; y: number }; to: { x: number; y: number } }>;
 }
 
-const SELECT_HANDLE_HIT_RADIUS_CSS_PX = 12;
-
-function randomId(prefix = 'img'): string {
-  return `${prefix}-${crypto.randomUUID()}`;
-}
-
-/**
- * Promisified wrapper around canvas.toBlob for export flows.
- */
-function canvasToBlob(canvas: HTMLCanvasElement, mimeType: string, quality?: number): Promise<Blob> {
-  return new Promise((resolve, reject) => {
-    canvas.toBlob((blob) => {
-      if (!blob) {
-        reject(new Error('Canvas export failed'));
-        return;
-      }
-
-      resolve(blob);
-    }, mimeType, quality);
-  });
-}
-
-interface CanvasPlacementPreview {
+export interface CanvasPlacementPreview {
   imageId: string;
   x: number;
   y: number;
@@ -141,55 +120,16 @@ interface CanvasPlacementPreview {
   valid: boolean;
 }
 
-type WorkflowStage = 'upload' | 'generate' | 'edit' | 'export';
-type SaveState = 'idle' | 'saving' | 'saved' | 'error';
-type NoticeTone = 'info' | 'success';
-
-interface NoticeMessage {
-  tone: NoticeTone;
-  text: string;
-}
-
-interface UndoAction {
-  label: string;
-  description: string;
-  restore: () => void;
-}
-
-interface BatchEnhanceProgress {
-  completed: number;
-  total: number;
-  preset: EnhancePreset;
-}
-
-interface SessionMetrics {
-  sessionStartedAt: number;
-  firstUploadAt: number | null;
-  firstLayoutAt: number | null;
-  firstExportAt: number | null;
-  uploads: number;
-  layoutGenerations: number;
-  exportsCompleted: number;
-  exportFailures: number;
-  enhancementRuns: number;
-  enhancementFailures: number;
-  modeSwitches: number;
-  destructiveConfirms: number;
-  destructiveCancels: number;
-  removedFromCanvas: number;
-  removedPages: number;
-}
-
-interface EditorUndoSnapshot {
+export interface EditorUndoSnapshot {
   images: ImageItem[];
-  pages: Array<{ id: string; widthPx: number; heightPx: number; items: PositionedImage[] }>;
+  pages: PageLayout[];
   maxImageCm: number;
   minImageCm: number;
   frameMm: number;
   gridModeEnabled: boolean;
   autoCompactPages: boolean;
-  paginationMode: PaginationMode;
-  interactionMode: InteractionMode;
+  paginationMode: 'auto' | 'assisted';
+  interactionMode: 'crop' | 'resize' | 'replace' | 'move' | 'select';
   selectedImageId: string | null;
   hoveredImageId: string | null;
   assistedPageCount: number;
@@ -208,126 +148,216 @@ interface EditorUndoSnapshot {
 }
 
 const DEFAULT_SESSION_METRICS = (): SessionMetrics => ({
-  sessionStartedAt: Date.now(),
-  firstUploadAt: null,
-  firstLayoutAt: null,
-  firstExportAt: null,
   uploads: 0,
   layoutGenerations: 0,
+  modeSwitches: 0,
   exportsCompleted: 0,
   exportFailures: 0,
   enhancementRuns: 0,
   enhancementFailures: 0,
-  modeSwitches: 0,
-  destructiveConfirms: 0,
-  destructiveCancels: 0,
   removedFromCanvas: 0,
   removedPages: 0,
+  destructiveConfirms: 0,
+  destructiveCancels: 0,
+  firstUploadAt: null,
+  firstLayoutAt: null,
+  firstExportAt: null,
 });
 
 export function useCollageEditor() {
-  const {
-    drawerSelectedImageId,
-    setDrawerSelectedImageId,
-    imageZoomLevels,
-    setImageZoom,
-    imagePanOffsets,
-    setImagePan,
-  } = useEditorUIStore();
-  const [images, setImages] = useState<ImageItem[]>([]);
-  const [pages, setPages] = useState<Array<{ id: string; widthPx: number; heightPx: number; items: PositionedImage[] }>>([]);
-  const [maxImageCm, setMaxImageCm] = useState<number>(DEFAULT_MAX_IMAGE_CM);
-  const [minImageCm, setMinImageCm] = useState<number>(DEFAULT_MIN_IMAGE_CM);
-  const [frameMm, setFrameMm] = useState<number>(DEFAULT_FRAME_MM);
-  const [gridModeEnabled, setGridModeEnabled] = useState<boolean>(false);
-  const [autoCompactPages, setAutoCompactPages] = useState<boolean>(true);
-  const [paginationMode, setPaginationMode] = useState<PaginationMode>('auto');
-  const [interactionMode, setInteractionModeState] = useState<InteractionMode>('select');
-  const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
-  const [hoveredImageId, setHoveredImageId] = useState<string | null>(null);
-  const [dragActive, setDragActive] = useState<boolean>(false);
-  const [assistedPageCount, setAssistedPageCount] = useState<number>(1);
-  const [selectedPageIndex, setSelectedPageIndex] = useState<number>(0);
-  const [overflowImageIds, setOverflowImageIds] = useState<string[]>([]);
-  const [oversizedImageIds, setOversizedImageIds] = useState<string[]>([]);
-  const [resizeLimitNotice, setResizeLimitNotice] = useState<string>('');
-  const [error, setError] = useState<string>('');
-  const [isHydrated, setIsHydrated] = useState<boolean>(false);
-  const [replaceAnimationTick, setReplaceAnimationTick] = useState<number>(0);
-  const [swapAnimation, setSwapAnimation] = useState<SwapAnimation | null>(null);
-  const [replacePointer, setReplacePointer] = useState<{ x: number; y: number } | null>(null);
-  const [swapTargetInvalid, setSwapTargetInvalid] = useState<boolean>(false);
-  const [moveOutsideCanvas, setMoveOutsideCanvas] = useState<boolean>(false);
-  const [moveCollisionImageIds, setMoveCollisionImageIds] = useState<string[]>([]);
-  const [resizeCurrentDimensions, setResizeCurrentDimensions] = useState<{ width: number; height: number } | null>(null);
-  const [resizeFeedback, setResizeFeedback] = useState<ResizeFeedback | null>(null);
-  const [resizeSnapGuides, setResizeSnapGuides] = useState<ResizeSnapGuide[]>([]);
-  const [resizeSnapActive, setResizeSnapActive] = useState<boolean>(false);
-  const [hoveredResizeHandle, setHoveredResizeHandle] = useState<HandleType | null>(null);
-  const [enhancingImageIds, setEnhancingImageIds] = useState<Set<string>>(new Set());
-  const [canvasPlacementPreview, setCanvasPlacementPreview] = useState<CanvasPlacementPreview | null>(null);
-  const [manualPlacementDragImageId, setManualPlacementDragImageId] = useState<string | null>(null);
-  const [showSelectionControls, setShowSelectionControls] = useState<boolean>(false);
-  const [canvasPresetId, setCanvasPresetId] = useState<CanvasSizePresetId>(DEFAULT_CANVAS_PRESET_ID);
-  const [customCanvasWidthCm, setCustomCanvasWidthCm] = useState<number>(20);
-  const [customCanvasHeightCm, setCustomCanvasHeightCm] = useState<number>(20);
-  const [layoutPresetId, setLayoutPresetId] = useState<LayoutPresetId>(DEFAULT_LAYOUT_PRESET_ID);
-  const [canvasCursor, setCanvasCursor] = useState<string>('default');
-  const [notice, setNotice] = useState<NoticeMessage | null>(null);
-  const [saveState, setSaveState] = useState<SaveState>('idle');
-  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
-  const [restoredFromSnapshot, setRestoredFromSnapshot] = useState<boolean>(false);
-  const [undoAction, setUndoAction] = useState<UndoAction | null>(null);
-  const [isExporting, setIsExporting] = useState<boolean>(false);
-  const [lastExportSummary, setLastExportSummary] = useState<string>('');
-  const [batchEnhanceProgress, setBatchEnhanceProgress] = useState<BatchEnhanceProgress | null>(null);
-  const [sessionMetrics, setSessionMetrics] = useState<SessionMetrics>(DEFAULT_SESSION_METRICS);
+  // --- All previous top-level code and functions go here ---
 
-  const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const previewTransformRef = useRef<PreviewTransform | null>(null);
-  const previewRenderFrameRef = useRef<number | null>(null);
-  const interactionMoveFrameRef = useRef<number | null>(null);
-  const pendingInteractionMoveRef = useRef<{ clientX: number; clientY: number; shiftKey: boolean } | null>(null);
-  const dragStateRef = useRef<DragState | null>(null);
-  // Tracks when pointer capture is active for a mouse pointer so that the
-  // duplicate mouse event handlers (mousedown/mousemove/mouseup/mouseleave)
-  // can be suppressed while pointer events handle the interaction.
-  const mousePointerCapturedRef = useRef(false);
-  const knownImageSrcsRef = useRef<Set<string>>(new Set());
+  const SELECT_HANDLE_HIT_RADIUS_CSS_PX = 12;
 
-  const itemById = useMemo(() => new Map(images.map((img) => [img.id, img])), [images]);
-  const imageById = useMemo(() => new Map(images.map((img) => [img.id, img.bitmap])), [images]);
-  const placementByImageId = useMemo(() => {
-    const next = new Map<string, { pageIndex: number; itemIndex: number; item: PositionedImage }>();
-    pages.forEach((page, pageIndex) => {
-      page.items.forEach((item, itemIndex) => {
-        next.set(item.imageId, { pageIndex, itemIndex, item });
-      });
+  function restoreEditorUndoSnapshot(snapshot: EditorUndoSnapshot): void {
+    setImages(snapshot.images);
+    setPages(snapshot.pages);
+    setMaxImageCm(snapshot.maxImageCm);
+    setMinImageCm(snapshot.minImageCm);
+    setFrameMm(snapshot.frameMm);
+    setGridModeEnabled(snapshot.gridModeEnabled);
+    setAutoCompactPages(snapshot.autoCompactPages);
+    setPaginationMode(snapshot.paginationMode);
+    setInteractionModeState(snapshot.interactionMode);
+    setSelectedImageId(snapshot.selectedImageId);
+    setHoveredImageId(snapshot.hoveredImageId);
+    setAssistedPageCount(snapshot.assistedPageCount);
+    setSelectedPageIndex(snapshot.selectedPageIndex);
+    setOverflowImageIds(snapshot.overflowImageIds);
+    setOversizedImageIds(snapshot.oversizedImageIds);
+    setResizeLimitNotice(snapshot.resizeLimitNotice);
+    setShowSelectionControls(snapshot.showSelectionControls);
+    setCanvasPresetId(snapshot.canvasPresetId);
+    setCustomCanvasWidthCm(snapshot.customCanvasWidthCm);
+    setCustomCanvasHeightCm(snapshot.customCanvasHeightCm);
+    setLayoutPresetId(snapshot.layoutPresetId);
+    setDrawerSelectedImageId(snapshot.drawerSelectedImageId);
+    setImageZoomLevels(snapshot.imageZoomLevels);
+    setImagePanOffsets(snapshot.imagePanOffsets);
+    setNotice({
+      tone: 'success',
+      text: 'Undo complete. Your previous project state has been restored.',
     });
-    return next;
-  }, [pages]);
-  const selectedPage = pages[selectedPageIndex] ?? null;
-  const selectedImage = selectedImageId ? itemById.get(selectedImageId) ?? null : null;
-  const selectedPlacedItem = selectedImageId ? placementByImageId.get(selectedImageId)?.item ?? null : null;
-  const hasPlacedItems = pages.some((page) => page.items.length > 0);
-  const hasUnplacedImages = images.length > 0 && !hasPlacedItems;
-
-  function updateSessionMetrics(update: (current: SessionMetrics) => SessionMetrics): void {
-    setSessionMetrics((current) => update(current));
+    useEditorUIStore.setState({
+      drawerSelectedImageId: snapshot.drawerSelectedImageId,
+      imageZoomLevels: snapshot.imageZoomLevels,
+      imagePanOffsets: snapshot.imagePanOffsets,
+    });
   }
 
-  function setInteractionMode(nextMode: InteractionMode): void {
-    setInteractionModeState((current) => {
-      if (current === nextMode) {
-        return current;
-      }
+  function queueUndoAction(label: string, description: string, snapshot: EditorUndoSnapshot): void {
+    setUndoAction({
+      label,
+      description,
+      restore: () => restoreEditorUndoSnapshot(snapshot),
+    });
+  }
 
+  function undoLastAction(): void {
+    if (!undoAction) {
+      return;
+    }
+    undoAction.restore();
+    setUndoAction(null);
+  }
+
+  function registerDestructiveConfirmation(confirmed: boolean): void {
+    updateSessionMetrics((metrics) => ({
+      ...metrics,
+      destructiveConfirms: metrics.destructiveConfirms + (confirmed ? 1 : 0),
+      destructiveCancels: metrics.destructiveCancels + (confirmed ? 0 : 1),
+    }));
+  }
+
+  function resolveCanvasDimensions(): { widthPx: number; heightPx: number } {
+    const preset = CANVAS_SIZE_PRESETS.find((p) => p.id === canvasPresetId) ?? CANVAS_SIZE_PRESETS[0];
+    const widthCm = canvasPresetId === 'custom' ? customCanvasWidthCm : preset.widthCm;
+    const heightCm = canvasPresetId === 'custom' ? customCanvasHeightCm : preset.heightCm;
+    return {
+      widthPx: Math.round(cmToPx(widthCm)),
+      heightPx: Math.round(cmToPx(heightCm)),
+    };
+  }
+
+  // recommendedLayoutHint useMemo moved after all state/variable declarations
+
+  // State hooks
+  const collageState = useCollageState();
+  const collageUIState = useCollageUIState();
+
+  // Destructure all state and setters from hooks
+  const {
+    images, setImages,
+    pages, setPages,
+    maxImageCm, setMaxImageCm,
+    minImageCm, setMinImageCm,
+    frameMm, setFrameMm,
+    gridModeEnabled, setGridModeEnabled,
+    autoCompactPages, setAutoCompactPages,
+    paginationMode, setPaginationMode,
+    interactionMode, setInteractionModeState,
+    selectedImageId, setSelectedImageId,
+    hoveredImageId, setHoveredImageId,
+    assistedPageCount, setAssistedPageCount,
+    selectedPageIndex, setSelectedPageIndex,
+    overflowImageIds, setOverflowImageIds,
+    oversizedImageIds, setOversizedImageIds,
+    canvasPresetId, setCanvasPresetId,
+    customCanvasWidthCm, setCustomCanvasWidthCm,
+    customCanvasHeightCm, setCustomCanvasHeightCm,
+    layoutPresetId, setLayoutPresetId,
+  } = collageState;
+
+  const {
+    drawerSelectedImageId, setDrawerSelectedImageId,
+    imageZoomLevels, setImageZoomLevels,
+    imagePanOffsets, setImagePanOffsets,
+  } = collageUIState;
+
+  const {
+    dragActive, setDragActive,
+    resizeLimitNotice, setResizeLimitNotice,
+    error, setError,
+    isHydrated, setIsHydrated,
+    replaceAnimationTick, setReplaceAnimationTick,
+    swapAnimation, setSwapAnimation,
+    replacePointer, setReplacePointer,
+    swapTargetInvalid, setSwapTargetInvalid,
+    moveOutsideCanvas, setMoveOutsideCanvas,
+    moveCollisionImageIds, setMoveCollisionImageIds,
+    resizeCurrentDimensions, setResizeCurrentDimensions,
+    resizeFeedback, setResizeFeedback,
+    resizeSnapGuides, setResizeSnapGuides,
+    resizeSnapActive, setResizeSnapActive,
+    hoveredResizeHandle, setHoveredResizeHandle,
+    enhancingImageIds, setEnhancingImageIds,
+    canvasPlacementPreview, setCanvasPlacementPreview,
+    manualPlacementDragImageId, setManualPlacementDragImageId,
+    showSelectionControls, setShowSelectionControls,
+    notice, setNotice,
+    saveState, setSaveState,
+    lastSavedAt, setLastSavedAt,
+    restoredFromSnapshot, setRestoredFromSnapshot,
+    undoAction, setUndoAction,
+    isExporting, setIsExporting,
+    lastExportSummary, setLastExportSummary,
+    batchEnhanceProgress, setBatchEnhanceProgress,
+    sessionMetrics, setSessionMetrics,
+    previewCanvasRef,
+    previewTransformRef,
+    previewRenderFrameRef,
+    interactionMoveFrameRef,
+    pendingInteractionMoveRef,
+    dragStateRef,
+    mousePointerCapturedRef,
+    knownImageSrcsRef,
+  } = collageUIState;
+
+  const {
+    selectedPage,
+    itemById,
+    imageById,
+    bitmapById,
+    placementByImageId,
+    selectedImage,
+    selectedPlacedItem,
+    hasPlacedItems,
+    hasUnplacedImages,
+    recommendedLayoutHint,
+    workflowStage,
+    sessionInsights,
+  } = useCollageDerivedState({
+    images,
+    pages,
+    selectedPageIndex,
+    selectedImageId,
+    canvasPresetId,
+    customCanvasWidthCm,
+    customCanvasHeightCm,
+    isExporting,
+    sessionMetrics,
+  });
+
+  function setInteractionMode(mode: 'crop' | 'resize' | 'replace' | 'move' | 'select'): void {
+    if (interactionMode !== mode) {
       updateSessionMetrics((metrics) => ({
         ...metrics,
         modeSwitches: metrics.modeSwitches + 1,
       }));
-      return nextMode;
-    });
+    }
+    setInteractionModeState(mode);
+  }
+
+  function updateSessionMetrics(updater: (metrics: SessionMetrics) => SessionMetrics): void {
+    setSessionMetrics((current) => updater(current ?? DEFAULT_SESSION_METRICS()));
+  }
+
+  function setImageZoom(imageId: string, zoom: number): void {
+    setImageZoomLevels((current) => ({ ...current, [imageId]: zoom }));
+  }
+
+  function setImagePan(imageId: string, x: number, y: number): void {
+    setImagePanOffsets((current) => ({ ...current, [imageId]: { x, y } }));
   }
 
   function captureEditorUndoSnapshot(): EditorUndoSnapshot {
@@ -358,144 +388,6 @@ export function useCollageEditor() {
       imagePanOffsets,
     };
   }
-
-  function restoreEditorUndoSnapshot(snapshot: EditorUndoSnapshot): void {
-    setImages(snapshot.images);
-    setPages(snapshot.pages);
-    setMaxImageCm(snapshot.maxImageCm);
-    setMinImageCm(snapshot.minImageCm);
-    setFrameMm(snapshot.frameMm);
-    setGridModeEnabled(snapshot.gridModeEnabled);
-    setAutoCompactPages(snapshot.autoCompactPages);
-    setPaginationMode(snapshot.paginationMode);
-    setInteractionModeState(snapshot.interactionMode);
-    setSelectedImageId(snapshot.selectedImageId);
-    setHoveredImageId(snapshot.hoveredImageId);
-    setAssistedPageCount(snapshot.assistedPageCount);
-    setSelectedPageIndex(snapshot.selectedPageIndex);
-    setOverflowImageIds(snapshot.overflowImageIds);
-    setOversizedImageIds(snapshot.oversizedImageIds);
-    setResizeLimitNotice(snapshot.resizeLimitNotice);
-    setShowSelectionControls(snapshot.showSelectionControls);
-    setCanvasPresetId(snapshot.canvasPresetId);
-    setCustomCanvasWidthCm(snapshot.customCanvasWidthCm);
-    setCustomCanvasHeightCm(snapshot.customCanvasHeightCm);
-    setLayoutPresetId(snapshot.layoutPresetId);
-    setNotice({
-      tone: 'success',
-      text: 'Undo complete. Your previous project state has been restored.',
-    });
-    useEditorUIStore.setState({
-      drawerSelectedImageId: snapshot.drawerSelectedImageId,
-      imageZoomLevels: snapshot.imageZoomLevels,
-      imagePanOffsets: snapshot.imagePanOffsets,
-    });
-  }
-
-  function queueUndoAction(label: string, description: string, snapshot: EditorUndoSnapshot): void {
-    setUndoAction({
-      label,
-      description,
-      restore: () => restoreEditorUndoSnapshot(snapshot),
-    });
-  }
-
-  function undoLastAction(): void {
-    if (!undoAction) {
-      return;
-    }
-
-    undoAction.restore();
-    setUndoAction(null);
-  }
-
-  function registerDestructiveConfirmation(confirmed: boolean): void {
-    updateSessionMetrics((metrics) => ({
-      ...metrics,
-      destructiveConfirms: metrics.destructiveConfirms + (confirmed ? 1 : 0),
-      destructiveCancels: metrics.destructiveCancels + (confirmed ? 0 : 1),
-    }));
-  }
-
-  function resolveCanvasDimensions(): { widthPx: number; heightPx: number } {
-    const preset = CANVAS_SIZE_PRESETS.find((p) => p.id === canvasPresetId) ?? CANVAS_SIZE_PRESETS[0];
-    const widthCm = canvasPresetId === 'custom' ? customCanvasWidthCm : preset.widthCm;
-    const heightCm = canvasPresetId === 'custom' ? customCanvasHeightCm : preset.heightCm;
-    return {
-      widthPx: Math.round(cmToPx(widthCm)),
-      heightPx: Math.round(cmToPx(heightCm)),
-    };
-  }
-
-  const recommendedLayoutHint = useMemo(() => {
-    if (!images.length) {
-      return '';
-    }
-
-    const preset = CANVAS_SIZE_PRESETS.find((p) => p.id === canvasPresetId) ?? CANVAS_SIZE_PRESETS[0];
-    const widthCm = canvasPresetId === 'custom' ? customCanvasWidthCm : preset.widthCm;
-    const heightCm = canvasPresetId === 'custom' ? customCanvasHeightCm : preset.heightCm;
-    const widthPx = Math.round(cmToPx(widthCm));
-    const heightPx = Math.round(cmToPx(heightCm));
-    const orientation = widthPx >= heightPx ? 'landscape' : 'portrait';
-    const portraitCount = images.filter((img) => img.naturalHeight >= img.naturalWidth).length;
-    const portraitShare = portraitCount / images.length;
-    const recommended = new Set<LayoutPresetId>();
-
-    if (images.length >= 8) {
-      recommended.add('grid_3x3');
-    } else if (images.length >= 4) {
-      recommended.add('grid_2x2');
-    }
-
-    if (images.length >= 3 && images.length <= 5) {
-      recommended.add('hero_supporting');
-      recommended.add('mosaic');
-    }
-
-    if (images.length >= 3 && images.length <= 4) {
-      recommended.add('story_strip');
-    }
-
-    if (orientation === 'portrait' && portraitShare > 0.6) {
-      recommended.add('story_strip');
-      recommended.add('mosaic');
-    }
-
-    if (recommended.size === 0) {
-      return '';
-    }
-
-    const labels = LAYOUT_PRESETS.filter((preset) => recommended.has(preset.id) && preset.id !== 'auto').map(
-      (preset) => preset.label,
-    );
-
-    return labels.length ? `Recommended: ${labels.join(' • ')}` : '';
-  }, [images, canvasPresetId, customCanvasWidthCm, customCanvasHeightCm]);
-
-  const workflowStage = useMemo<WorkflowStage>(() => {
-    if (!images.length) {
-      return 'upload';
-    }
-    if (!hasPlacedItems) {
-      return 'generate';
-    }
-    if (isExporting || sessionMetrics.exportsCompleted > 0) {
-      return 'export';
-    }
-    return 'edit';
-  }, [hasPlacedItems, images.length, isExporting, sessionMetrics.exportsCompleted]);
-
-  const sessionInsights = useMemo(() => ({
-    timeToFirstLayoutMs:
-      sessionMetrics.firstUploadAt && sessionMetrics.firstLayoutAt
-        ? Math.max(0, sessionMetrics.firstLayoutAt - sessionMetrics.firstUploadAt)
-        : null,
-    timeToFirstExportMs:
-      sessionMetrics.firstLayoutAt && sessionMetrics.firstExportAt
-        ? Math.max(0, sessionMetrics.firstExportAt - sessionMetrics.firstLayoutAt)
-        : null,
-  }), [sessionMetrics.firstExportAt, sessionMetrics.firstLayoutAt, sessionMetrics.firstUploadAt]);
 
   const shouldRunAnimationLoop = (dragActive && interactionMode === 'replace') || Boolean(swapAnimation);
 
@@ -534,32 +426,39 @@ export function useCollageEditor() {
       window.cancelAnimationFrame(previewRenderFrameRef.current);
     }
 
-    previewRenderFrameRef.current = window.requestAnimationFrame(() => {
-      previewTransformRef.current = drawPagePreview(canvas, selectedPage, itemById, imageById, {
-        gridEnabled: gridModeEnabled,
-        gridSpacingPx: cmToPx(DEFAULT_GRID_SPACING_CM),
-        selectedImageId,
-        hoveredImageId,
-        drawerSelectedImageId,
-        imageZoomLevels,
-        imagePanOffsets,
-        interactionMode,
-        dragActive,
-        moveOutsideCanvas,
-        moveCollisionImageIds,
-        resizeCurrentDimensions,
-        resizeFeedback,
-        resizeSnapGuides,
-        resizeSnapActive,
-        hoveredResizeHandle,
-        swapAnimation,
-        replacePointer,
-        swapTargetInvalid,
-        placementPreview: canvasPlacementPreview,
-        animationTimeMs: replaceAnimationTick,
-      });
+    const frameId = window.requestAnimationFrame(() => {
+      previewTransformRef.current = drawPagePreview(
+        canvas,
+        selectedPage,
+        itemById,
+        bitmapById,
+        {
+          gridEnabled: gridModeEnabled,
+          gridSpacingPx: cmToPx(DEFAULT_GRID_SPACING_CM),
+          selectedImageId,
+          hoveredImageId,
+          drawerSelectedImageId,
+          imageZoomLevels,
+          imagePanOffsets,
+          interactionMode,
+          dragActive,
+          moveOutsideCanvas,
+          moveCollisionImageIds,
+          resizeCurrentDimensions,
+          resizeFeedback,
+          resizeSnapGuides,
+          resizeSnapActive,
+          hoveredResizeHandle,
+          swapAnimation,
+          replacePointer,
+          swapTargetInvalid,
+          placementPreview: canvasPlacementPreview,
+          animationTimeMs: replaceAnimationTick,
+        }
+      );
       previewRenderFrameRef.current = null;
     });
+    previewRenderFrameRef.current = frameId;
 
     return () => {
       if (previewRenderFrameRef.current !== null) {
@@ -567,7 +466,7 @@ export function useCollageEditor() {
         previewRenderFrameRef.current = null;
       }
     };
-  }, [selectedPage, itemById, imageById, gridModeEnabled, selectedImageId, hoveredImageId, drawerSelectedImageId, imageZoomLevels, imagePanOffsets, interactionMode, dragActive, moveOutsideCanvas, moveCollisionImageIds, resizeCurrentDimensions, resizeFeedback, resizeSnapGuides, resizeSnapActive, hoveredResizeHandle, swapAnimation, replacePointer, swapTargetInvalid, canvasPlacementPreview, replaceAnimationTick]);
+  }, [selectedPage, itemById, bitmapById, gridModeEnabled, selectedImageId, hoveredImageId, drawerSelectedImageId, imageZoomLevels, imagePanOffsets, interactionMode, dragActive, moveOutsideCanvas, moveCollisionImageIds, resizeCurrentDimensions, resizeFeedback, resizeSnapGuides, resizeSnapActive, hoveredResizeHandle, swapAnimation, replacePointer, swapTargetInvalid, canvasPlacementPreview, replaceAnimationTick]);
 
   useEffect(() => {
     return () => {
@@ -577,18 +476,6 @@ export function useCollageEditor() {
     };
   }, []);
 
-function rectanglesTouchOrOverlap(
-  a: { x: number; y: number; width: number; height: number },
-  b: { x: number; y: number; width: number; height: number },
-): boolean {
-  const aRight = a.x + a.width;
-  const bRight = b.x + b.width;
-  const aBottom = a.y + a.height;
-  const bBottom = b.y + b.height;
-
-  return !(aRight < b.x || a.x > bRight || aBottom < b.y || a.y > bBottom);
-}
-
   useEffect(() => {
     const currentSrcs = new Set<string>();
     for (const image of images) {
@@ -596,7 +483,7 @@ function rectanglesTouchOrOverlap(
       currentSrcs.add(image.originalSrc);
     }
     for (const previousSrc of knownImageSrcsRef.current) {
-      if (!currentSrcs.has(previousSrc)) {
+      if (!currentSrcs.has(previousSrc) && typeof previousSrc === 'string') {
         URL.revokeObjectURL(previousSrc);
       }
     }
@@ -606,7 +493,7 @@ function rectanglesTouchOrOverlap(
   useEffect(() => {
     return () => {
       for (const src of knownImageSrcsRef.current) {
-        URL.revokeObjectURL(src);
+        if (typeof src === 'string') URL.revokeObjectURL(src);
       }
     };
   }, []);
@@ -994,7 +881,6 @@ function rectanglesTouchOrOverlap(
     setMoveCollisionImageIds([]);
     setHoveredResizeHandle(null);
     setHoveredImageId(null);
-    setCanvasCursor('default');
     setInteractionModeState('select');
   }
 
@@ -1182,12 +1068,20 @@ function rectanglesTouchOrOverlap(
       return null;
     }
 
+    const { dpr, scale, offsetX, offsetY } = transform;
+    if (
+      typeof dpr !== 'number' ||
+      typeof scale !== 'number' ||
+      typeof offsetX !== 'number' ||
+      typeof offsetY !== 'number'
+    ) {
+      return null;
+    }
     const rect = canvas.getBoundingClientRect();
-    const x = (clientX - rect.left) * transform.dpr;
-    const y = (clientY - rect.top) * transform.dpr;
-
-    const pageX = (x - transform.offsetX) / transform.scale;
-    const pageY = (y - transform.offsetY) / transform.scale;
+    const x = (clientX - rect.left) * dpr;
+    const y = (clientY - rect.top) * dpr;
+    const pageX = (x - offsetX) / scale;
+    const pageY = (y - offsetY) / scale;
 
     if (
       !options.allowOutsideCanvas &&
@@ -1246,6 +1140,34 @@ function rectanglesTouchOrOverlap(
     };
   }
 
+  const {
+    onCanvasDragOver,
+    onCanvasDrop,
+    onCanvasDragLeave,
+    onBeginManualPlacementDrag,
+    onEndManualPlacementDrag,
+    placeImageOnSelectedPage,
+  } = useManualPlacementHandlers({
+    itemById,
+    selectedPage,
+    selectedPageIndex,
+    selectedImageId,
+    manualPlacementDragImageId,
+    minImageCm,
+    pagePointFromClient,
+    resolveManualPlacementSize,
+    setPages,
+    setImages,
+    setSelectedImageId,
+    setDrawerSelectedImageId,
+    setHoveredImageId,
+    setShowSelectionControls,
+    setError,
+    setManualPlacementDragImageId,
+    setCanvasPlacementPreview,
+    setNotice,
+  });
+
   function findHitItem(pagePoint: { x: number; y: number }): PositionedImage | null {
     if (!selectedPage) {
       return null;
@@ -1274,9 +1196,13 @@ function rectanglesTouchOrOverlap(
     }
 
     const transform = previewTransformRef.current;
-    const handleHitRadiusPx = transform
-      ? SELECT_HANDLE_HIT_RADIUS_CSS_PX * transform.dpr / transform.scale
-      : 0;
+    let handleHitRadiusPx = 0;
+    if (transform && typeof transform.dpr === 'number' && typeof transform.scale === 'number') {
+      const { dpr, scale } = transform;
+      if (typeof dpr === 'number' && typeof scale === 'number') {
+        handleHitRadiusPx = SELECT_HANDLE_HIT_RADIUS_CSS_PX * dpr / scale;
+      }
+    }
 
     if (handleHitRadiusPx <= 0) {
       return null;
@@ -1345,9 +1271,13 @@ function rectanglesTouchOrOverlap(
       ? selectedPage?.items.find((item) => item.imageId === selectedImageId) ?? null
       : null;
     const transform = previewTransformRef.current;
-    const handleHitRadiusPx = transform
-      ? SELECT_HANDLE_HIT_RADIUS_CSS_PX * transform.dpr / transform.scale
-      : 0;
+    let handleHitRadiusPx = 0;
+    if (transform && typeof transform.dpr === 'number' && typeof transform.scale === 'number') {
+      const { dpr, scale } = transform;
+      if (typeof dpr === 'number' && typeof scale === 'number') {
+        handleHitRadiusPx = SELECT_HANDLE_HIT_RADIUS_CSS_PX * dpr / scale;
+      }
+    }
     const handleTarget = interactionMode === 'select' ? findCornerHandleTarget(point) : null;
     const hit = findHitItem(point);
     const interactionTarget = handleTarget?.item ?? hit ?? null;
@@ -1418,7 +1348,7 @@ function rectanglesTouchOrOverlap(
         setDragActive(true);
         setMoveOutsideCanvas(false);
         setMoveCollisionImageIds([]);
-        setCanvasCursor('grabbing');
+
         return;
       }
     }
@@ -1504,9 +1434,9 @@ function rectanglesTouchOrOverlap(
       if (!dragActive && hoveredResizeHandle !== null) {
         setHoveredResizeHandle(null);
       }
-      if (!dragActive && interactionMode === 'select') {
-        setCanvasCursor('default');
-      }
+      // if (!dragActive && interactionMode === 'select') {
+      //   setCanvasCursor('default');
+      // }
       return;
     }
 
@@ -1520,15 +1450,7 @@ function rectanglesTouchOrOverlap(
       setHoveredImageId(hoverResizeImageId ?? (hit?.imageId ?? null));
 
       // In 'select' mode, update the canvas cursor based on what's under the pointer.
-      if (interactionMode === 'select') {
-        if (hoverResizeHandle) {
-          setCanvasCursor(getCursorForHandle(hoverResizeHandle));
-        } else if (hit) {
-          setCanvasCursor('grab');
-        } else {
-          setCanvasCursor('default');
-        }
-      }
+      // (Cursor management removed for clean code and cross-platform compatibility)
     }
 
     if (interactionMode === 'crop' && isPanDrag(dragStateRef.current)) {
@@ -1909,7 +1831,7 @@ function rectanglesTouchOrOverlap(
     setResizeSnapActive(false);
     setHoveredResizeHandle(null);
     if (interactionMode === 'select') {
-      setCanvasCursor('default');
+      // setCanvasCursor removed (no-op)
     }
   }
 
@@ -2060,245 +1982,6 @@ function rectanglesTouchOrOverlap(
     handleCanvasInteractionEnd();
   }
 
-  function onCanvasDragOver(event: DragEvent<HTMLCanvasElement>): void {
-    event.preventDefault();
-    const imageId = manualPlacementDragImageId ?? event.dataTransfer.getData('application/x-collage-image-id');
-    if (!imageId || !selectedPage) {
-      setCanvasPlacementPreview(null);
-      return;
-    }
-
-    const image = itemById.get(imageId);
-    const point = pagePointFromClient(event.clientX, event.clientY);
-    if (!image || !point) {
-      setCanvasPlacementPreview(null);
-      return;
-    }
-
-    const proposedSize = resolveManualPlacementSize(image);
-    const existingItems = selectedPage.items.filter((item) => item.imageId !== imageId);
-    const smartSize = computeSmartDropSize(
-      image,
-      proposedSize,
-      point.x - proposedSize.width / 2,
-      point.y - proposedSize.height / 2,
-      selectedPage.widthPx,
-      selectedPage.heightPx,
-      existingItems,
-      minImageCm,
-    );
-
-    const x = Math.max(0, Math.min(selectedPage.widthPx - smartSize.width, point.x - smartSize.width / 2));
-    const y = Math.max(0, Math.min(selectedPage.heightPx - smartSize.height, point.y - smartSize.height / 2));
-
-    setCanvasPlacementPreview({
-      imageId,
-      x,
-      y,
-      width: smartSize.width,
-      height: smartSize.height,
-      valid: true,
-    });
-  }
-
-  function onCanvasDrop(event: DragEvent<HTMLCanvasElement>): void {
-    event.preventDefault();
-    const imageId = manualPlacementDragImageId ?? event.dataTransfer.getData('application/x-collage-image-id');
-    const image = itemById.get(imageId);
-    const point = pagePointFromClient(event.clientX, event.clientY);
-    if (!image || !selectedPage || !point) {
-      setCanvasPlacementPreview(null);
-      return;
-    }
-
-    const proposedSize = resolveManualPlacementSize(image);
-    
-    // Compute smart size: fit to available space while respecting minimums
-    const existingItems = selectedPage.items.filter((item) => item.imageId !== imageId);
-    const smartSize = computeSmartDropSize(
-      image,
-      proposedSize,
-      point.x - proposedSize.width / 2,
-      point.y - proposedSize.height / 2,
-      selectedPage.widthPx,
-      selectedPage.heightPx,
-      existingItems,
-      minImageCm,
-    );
-
-    // Position the image (centering on drop point, clamped to canvas bounds)
-    const x = Math.max(0, Math.min(selectedPage.widthPx - smartSize.width, point.x - smartSize.width / 2));
-    const y = Math.max(0, Math.min(selectedPage.heightPx - smartSize.height, point.y - smartSize.height / 2));
-
-    setPages((currentPages) =>
-      currentPages.map((page, pageIndex) => {
-        const withoutImage = page.items.filter((item) => item.imageId !== imageId);
-        if (pageIndex !== selectedPageIndex) {
-          return {
-            ...page,
-            items: withoutImage,
-          };
-        }
-
-        return {
-          ...page,
-          items: [
-            ...withoutImage,
-            {
-              imageId,
-              x,
-              y,
-              width: smartSize.width,
-              height: smartSize.height,
-              contentWidthPx: smartSize.contentWidthPx,
-              contentHeightPx: smartSize.contentHeightPx,
-              frameThicknessPx: smartSize.frameThicknessPx,
-              drawnImageWidthPx: smartSize.drawnImageWidthPx,
-              drawnImageHeightPx: smartSize.drawnImageHeightPx,
-              maxOffsetX: smartSize.maxOffsetX,
-              maxOffsetY: smartSize.maxOffsetY,
-            },
-          ],
-        };
-      }),
-    );
-
-    const clamped = clampOffsets(image.offsetX, image.offsetY, smartSize.maxOffsetX, smartSize.maxOffsetY);
-    setImages((current) =>
-      current.map((entry) =>
-        entry.id === imageId
-          ? {
-              ...entry,
-              renderWidthPx: smartSize.contentWidthPx,
-              renderHeightPx: smartSize.contentHeightPx,
-              cropMaxOffsetX: smartSize.maxOffsetX,
-              cropMaxOffsetY: smartSize.maxOffsetY,
-              offsetX: clamped.offsetX,
-              offsetY: clamped.offsetY,
-            }
-          : entry,
-      ),
-    );
-
-    setSelectedImageId(imageId);
-    setHoveredImageId(imageId);
-    setError('');
-    setManualPlacementDragImageId(null);
-    setCanvasPlacementPreview(null);
-    setNotice({
-      tone: 'success',
-      text: `${image.fileName} added to the active page. Use Edit mode to move or resize it.`,
-    });
-  }
-
-  function onCanvasDragLeave(): void {
-    setCanvasPlacementPreview(null);
-  }
-
-  function onBeginManualPlacementDrag(imageId: string): void {
-    setManualPlacementDragImageId(imageId);
-  }
-
-  function onEndManualPlacementDrag(): void {
-    setManualPlacementDragImageId(null);
-    setCanvasPlacementPreview(null);
-  }
-
-  function placeImageOnSelectedPage(imageId: string, replaceSelected = false): void {
-    const image = itemById.get(imageId);
-    if (!image || !selectedPage) {
-      return;
-    }
-
-    const proposedSize = resolveManualPlacementSize(image);
-    const replaceTargetIndex =
-      replaceSelected && selectedImageId
-        ? selectedPage.items.findIndex((item) => item.imageId === selectedImageId)
-        : -1;
-    const replaceTarget = replaceTargetIndex >= 0 ? selectedPage.items[replaceTargetIndex] : null;
-
-    const centerX = replaceTarget ? replaceTarget.x + replaceTarget.width / 2 : selectedPage.widthPx / 2;
-    const centerY = replaceTarget ? replaceTarget.y + replaceTarget.height / 2 : selectedPage.heightPx / 2;
-    const existingItems = selectedPage.items
-      .filter((item) => item.imageId !== imageId)
-      .filter((item) => item.imageId !== replaceTarget?.imageId);
-
-    const smartSize = computeSmartDropSize(
-      image,
-      proposedSize,
-      centerX - proposedSize.width / 2,
-      centerY - proposedSize.height / 2,
-      selectedPage.widthPx,
-      selectedPage.heightPx,
-      existingItems,
-      minImageCm,
-    );
-
-    const x = Math.max(0, Math.min(selectedPage.widthPx - smartSize.width, centerX - smartSize.width / 2));
-    const y = Math.max(0, Math.min(selectedPage.heightPx - smartSize.height, centerY - smartSize.height / 2));
-
-    setPages((currentPages) =>
-      currentPages.map((page, pageIndex) => {
-        const withoutImage = page.items.filter((item) => item.imageId !== imageId);
-        if (pageIndex !== selectedPageIndex) {
-          return {
-            ...page,
-            items: withoutImage,
-          };
-        }
-
-        const nextItems = withoutImage.filter((item) => item.imageId !== replaceTarget?.imageId);
-        nextItems.push({
-          imageId,
-          x,
-          y,
-          width: smartSize.width,
-          height: smartSize.height,
-          contentWidthPx: smartSize.contentWidthPx,
-          contentHeightPx: smartSize.contentHeightPx,
-          frameThicknessPx: smartSize.frameThicknessPx,
-          drawnImageWidthPx: smartSize.drawnImageWidthPx,
-          drawnImageHeightPx: smartSize.drawnImageHeightPx,
-          maxOffsetX: smartSize.maxOffsetX,
-          maxOffsetY: smartSize.maxOffsetY,
-        });
-
-        return {
-          ...page,
-          items: nextItems,
-        };
-      }),
-    );
-
-    const clamped = clampOffsets(image.offsetX, image.offsetY, smartSize.maxOffsetX, smartSize.maxOffsetY);
-    setImages((current) =>
-      current.map((entry) =>
-        entry.id === imageId
-          ? {
-              ...entry,
-              renderWidthPx: smartSize.contentWidthPx,
-              renderHeightPx: smartSize.contentHeightPx,
-              cropMaxOffsetX: smartSize.maxOffsetX,
-              cropMaxOffsetY: smartSize.maxOffsetY,
-              offsetX: clamped.offsetX,
-              offsetY: clamped.offsetY,
-            }
-          : entry,
-      ),
-    );
-
-    setSelectedImageId(imageId);
-    setDrawerSelectedImageId(imageId);
-    setHoveredImageId(imageId);
-    setShowSelectionControls(true);
-    setError('');
-    setNotice({
-      tone: 'success',
-      text: replaceSelected
-        ? `${image.fileName} replaced the active photo on the current page.`
-        : `${image.fileName} added to the current page.`,
-    });
-  }
 
   function expandSelectedImage(scaleFactor: number): void {
     if (!selectedImageId) {
@@ -2370,7 +2053,7 @@ function rectanglesTouchOrOverlap(
 
       const pageFiles = await Promise.all(
         exportablePages.map(async (page, index) => {
-          const canvas = renderPageToExportCanvas(page, itemById, imageById, {
+          const canvas = renderPageToExportCanvas(page, itemById, bitmapById, {
             imageZoomLevels,
             imagePanOffsets,
           });
@@ -2549,7 +2232,7 @@ function rectanglesTouchOrOverlap(
     });
     for (const [index, image] of images.entries()) {
       await enhanceImage(image.id, options);
-      setBatchEnhanceProgress((current) =>
+      setBatchEnhanceProgress((current: BatchEnhanceProgress | null) =>
         current
           ? {
               ...current,
@@ -2897,6 +2580,5 @@ function rectanglesTouchOrOverlap(
     resetSelectedCrop,
     clearSelection,
     setShowSelectionControls,
-    canvasCursor,
-  }
+  };
 }
