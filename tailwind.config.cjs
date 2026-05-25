@@ -48,6 +48,12 @@ module.exports = {
       animation: {
         'fade-up': 'fade-up 320ms ease-out',
       },
+      zIndex: {
+        overlay: '40',
+        drawer: '50',
+        toast: '70',
+        tooltip: '80',
+      },
     },
   },
   plugins: [],

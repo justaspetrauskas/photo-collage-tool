@@ -148,8 +148,8 @@ function LibraryCard({
         {isUsed ? 'On page' : 'New'}
       </span>
 
-      {/* Quick actions (on hover, desktop) */}
-      <div className="hidden gap-1 group-hover:flex" onClick={(e) => e.stopPropagation()}>
+      {/* Quick actions: hover on pointer devices, always visible on touch */}
+      <div className="hidden gap-1 group-hover:flex [@media(hover:none)]:flex" onClick={(e) => e.stopPropagation()}>
         {isUsed ? (
           <button
             className="flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-white/10 hover:text-ink"
@@ -371,7 +371,7 @@ export function LeftLibraryPanel({
   return (
     <>
       {/* Desktop: always-visible left panel */}
-      <aside className="scrollbar-themed hidden w-[240px] flex-shrink-0 border-r border-line/30 bg-[#0a0f1a]/95 backdrop-blur-md md:flex md:flex-col">
+      <aside className="scrollbar-themed hidden w-[220px] flex-shrink-0 border-r border-line/30 bg-[#0a0f1a]/95 backdrop-blur-md md:flex md:flex-col lg:w-[250px] xl:w-[280px]">
         {panelContent}
       </aside>
 
@@ -379,10 +379,10 @@ export function LeftLibraryPanel({
       {isOpen && (
         <>
           <div
-            className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm md:hidden"
+            className="fixed inset-0 z-overlay bg-black/50 backdrop-blur-sm md:hidden"
             onClick={onClose}
           />
-          <aside className="scrollbar-themed fixed inset-y-0 left-0 z-50 flex w-[280px] flex-col border-r border-line/20 bg-[#0a0f1a]/98 md:hidden">
+          <aside className="scrollbar-themed fixed inset-y-0 left-0 z-drawer flex w-[min(86vw,340px)] flex-col border-r border-line/20 bg-[#0a0f1a]/98 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-[max(0.5rem,env(safe-area-inset-top))] md:hidden">
             {panelContent}
           </aside>
         </>

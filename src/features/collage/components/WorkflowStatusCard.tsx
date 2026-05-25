@@ -1,4 +1,4 @@
-import { CheckCircle2, CircleDashed, Download, Edit3, FolderClock, LayoutTemplate, UploadCloud } from 'lucide-react';
+import { CheckCircle2, ChevronDown, ChevronUp, CircleDashed, Download, Edit3, FolderClock, LayoutTemplate, UploadCloud } from 'lucide-react';
 import type { InteractionMode } from '../model/types';
 import { Button } from '../../../shared/ui/Button';
 
@@ -27,6 +27,8 @@ interface WorkflowStatusCardProps {
   undoActionDescription: string | null;
   onGenerateLayout: () => void;
   onUndoLastAction: () => void;
+  isExpanded: boolean;
+  onToggleExpanded: () => void;
 }
 
 const WORKFLOW_STEPS: Array<{
@@ -108,6 +110,8 @@ export function WorkflowStatusCard({
   undoActionDescription,
   onGenerateLayout,
   onUndoLastAction,
+  isExpanded,
+  onToggleExpanded,
 }: WorkflowStatusCardProps) {
   const guidance = getPrimaryGuidance({
     workflowStage,
@@ -119,6 +123,55 @@ export function WorkflowStatusCard({
 
   return (
     <section className="mb-4 rounded-2xl border border-line/30 bg-[#0b1220]/80 p-4 backdrop-blur-md">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <p className="m-0 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">Workflow</p>
+          <p className="m-0 mt-1 truncate text-sm text-ink">{pagesCount > 0 ? `Page ${Math.min(selectedPageIndex + 1, pagesCount)} of ${pagesCount}` : 'No pages yet'} · {getModeLabel(interactionMode)}</p>
+        </div>
+        <button
+          type="button"
+          className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-line/30 bg-white/[0.03] px-2.5 text-xs font-semibold text-ink/90 hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70"
+          onClick={onToggleExpanded}
+          aria-expanded={isExpanded}
+          aria-label={isExpanded ? 'Collapse workflow details' : 'Expand workflow details'}
+        >
+          {isExpanded ? (
+            <>
+              <ChevronUp className="h-3.5 w-3.5" />
+              Less
+            </>
+          ) : (
+            <>
+              <ChevronDown className="h-3.5 w-3.5" />
+              Details
+            </>
+          )}
+        </button>
+      </div>
+
+      {!isExpanded ? (
+        <div className="rounded-xl border border-line/25 bg-black/15 p-3">
+          <p className="m-0 text-sm text-muted">{guidance}</p>
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted">
+            <span className="inline-flex items-center gap-1 rounded-full border border-line/30 px-2.5 py-1">
+              <CircleDashed className={`h-3.5 w-3.5 ${saveState === 'saved' ? 'text-emerald-300' : saveState === 'error' ? 'text-rose-300' : 'text-amber-200'}`} />
+              {saveState === 'saving' ? 'Saving…' : saveState === 'error' ? 'Save needs attention' : formatTimeLabel(lastSavedAt)}
+            </span>
+            {hasUnplacedImages ? (
+              <Button onClick={onGenerateLayout} className="min-h-9 px-3 py-1 text-xs">
+                Generate layout
+              </Button>
+            ) : null}
+          </div>
+          {undoActionLabel ? (
+            <Button variant="soft" onClick={onUndoLastAction} className="mt-2 min-h-9 w-full justify-center text-sm">
+              Undo last action
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {isExpanded ? (
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
@@ -212,6 +265,7 @@ export function WorkflowStatusCard({
           ) : null}
         </div>
       </div>
+      ) : null}
     </section>
   );
 }

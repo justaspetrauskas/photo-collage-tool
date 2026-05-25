@@ -14,6 +14,12 @@ export function CollageEditor() {
   const [toast, setToast] = useState<{ tone: 'error' | 'info' | 'success'; text: string } | null>(null);
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
   const [isInspectorOpen, setIsInspectorOpen] = useState(false);
+  const [isWorkflowExpanded, setIsWorkflowExpanded] = useState(() => {
+    if (typeof window === 'undefined') {
+      return true;
+    }
+    return window.localStorage.getItem('collage.workflowCardCollapsed') !== '1';
+  });
 
   const selectedPlacedItem = editor.selectedPlacedItem;
   const hasSelection = Boolean(editor.selectedImageId && selectedPlacedItem);
@@ -43,12 +49,69 @@ export function CollageEditor() {
     return () => window.clearTimeout(timeoutId);
   }, [editor.notice]);
 
+  useEffect(() => {
+    window.localStorage.setItem('collage.workflowCardCollapsed', isWorkflowExpanded ? '0' : '1');
+  }, [isWorkflowExpanded]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (
+        event.metaKey
+        || event.ctrlKey
+        || event.altKey
+        || (target && (
+          target instanceof HTMLInputElement
+          || target instanceof HTMLTextAreaElement
+          || target instanceof HTMLSelectElement
+          || target.isContentEditable
+        ))
+      ) {
+        return;
+      }
+
+      const key = event.key.toLowerCase();
+      if (key === 'escape') {
+        if (editor.showSelectionControls) {
+          event.preventDefault();
+          editor.clearSelection();
+        }
+        return;
+      }
+
+      if (key === 's') {
+        event.preventDefault();
+        editor.setInteractionMode('select');
+        return;
+      }
+
+      if (key === 'c') {
+        event.preventDefault();
+        editor.setInteractionMode('crop');
+        return;
+      }
+
+      if (key === 'p') {
+        event.preventDefault();
+        editor.setInteractionMode('replace');
+        return;
+      }
+
+      if (key === 'm' || key === 'r') {
+        return;
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [editor]);
+
   return (
-    <div className="flex h-[100dvh] w-screen flex-col">
+    <div className="flex h-[100dvh] w-full min-w-0 flex-col">
       {/* Toast error */}
       {toast ? (
         <div
-          className="pointer-events-none fixed left-1/2 top-4 z-[70] -translate-x-1/2"
+          className="pointer-events-none fixed left-1/2 top-[max(1rem,env(safe-area-inset-top))] z-toast -translate-x-1/2"
           role="status"
           aria-live="polite"
         >
@@ -113,7 +176,7 @@ export function CollageEditor() {
         {/* Center: Canvas */}
         <div className="relative min-w-0 flex-1 overflow-y-auto" data-collage-scroll-root>
           <div className="pointer-events-none absolute right-0 top-0 bottom-0 z-20 w-8 bg-gradient-to-l from-[#000000]/15 via-transparent to-transparent" />
-          <div className="mx-auto w-full max-w-[1440px] px-4 pt-4 sm:px-8">
+          <div className="mx-auto w-full max-w-[min(100%,1680px)] px-4 pt-4 sm:px-6 md:px-8 lg:px-10 xl:px-12">
             <WorkflowStatusCard
               workflowStage={editor.workflowStage}
               hasImages={editor.images.length > 0}
@@ -132,6 +195,8 @@ export function CollageEditor() {
               undoActionDescription={editor.undoActionDescription}
               onGenerateLayout={editor.onGenerateLayout}
               onUndoLastAction={editor.undoLastAction}
+              isExpanded={isWorkflowExpanded}
+              onToggleExpanded={() => setIsWorkflowExpanded((current) => !current)}
             />
             <main>
               {editor.oversizedImageIds.length ? (
@@ -238,6 +303,10 @@ export function CollageEditor() {
             setCustomCanvasWidthCm: editor.setCustomCanvasWidthCm,
             customCanvasHeightCm: editor.customCanvasHeightCm,
             setCustomCanvasHeightCm: editor.setCustomCanvasHeightCm,
+          }}
+          onShowProjectView={() => {
+            setDrawerSelectedImageId(null);
+            editor.clearSelection();
           }}
           isOpen={isInspectorOpen}
           onClose={() => setIsInspectorOpen(false)}

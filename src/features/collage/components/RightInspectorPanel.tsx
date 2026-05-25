@@ -68,6 +68,7 @@ export interface RightInspectorPanelProps extends LayoutControlsProps {
   enhancingImageIds: Set<string>;
   onPlaceImageOnCanvas: (id: string) => void;
   onReplaceSelectedImage: (id: string) => void;
+  onShowProjectView: () => void;
   /** Mobile: whether the panel is visible as an overlay */
   isOpen: boolean;
   onClose: () => void;
@@ -167,6 +168,8 @@ function LayoutInspector({
   sessionMetrics,
   sessionInsights,
 }: LayoutControlsProps) {
+  const [section, setSection] = useState<'setup' | 'rules' | 'actions' | 'insights'>('setup');
+
   return (
     <>
       <div className="space-y-3 border-b border-line/30 px-4 py-4">
@@ -187,8 +190,53 @@ function LayoutInspector({
             ) : null}
           </div>
         </div>
+
+        <div className="grid grid-cols-2 gap-1.5">
+          <button
+            type="button"
+            onClick={() => setSection('setup')}
+            className={cn(
+              'min-h-8 rounded-md px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.06em] transition',
+              section === 'setup' ? 'bg-amber-400/15 text-amber-200' : 'bg-white/[0.02] text-muted hover:text-ink',
+            )}
+          >
+            Setup
+          </button>
+          <button
+            type="button"
+            onClick={() => setSection('rules')}
+            className={cn(
+              'min-h-8 rounded-md px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.06em] transition',
+              section === 'rules' ? 'bg-amber-400/15 text-amber-200' : 'bg-white/[0.02] text-muted hover:text-ink',
+            )}
+          >
+            Rules
+          </button>
+          <button
+            type="button"
+            onClick={() => setSection('actions')}
+            className={cn(
+              'min-h-8 rounded-md px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.06em] transition',
+              section === 'actions' ? 'bg-amber-400/15 text-amber-200' : 'bg-white/[0.02] text-muted hover:text-ink',
+            )}
+          >
+            Actions
+          </button>
+          <button
+            type="button"
+            onClick={() => setSection('insights')}
+            className={cn(
+              'min-h-8 rounded-md px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.06em] transition',
+              section === 'insights' ? 'bg-amber-400/15 text-amber-200' : 'bg-white/[0.02] text-muted hover:text-ink',
+            )}
+          >
+            Insights
+          </button>
+        </div>
       </div>
 
+      {section === 'setup' ? (
+        <>
       <Accordion title="Canvas" defaultOpen>
         <div className="space-y-2">
           <CanvasSizeDropdown {...canvasSize} />
@@ -225,8 +273,12 @@ function LayoutInspector({
           )}
         </div>
       </Accordion>
+        </>
+      ) : null}
 
+      {section === 'rules' ? (
       <Accordion title="Sizing rules" defaultOpen={hasPlacedItems}>
+        <div className="space-y-2">
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-2">
             <Field label="Max (cm)" className="mb-0">
@@ -293,8 +345,10 @@ function LayoutInspector({
           </Button>
         </div>
       </Accordion>
+      ) : null}
 
-      <Accordion title="Project actions" defaultOpen={hasPlacedItems}>
+      {section === 'actions' ? (
+      <Accordion title="Project actions" defaultOpen>
         <div className="space-y-2">
           {paginationMode === 'assisted' && overflowCount > 0 ? (
             <Button
@@ -331,8 +385,10 @@ function LayoutInspector({
           </Button>
         </div>
       </Accordion>
+      ) : null}
 
-      <Accordion title="Session insights" defaultOpen={false}>
+      {section === 'insights' ? (
+      <Accordion title="Session insights" defaultOpen>
         <div className="space-y-3 text-xs text-muted">
           <div className="grid grid-cols-2 gap-2">
             <div className="rounded-lg border border-line/25 bg-black/10 px-3 py-2">
@@ -357,6 +413,7 @@ function LayoutInspector({
           </p>
         </div>
       </Accordion>
+      ) : null}
     </>
   );
 }
@@ -597,6 +654,7 @@ export function RightInspectorPanel({
   enhancingImageIds,
   onPlaceImageOnCanvas,
   onReplaceSelectedImage,
+  onShowProjectView,
   isOpen,
   onClose,
   ...layoutControls
@@ -613,18 +671,34 @@ export function RightInspectorPanel({
     <div className="scrollbar-themed flex h-full flex-col overflow-hidden">
       {/* Panel header */}
       <div className="flex flex-shrink-0 items-center justify-between border-b border-line/30 px-3 py-2.5">
-        {inspectorImage ? (
+        <div className="flex min-w-0 items-center gap-1 rounded-lg border border-line/30 bg-white/[0.02] p-1">
           <button
-            className="flex items-center gap-1.5 text-xs text-muted hover:text-ink"
-            onClick={() => setDrawerSelectedImageId(null)}
+            type="button"
+            className={cn(
+              'min-h-8 rounded-md px-2.5 text-[11px] font-semibold uppercase tracking-[0.06em] transition',
+              !inspectorImage
+                ? 'bg-amber-400/15 text-amber-200'
+                : 'text-muted hover:text-ink',
+            )}
+            onClick={() => {
+              setDrawerSelectedImageId(null);
+              onShowProjectView();
+            }}
           >
-            ← Project
-          </button>
-        ) : (
-          <span className="text-xs font-semibold uppercase tracking-[0.08em] text-muted">
             Project
+          </button>
+          <span
+            className={cn(
+              'min-h-8 max-w-[150px] truncate rounded-md px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-[0.06em]',
+              inspectorImage
+                ? 'bg-cyan-400/12 text-cyan-100'
+                : 'text-muted/70',
+            )}
+            title={inspectorImage ? inspectorImage.fileName : 'No image selected'}
+          >
+            {inspectorImage ? `Image: ${inspectorImage.fileName}` : 'Image'}
           </span>
-        )}
+        </div>
         {/* Close button — mobile only */}
         <button
           className="rounded-md p-1.5 text-muted hover:bg-white/5 hover:text-ink md:hidden"
@@ -660,7 +734,7 @@ export function RightInspectorPanel({
   return (
     <>
       {/* Desktop: always-visible right panel */}
-      <aside className="scrollbar-themed hidden w-[272px] flex-shrink-0 border-l border-line/30 bg-[#0a0f1a]/95 backdrop-blur-md md:flex md:flex-col">
+      <aside className="scrollbar-themed hidden w-[248px] flex-shrink-0 border-l border-line/30 bg-[#0a0f1a]/95 backdrop-blur-md md:flex md:flex-col lg:w-[288px] xl:w-[320px]">
         {panelContent}
       </aside>
 
@@ -668,10 +742,10 @@ export function RightInspectorPanel({
       {isOpen && (
         <>
           <div
-            className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm md:hidden"
+            className="fixed inset-0 z-overlay bg-black/50 backdrop-blur-sm md:hidden"
             onClick={onClose}
           />
-          <aside className="scrollbar-themed fixed inset-y-0 right-0 z-50 flex w-[280px] flex-col border-l border-line/20 bg-[#0a0f1a]/98 md:hidden">
+          <aside className="scrollbar-themed fixed inset-y-0 right-0 z-drawer flex w-[min(86vw,340px)] flex-col border-l border-line/20 bg-[#0a0f1a]/98 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-[max(0.5rem,env(safe-area-inset-top))] md:hidden">
             {panelContent}
           </aside>
         </>
