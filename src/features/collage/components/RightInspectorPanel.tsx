@@ -344,6 +344,7 @@ function LayoutInspector({
             Apply sizing rules
           </Button>
         </div>
+        </div>
       </Accordion>
       ) : null}
 
