@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "photo_collage_tool",
+  "project_id": "8e597170-de93-4237-b7cf-b1235c0300c2"
+}

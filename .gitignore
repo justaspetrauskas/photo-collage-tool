@@ -4,3 +4,8 @@ dist/
 photo_collage_generator_requirements.md
 .env.local
 .env.*.local
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
