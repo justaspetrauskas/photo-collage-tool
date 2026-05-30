@@ -16,13 +16,14 @@ import {
 } from '../../model/constants';
 import { buildPaginatedLayout, clampOffsets } from '../../model/layoutEngine';
 import { renderPageToExportCanvas } from '../../model/renderEngine';
-import { useEditorUIStore } from '../../store/editorUIStore';
 import { useCollageState } from './useCollageState';
 import { useCollageUIState } from './useCollageUIState';
 import { useCollageDerivedState } from './useCollageDerivedState';
 import { useCollageEditorLifecycle } from './useCollageEditorLifecycle';
 import { useCollageEditorLayoutEffects } from './useCollageEditorLayoutEffects';
 import { useCollageEditorAutosave, useCollageEditorHydration } from './useCollageEditorPersistence';
+import { useCollageEditorUndo } from './useCollageEditorUndo';
+import { useCollageEditorLayoutActions } from './useCollageEditorLayoutActions';
 import { useCollageInteractionEnd } from './useCollageInteractionEnd';
 import { useCollageInteractionStart } from './useCollageInteractionStart';
 import { useCollageInteractionMove } from './useCollageInteractionMove';
@@ -172,76 +173,6 @@ export function useCollageEditor() {
 
   const SELECT_HANDLE_HIT_RADIUS_CSS_PX = 12;
 
-  function restoreEditorUndoSnapshot(snapshot: EditorUndoSnapshot): void {
-    setImages(snapshot.images);
-    setPages(snapshot.pages);
-    setMaxImageCm(snapshot.maxImageCm);
-    setMinImageCm(snapshot.minImageCm);
-    setFrameMm(snapshot.frameMm);
-    setGridModeEnabled(snapshot.gridModeEnabled);
-    setAutoCompactPages(snapshot.autoCompactPages);
-    setPaginationMode(snapshot.paginationMode);
-    setInteractionModeState(snapshot.interactionMode);
-    setSelectedImageId(snapshot.selectedImageId);
-    setHoveredImageId(snapshot.hoveredImageId);
-    setAssistedPageCount(snapshot.assistedPageCount);
-    setSelectedPageIndex(snapshot.selectedPageIndex);
-    setOverflowImageIds(snapshot.overflowImageIds);
-    setOversizedImageIds(snapshot.oversizedImageIds);
-    setResizeLimitNotice(snapshot.resizeLimitNotice);
-    setShowSelectionControls(snapshot.showSelectionControls);
-    setCanvasPresetId(snapshot.canvasPresetId);
-    setCustomCanvasWidthCm(snapshot.customCanvasWidthCm);
-    setCustomCanvasHeightCm(snapshot.customCanvasHeightCm);
-    setLayoutPresetId(snapshot.layoutPresetId);
-    setDrawerSelectedImageId(snapshot.drawerSelectedImageId);
-    setImageZoomLevels(snapshot.imageZoomLevels);
-    setImagePanOffsets(snapshot.imagePanOffsets);
-    setNotice({
-      tone: 'success',
-      text: 'Undo complete. Your previous project state has been restored.',
-    });
-    useEditorUIStore.setState({
-      drawerSelectedImageId: snapshot.drawerSelectedImageId,
-      imageZoomLevels: snapshot.imageZoomLevels,
-      imagePanOffsets: snapshot.imagePanOffsets,
-    });
-  }
-
-  function queueUndoAction(label: string, description: string, snapshot: EditorUndoSnapshot): void {
-    setUndoAction({
-      label,
-      description,
-      restore: () => restoreEditorUndoSnapshot(snapshot),
-    });
-  }
-
-  function undoLastAction(): void {
-    if (!undoAction) {
-      return;
-    }
-    undoAction.restore();
-    setUndoAction(null);
-  }
-
-  function registerDestructiveConfirmation(confirmed: boolean): void {
-    updateSessionMetrics((metrics) => ({
-      ...metrics,
-      destructiveConfirms: metrics.destructiveConfirms + (confirmed ? 1 : 0),
-      destructiveCancels: metrics.destructiveCancels + (confirmed ? 0 : 1),
-    }));
-  }
-
-  function resolveCanvasDimensions(): { widthPx: number; heightPx: number } {
-    const preset = CANVAS_SIZE_PRESETS.find((p) => p.id === canvasPresetId) ?? CANVAS_SIZE_PRESETS[0];
-    const widthCm = canvasPresetId === 'custom' ? customCanvasWidthCm : preset.widthCm;
-    const heightCm = canvasPresetId === 'custom' ? customCanvasHeightCm : preset.heightCm;
-    return {
-      widthPx: Math.round(cmToPx(widthCm)),
-      heightPx: Math.round(cmToPx(heightCm)),
-    };
-  }
-
   // recommendedLayoutHint useMemo moved after all state/variable declarations
 
   // State hooks
@@ -314,6 +245,99 @@ export function useCollageEditor() {
   } = collageUIState;
 
   const {
+    captureEditorUndoSnapshot,
+    queueUndoAction,
+    undoLastAction: undoLastActionInternal,
+    registerDestructiveConfirmation,
+  } = useCollageEditorUndo({
+    images,
+    pages,
+    maxImageCm,
+    minImageCm,
+    frameMm,
+    gridModeEnabled,
+    autoCompactPages,
+    paginationMode,
+    interactionMode,
+    selectedImageId,
+    hoveredImageId,
+    assistedPageCount,
+    selectedPageIndex,
+    overflowImageIds,
+    oversizedImageIds,
+    resizeLimitNotice,
+    showSelectionControls,
+    canvasPresetId,
+    customCanvasWidthCm,
+    customCanvasHeightCm,
+    layoutPresetId,
+    drawerSelectedImageId,
+    imageZoomLevels,
+    imagePanOffsets,
+    setImages,
+    setPages,
+    setMaxImageCm,
+    setMinImageCm,
+    setFrameMm,
+    setGridModeEnabled,
+    setAutoCompactPages,
+    setPaginationMode,
+    setInteractionModeState,
+    setSelectedImageId,
+    setHoveredImageId,
+    setAssistedPageCount,
+    setSelectedPageIndex,
+    setOverflowImageIds,
+    setOversizedImageIds,
+    setResizeLimitNotice,
+    setShowSelectionControls,
+    setCanvasPresetId,
+    setCustomCanvasWidthCm,
+    setCustomCanvasHeightCm,
+    setLayoutPresetId,
+    setDrawerSelectedImageId,
+    setImageZoomLevels,
+    setImagePanOffsets,
+    setNotice,
+    setUndoAction,
+    updateSessionMetrics,
+  });
+
+  const {
+    resolveCanvasDimensions,
+    resolveMaxPages,
+    regenerateLayout,
+    applyGlobalSettings,
+    onGenerateLayout,
+    onCreateNextPage,
+    resolveManualPlacementSize,
+  } = useCollageEditorLayoutActions({
+    images,
+    pages,
+    maxImageCm,
+    minImageCm,
+    frameMm,
+    autoCompactPages,
+    paginationMode,
+    assistedPageCount,
+    layoutPresetId,
+    canvasPresetId,
+    customCanvasWidthCm,
+    customCanvasHeightCm,
+    setImages,
+    setPages,
+    setOverflowImageIds,
+    setOversizedImageIds,
+    setSelectedPageIndex,
+    setAssistedPageCount,
+    setNotice,
+    setImageZoom,
+    setImagePan,
+    setUndoAction,
+    updateSessionMetrics,
+  });
+
+  const {
     selectedPage,
     itemById,
     imageById,
@@ -360,33 +384,8 @@ export function useCollageEditor() {
     setImagePanOffsets((current) => ({ ...current, [imageId]: { x, y } }));
   }
 
-  function captureEditorUndoSnapshot(): EditorUndoSnapshot {
-    return {
-      images,
-      pages,
-      maxImageCm,
-      minImageCm,
-      frameMm,
-      gridModeEnabled,
-      autoCompactPages,
-      paginationMode,
-      interactionMode,
-      selectedImageId,
-      hoveredImageId,
-      assistedPageCount,
-      selectedPageIndex,
-      overflowImageIds,
-      oversizedImageIds,
-      resizeLimitNotice,
-      showSelectionControls,
-      canvasPresetId,
-      customCanvasWidthCm,
-      customCanvasHeightCm,
-      layoutPresetId,
-      drawerSelectedImageId,
-      imageZoomLevels,
-      imagePanOffsets,
-    };
+  function undoLastAction(): void {
+    undoLastActionInternal(undoAction);
   }
 
   const shouldRunAnimationLoop = (dragActive && interactionMode === 'replace') || Boolean(swapAnimation);
@@ -534,21 +533,6 @@ export function useCollageEditor() {
     }
   }
 
-  function applyGlobalSettings(): void {
-    setImages((current) =>
-      current.map((image) => ({
-        ...image,
-        maxWidthCm: maxImageCm,
-        maxHeightCm: maxImageCm,
-        frameThicknessPx: mmToPx(frameMm),
-      })),
-    );
-    setNotice({
-      tone: 'success',
-      text: 'Project sizing rules updated. Generate layout again if you want every page reflowed.',
-    });
-  }
-
   function focusImageOnCanvas(imageId: string): void {
     setSelectedImageId(imageId);
     setHoveredImageId(imageId);
@@ -663,116 +647,6 @@ export function useCollageEditor() {
     setHoveredImageId(targetImageId);
   }
 
-  function resolveMaxPages(overrideAssistedCount?: number): number {
-    if (paginationMode === 'auto') {
-      return Number.POSITIVE_INFINITY;
-    }
-    return overrideAssistedCount ?? assistedPageCount;
-  }
-
-  function regenerateLayout(
-    overrideAssistedCount: number,
-    preservePageSelection = false,
-    sourceImages: ImageItem[] = images,
-    useSmartFraming = false,
-  ): void {
-    if (!sourceImages.length) {
-      setPages([]);
-      setOverflowImageIds([]);
-      setOversizedImageIds([]);
-      return;
-    }
-
-    const { widthPx: canvasWidthPx, heightPx: canvasHeightPx } = resolveCanvasDimensions();
-    const result = buildPaginatedLayout(sourceImages, {
-      canvasWidthPx,
-      canvasHeightPx,
-      allowUpscale: true,
-      maxPages: paginationMode === 'auto' ? Number.POSITIVE_INFINITY : overrideAssistedCount,
-      minContentWidthPx: cmToPx(minImageCm),
-      minContentHeightPx: cmToPx(minImageCm),
-      enableCompaction: autoCompactPages,
-      layoutPresetId,
-    });
-
-    const metricsById = result.imageMetrics;
-    const nextImages = sourceImages.map((image) => {
-        const metrics = metricsById.get(image.id);
-        if (!metrics) {
-          return {
-            ...image,
-            cropMaxOffsetX: 0,
-            cropMaxOffsetY: 0,
-          };
-        }
-
-        const smart = useSmartFraming
-          ? resolveSmartFraming(image, metrics)
-          : null;
-        const clamped = smart
-          ? { offsetX: smart.offsetX, offsetY: smart.offsetY }
-          : clampOffsets(image.offsetX, image.offsetY, metrics.maxOffsetX, metrics.maxOffsetY);
-        return {
-          ...image,
-          renderWidthPx: metrics.contentWidthPx,
-          renderHeightPx: metrics.contentHeightPx,
-          offsetX: clamped.offsetX,
-          offsetY: clamped.offsetY,
-          cropMaxOffsetX: metrics.maxOffsetX,
-          cropMaxOffsetY: metrics.maxOffsetY,
-        };
-      });
-
-    if (useSmartFraming) {
-      for (const image of nextImages) {
-        const metrics = metricsById.get(image.id);
-        if (!metrics) {
-          continue;
-        }
-
-        const { zoom } = resolveSmartFraming(image, metrics);
-        setImageZoom(image.id, zoom);
-        setImagePan(image.id, 0, 0);
-      }
-    }
-
-    setImages(nextImages);
-
-    setPages(result.pages);
-    setOverflowImageIds(result.overflowImageIds);
-    setOversizedImageIds(result.oversizedImageIds);
-    if (preservePageSelection) {
-      setSelectedPageIndex((current) => Math.max(0, Math.min(current, Math.max(0, result.pages.length - 1))));
-    } else {
-      setSelectedPageIndex(0);
-    }
-  }
-
-  function onGenerateLayout(): void {
-    setAssistedPageCount(1);
-    regenerateLayout(1, false, images, true);
-    setUndoAction(null);
-    setNotice({
-      tone: 'success',
-      text: 'Layout ready. Select a photo to fine-tune it, or export when the collage looks right.',
-    });
-    updateSessionMetrics((metrics) => ({
-      ...metrics,
-      layoutGenerations: metrics.layoutGenerations + 1,
-      firstLayoutAt: metrics.firstLayoutAt ?? Date.now(),
-    }));
-  }
-
-  function onCreateNextPage(): void {
-    const nextCount = assistedPageCount + 1;
-    setAssistedPageCount(nextCount);
-    regenerateLayout(nextCount, false, images, true);
-    setNotice({
-      tone: 'info',
-      text: `Added page ${nextCount}. Continue placing and editing photos on the current page.`,
-    });
-  }
-
   function pagePointFromClient(
     clientX: number,
     clientY: number,
@@ -783,49 +657,6 @@ export function useCollageEditor() {
       return null;
     }
     return pagePointFromClientForViewport(clientX, clientY, viewport, selectedPage, options);
-  }
-
-  function resolveManualPlacementSize(image: ImageItem): {
-    width: number;
-    height: number;
-    contentWidthPx: number;
-    contentHeightPx: number;
-    frameThicknessPx: number;
-    drawnImageWidthPx: number;
-    drawnImageHeightPx: number;
-    maxOffsetX: number;
-    maxOffsetY: number;
-  } {
-    const base = computeContentBox(
-      image.naturalWidth,
-      image.naturalHeight,
-      image.maxWidthCm,
-      image.maxHeightCm,
-    );
-
-    const minPx = cmToPx(minImageCm);
-    const scaleUp = Math.max(minPx / base.widthPx, minPx / base.heightPx, 1);
-    const contentWidthPx = Math.round(base.widthPx * scaleUp);
-    const contentHeightPx = Math.round(base.heightPx * scaleUp);
-    const frameThicknessPx = image.frameEnabled ? image.frameThicknessPx : 0;
-    const crop = computeCropMetrics(
-      image.naturalWidth,
-      image.naturalHeight,
-      contentWidthPx,
-      contentHeightPx,
-    );
-
-    return {
-      width: contentWidthPx + frameThicknessPx * 2,
-      height: contentHeightPx + frameThicknessPx * 2,
-      contentWidthPx,
-      contentHeightPx,
-      frameThicknessPx,
-      drawnImageWidthPx: crop.drawnImageWidthPx,
-      drawnImageHeightPx: crop.drawnImageHeightPx,
-      maxOffsetX: crop.maxOffsetX,
-      maxOffsetY: crop.maxOffsetY,
-    };
   }
 
   const {

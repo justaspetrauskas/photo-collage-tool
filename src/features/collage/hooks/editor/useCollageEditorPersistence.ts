@@ -1,14 +1,11 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import {
-  CANVAS_SIZE_PRESETS,
-  LAYOUT_PRESETS,
-  type CanvasSizePresetId,
-  type LayoutPresetId,
-} from '../../model/constants';
+import { CANVAS_SIZE_PRESETS, LAYOUT_PRESETS, type CanvasSizePresetId, type LayoutPresetId } from '../../model/constants';
 import type { ImageItem, PageLayout, PersistedEditorSnapshot, PersistedImageItem } from '../../model/types';
 import { blobToImage } from '../../lib/fileToImage';
 import { loadSnapshot, saveSnapshot } from '../../lib/persistence';
+import { shouldApplyAutosaveResult } from './autosaveVersioning';
+import { buildPersistedEditorSnapshot, toPersistedImageItem } from './editorSnapshot';
 
 interface NoticeLike {
   tone: 'info' | 'success' | 'error';
@@ -251,32 +248,22 @@ export function useCollageEditorAutosave({
   setSaveState,
   setError,
 }: AutosaveParams): void {
+  const latestAutosaveRequestRef = useRef(0);
+
   useEffect(() => {
     if (!isHydrated) {
       return;
     }
 
+    latestAutosaveRequestRef.current += 1;
+    const requestId = latestAutosaveRequestRef.current;
+    let cancelled = false;
+
     setSaveState('saving');
     const timeoutId = window.setTimeout(async () => {
       const persistedImages: PersistedImageItem[] = await Promise.all(
         images.map(async (image) => {
-          const persisted: PersistedImageItem = {
-            id: image.id,
-            fileName: image.fileName,
-            sourceBlob: image.sourceBlob,
-            naturalWidth: image.naturalWidth,
-            naturalHeight: image.naturalHeight,
-            maxWidthCm: image.maxWidthCm,
-            maxHeightCm: image.maxHeightCm,
-            frameEnabled: image.frameEnabled,
-            frameThicknessPx: image.frameThicknessPx,
-            renderWidthPx: image.renderWidthPx,
-            renderHeightPx: image.renderHeightPx,
-            offsetX: image.offsetX,
-            offsetY: image.offsetY,
-            cropMaxOffsetX: image.cropMaxOffsetX,
-            cropMaxOffsetY: image.cropMaxOffsetY,
-          };
+          const persisted = toPersistedImageItem(image);
 
           if (image.src !== image.originalSrc && image.src.startsWith('data:')) {
             try {
@@ -292,41 +279,42 @@ export function useCollageEditorAutosave({
         }),
       );
 
-      const snapshot: PersistedEditorSnapshot = {
-        version: 1,
-        savedAt: Date.now(),
-        settings: {
-          maxImageCm,
-          minImageCm,
-          frameMm,
-          gridModeEnabled,
-          autoCompactPages,
-          paginationMode,
-          interactionMode,
-          assistedPageCount,
-          selectedPageIndex,
-          layoutPresetId,
-          canvasPresetId,
-          customCanvasWidthCm,
-          customCanvasHeightCm,
-        },
-        pages,
-        overflowImageIds,
-        oversizedImageIds,
-        images: persistedImages,
-      };
+      const snapshot: PersistedEditorSnapshot = buildPersistedEditorSnapshot(persistedImages, pages, overflowImageIds, oversizedImageIds, {
+        maxImageCm,
+        minImageCm,
+        frameMm,
+        gridModeEnabled,
+        autoCompactPages,
+        paginationMode,
+        interactionMode,
+        assistedPageCount,
+        selectedPageIndex,
+        layoutPresetId,
+        canvasPresetId,
+        customCanvasWidthCm,
+        customCanvasHeightCm,
+      });
 
       try {
         await saveSnapshot(snapshot);
+        if (cancelled || !shouldApplyAutosaveResult(requestId, latestAutosaveRequestRef.current)) {
+          return;
+        }
         setLastSavedAt(snapshot.savedAt);
         setSaveState('saved');
       } catch {
+        if (cancelled || !shouldApplyAutosaveResult(requestId, latestAutosaveRequestRef.current)) {
+          return;
+        }
         setSaveState('error');
         setError('We could not save your latest changes locally. Please keep this tab open and try again.');
       }
     }, 500);
 
-    return () => window.clearTimeout(timeoutId);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
   }, [
     assistedPageCount,
     autoCompactPages,

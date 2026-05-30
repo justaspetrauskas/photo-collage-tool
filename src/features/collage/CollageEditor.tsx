@@ -69,59 +69,6 @@ export function CollageEditor() {
     window.localStorage.setItem('collage.workflowCardCollapsed', isWorkflowExpanded ? '0' : '1');
   }, [isWorkflowExpanded]);
 
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      if (
-        event.metaKey
-        || event.ctrlKey
-        || event.altKey
-        || (target && (
-          target instanceof HTMLInputElement
-          || target instanceof HTMLTextAreaElement
-          || target instanceof HTMLSelectElement
-          || target.isContentEditable
-        ))
-      ) {
-        return;
-      }
-
-      const key = event.key.toLowerCase();
-      if (key === 'escape') {
-        if (editor.showSelectionControls) {
-          event.preventDefault();
-          editor.clearSelection();
-        }
-        return;
-      }
-
-      if (key === 's') {
-        event.preventDefault();
-        editor.setInteractionMode('select');
-        return;
-      }
-
-      if (key === 'c') {
-        event.preventDefault();
-        editor.setInteractionMode('crop');
-        return;
-      }
-
-      if (key === 'p') {
-        event.preventDefault();
-        editor.setInteractionMode('replace');
-        return;
-      }
-
-      if (key === 'm' || key === 'r') {
-        return;
-      }
-    };
-
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [editor]);
-
   return (
     <div className="flex h-[100dvh] w-full min-w-0 flex-col">
       {/* Toast error */}

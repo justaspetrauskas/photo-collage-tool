@@ -14,6 +14,7 @@ import type { ImageItem, InteractionMode, PageLayout, ResizeSnapGuide } from '..
 import { getSelectHandlePositions, getZoomPanBounds, resolveZoomPanOffset } from '../interactions';
 import { konvaNodeIds } from '../lib/konvaNodeIds';
 import { UploadCloud } from 'lucide-react';
+import { resolveEditorShortcut } from '../hooks/editor/keyboardShortcuts';
 
 const MAX_IMAGES = 24;
 
@@ -727,62 +728,56 @@ export function CollagePreview({
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      const tag = (event.target as HTMLElement | null)?.tagName?.toLowerCase();
-      const isEditable =
-        tag === 'input' ||
-        tag === 'textarea' ||
-        tag === 'select' ||
-        (event.target as HTMLElement | null)?.isContentEditable;
-      if (isEditable) {
+      const target = event.target as HTMLElement | null;
+      const shortcut = resolveEditorShortcut(
+        {
+          key: event.key,
+          metaKey: event.metaKey,
+          ctrlKey: event.ctrlKey,
+          altKey: event.altKey,
+          isEditableTarget: Boolean(
+            target && (
+              target instanceof HTMLInputElement
+              || target instanceof HTMLTextAreaElement
+              || target instanceof HTMLSelectElement
+              || target.isContentEditable
+            )
+          ),
+        },
+        {
+          hasSelection,
+          showSelectionControls,
+          interactionMode,
+          selectedPageIndex,
+          pageCount: pages.length,
+        },
+      );
+
+      if (!shortcut) {
         return;
       }
 
-      const key = event.key.toLowerCase();
-      if (key === 'arrowdown') {
-        const nextIndex = Math.min(pages.length - 1, selectedPageIndex + 1);
-        if (nextIndex !== selectedPageIndex) {
-          onSelectPage(nextIndex);
-          pageContainerRefs.current[nextIndex]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
+      if (shortcut.type === 'select-page') {
+        onSelectPage(shortcut.pageIndex);
+        pageContainerRefs.current[shortcut.pageIndex]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
         event.preventDefault();
         return;
       }
 
-      if (key === 'arrowup') {
-        const nextIndex = Math.max(0, selectedPageIndex - 1);
-        if (nextIndex !== selectedPageIndex) {
-          onSelectPage(nextIndex);
-          pageContainerRefs.current[nextIndex]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
+      if (shortcut.type === 'set-mode') {
+        onSetInteractionMode(shortcut.mode);
         event.preventDefault();
         return;
       }
 
-      if (!hasSelection) {
+      if (shortcut.type === 'clear-selection') {
+        onCloseSelectionControls();
+        event.preventDefault();
         return;
       }
 
-      if (key === 'escape') {
-        if (interactionMode !== 'select') {
-          onSetInteractionMode('select');
-        } else {
-          onCloseSelectionControls();
-        }
-        event.preventDefault();
-      } else if (key === 's') {
-        onSetInteractionMode('select');
-        event.preventDefault();
-      } else if (key === 'c') {
-        onSetInteractionMode('crop');
-        event.preventDefault();
-      } else if (key === 'p') {
-        onSetInteractionMode('replace');
-        event.preventDefault();
-      } else if (key === '=') {
-        onExpandSelectedImage(1.1);
-        event.preventDefault();
-      } else if (key === '-') {
-        onExpandSelectedImage(0.9);
+      if (shortcut.type === 'expand-selected') {
+        onExpandSelectedImage(shortcut.factor);
         event.preventDefault();
       }
     }
@@ -791,6 +786,8 @@ export function CollagePreview({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [
     hasSelection,
+    showSelectionControls,
+    interactionMode,
     pages.length,
     selectedPageIndex,
     onCloseSelectionControls,

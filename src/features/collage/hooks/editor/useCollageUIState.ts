@@ -2,11 +2,37 @@ import { useState, useRef } from 'react';
 import type { NoticeMessage, UndoAction, BatchEnhanceProgress, SessionMetrics, EditorUndoSnapshot, ResizeFeedback, SwapAnimation, CanvasPlacementPreview } from './useCollageEditor';
 import type { HandleType } from '../../interactions';
 import type { ResizeSnapGuide } from '../../model/types';
+import { useEditorUIStore } from '../../store/editorUIStore';
+
+type StateUpdater<T> = T | ((current: T) => T);
+
+function applyStateUpdater<T>(current: T, updater: StateUpdater<T>): T {
+  if (typeof updater === 'function') {
+    return (updater as (value: T) => T)(current);
+  }
+  return updater;
+}
 
 export function useCollageUIState() {
-    const [drawerSelectedImageId, setDrawerSelectedImageId] = useState<string | null>(null);
-    const [imageZoomLevels, setImageZoomLevels] = useState<Record<string, number>>({});
-    const [imagePanOffsets, setImagePanOffsets] = useState<Record<string, { x: number; y: number }>>({});
+  const drawerSelectedImageId = useEditorUIStore((state) => state.drawerSelectedImageId);
+  const setDrawerSelectedImageIdState = useEditorUIStore((state) => state.setDrawerSelectedImageId);
+  const imageZoomLevels = useEditorUIStore((state) => state.imageZoomLevels);
+  const setImageZoomLevelsState = useEditorUIStore((state) => state.setImageZoomLevels);
+  const imagePanOffsets = useEditorUIStore((state) => state.imagePanOffsets);
+  const setImagePanOffsetsState = useEditorUIStore((state) => state.setImagePanOffsets);
+
+  const setImageZoomLevels = (updater: StateUpdater<Record<string, number>>) => {
+    setImageZoomLevelsState(applyStateUpdater(useEditorUIStore.getState().imageZoomLevels, updater));
+  };
+
+  const setImagePanOffsets = (updater: StateUpdater<Record<string, { x: number; y: number }>>) => {
+    setImagePanOffsetsState(applyStateUpdater(useEditorUIStore.getState().imagePanOffsets, updater));
+  };
+
+  const setDrawerSelectedImageId = (updater: StateUpdater<string | null>) => {
+    setDrawerSelectedImageIdState(applyStateUpdater(useEditorUIStore.getState().drawerSelectedImageId, updater));
+  };
+
   const [dragActive, setDragActive] = useState(false);
   const [resizeLimitNotice, setResizeLimitNotice] = useState('');
   const [error, setError] = useState('');
