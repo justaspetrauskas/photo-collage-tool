@@ -69,6 +69,8 @@ export interface RightInspectorPanelProps extends LayoutControlsProps {
   onPlaceImageOnCanvas: (id: string) => void;
   onReplaceSelectedImage: (id: string) => void;
   onShowProjectView: () => void;
+  /** Desktop: whether the panel is visible */
+  isDesktopVisible: boolean;
   /** Mobile: whether the panel is visible as an overlay */
   isOpen: boolean;
   onClose: () => void;
@@ -656,6 +658,7 @@ export function RightInspectorPanel({
   onPlaceImageOnCanvas,
   onReplaceSelectedImage,
   onShowProjectView,
+  isDesktopVisible,
   isOpen,
   onClose,
   ...layoutControls
@@ -735,7 +738,10 @@ export function RightInspectorPanel({
   return (
     <>
       {/* Desktop: always-visible right panel */}
-      <aside className="scrollbar-themed hidden w-[248px] flex-shrink-0 border-l border-line/30 bg-[#0a0f1a]/95 backdrop-blur-md md:flex md:flex-col lg:w-[288px] xl:w-[320px]">
+      <aside className={cn(
+        'scrollbar-themed hidden w-[220px] flex-shrink-0 border-l border-line/30 bg-[#0a0f1a]/95 backdrop-blur-md lg:w-[248px] xl:w-[280px]',
+        isDesktopVisible ? 'md:flex md:flex-col' : 'md:hidden',
+      )}>
         {panelContent}
       </aside>
 

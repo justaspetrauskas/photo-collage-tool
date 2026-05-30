@@ -9,11 +9,13 @@ export interface CollageHeaderProps {
   hasUnplacedImages: boolean;
   canExport: boolean;
   isExporting: boolean;
+  isLibraryVisible: boolean;
+  isInspectorVisible: boolean;
   onGenerateLayout: () => void;
   onExportPages: (format: ExportFormat) => Promise<void> | void;
-  /** Mobile: toggle the left library panel */
+  /** Toggle the left library panel */
   onToggleLibrary: () => void;
-  /** Mobile: toggle the right inspector panel */
+  /** Toggle the right inspector panel */
   onToggleInspector: () => void;
 }
 
@@ -22,6 +24,8 @@ export function CollageHeader({
   hasUnplacedImages,
   canExport,
   isExporting,
+  isLibraryVisible,
+  isInspectorVisible,
   onGenerateLayout,
   onExportPages,
   onToggleLibrary,
@@ -31,13 +35,17 @@ export function CollageHeader({
 
   return (
     <header className="flex h-14 flex-shrink-0 items-center gap-1.5 border-b border-line/20 bg-[#0a0f1a]/95 px-2.5 backdrop-blur-sm sm:gap-2 sm:px-3">
-      {/* Mobile: library toggle */}
+      {/* Library toggle */}
       <button
-        className="flex h-10 w-10 items-center justify-center rounded-lg text-muted hover:bg-white/5 md:hidden"
+        className={`flex min-h-10 items-center justify-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold uppercase tracking-[0.06em] transition hover:bg-white/5 ${
+          isLibraryVisible ? 'text-amber-200' : 'text-muted'
+        }`}
         onClick={onToggleLibrary}
+        aria-pressed={isLibraryVisible}
         aria-label="Toggle image library"
       >
         <Menu className="h-5 w-5" />
+        <span className="hidden lg:inline">Library</span>
       </button>
 
       {/* Logo */}
@@ -87,13 +95,17 @@ export function CollageHeader({
         </Button>
       </div>
 
-      {/* Mobile: inspector toggle */}
+      {/* Inspector toggle */}
       <button
-        className="flex h-10 w-10 items-center justify-center rounded-lg text-muted hover:bg-white/5 md:hidden"
+        className={`flex min-h-10 items-center justify-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold uppercase tracking-[0.06em] transition hover:bg-white/5 ${
+          isInspectorVisible ? 'text-amber-200' : 'text-muted'
+        }`}
         onClick={onToggleInspector}
+        aria-pressed={isInspectorVisible}
         aria-label="Toggle settings panel"
       >
         <Settings className="h-5 w-5" />
+        <span className="hidden lg:inline">Inspector</span>
       </button>
     </header>
   );
