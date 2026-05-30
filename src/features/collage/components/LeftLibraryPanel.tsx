@@ -28,6 +28,8 @@ interface LeftLibraryPanelProps {
   onUploadFileList: (files: File[]) => Promise<void>;
   onPlaceImageOnCanvas: (id: string) => void;
   onReplaceSelectedImage: (id: string) => void;
+  /** Desktop: whether the panel is visible */
+  isDesktopVisible: boolean;
   /** Mobile: whether the panel is visible as an overlay */
   isOpen: boolean;
   onClose: () => void;
@@ -188,6 +190,7 @@ export function LeftLibraryPanel({
   onUploadFileList,
   onPlaceImageOnCanvas,
   onReplaceSelectedImage,
+  isDesktopVisible,
   isOpen,
   onClose,
 }: LeftLibraryPanelProps) {
@@ -371,7 +374,10 @@ export function LeftLibraryPanel({
   return (
     <>
       {/* Desktop: always-visible left panel */}
-      <aside className="scrollbar-themed hidden w-[220px] flex-shrink-0 border-r border-line/30 bg-[#0a0f1a]/95 backdrop-blur-md md:flex md:flex-col lg:w-[250px] xl:w-[280px]">
+      <aside className={cn(
+        'scrollbar-themed hidden w-[200px] flex-shrink-0 border-r border-line/30 bg-[#0a0f1a]/95 backdrop-blur-md lg:w-[220px] xl:w-[240px]',
+        isDesktopVisible ? 'md:flex md:flex-col' : 'md:hidden',
+      )}>
         {panelContent}
       </aside>
 

@@ -14,15 +14,31 @@ export function CollageEditor() {
   const [toast, setToast] = useState<{ tone: 'error' | 'info' | 'success'; text: string } | null>(null);
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
   const [isInspectorOpen, setIsInspectorOpen] = useState(false);
+  const [isDesktopLibraryVisible, setIsDesktopLibraryVisible] = useState(true);
+  const [isDesktopInspectorVisible, setIsDesktopInspectorVisible] = useState(true);
   const [isWorkflowExpanded, setIsWorkflowExpanded] = useState(() => {
     if (typeof window === 'undefined') {
-      return true;
+      return false;
     }
-    return window.localStorage.getItem('collage.workflowCardCollapsed') !== '1';
+    return window.localStorage.getItem('collage.workflowCardCollapsed') === '0';
   });
 
   const selectedPlacedItem = editor.selectedPlacedItem;
   const hasSelection = Boolean(editor.selectedImageId && selectedPlacedItem);
+  const toggleLibraryPanel = () => {
+    if (typeof window !== 'undefined' && window.matchMedia('(min-width: 768px)').matches) {
+      setIsDesktopLibraryVisible((visible) => !visible);
+      return;
+    }
+    setIsLibraryOpen((open) => !open);
+  };
+  const toggleInspectorPanel = () => {
+    if (typeof window !== 'undefined' && window.matchMedia('(min-width: 768px)').matches) {
+      setIsDesktopInspectorVisible((visible) => !visible);
+      return;
+    }
+    setIsInspectorOpen((open) => !open);
+  };
   useEffect(() => {
     if (!editor.error) {
       return;
@@ -140,10 +156,12 @@ export function CollageEditor() {
            hasUnplacedImages={editor.hasUnplacedImages}
            canExport={editor.hasPlacedItems}
            isExporting={editor.isExporting}
+           isLibraryVisible={isDesktopLibraryVisible}
+           isInspectorVisible={isDesktopInspectorVisible}
            onGenerateLayout={editor.onGenerateLayout}
            onExportPages={editor.exportPages}
-           onToggleLibrary={() => setIsLibraryOpen((v) => !v)}
-          onToggleInspector={() => setIsInspectorOpen((v) => !v)}
+           onToggleLibrary={toggleLibraryPanel}
+          onToggleInspector={toggleInspectorPanel}
         />
 
       {/* 3-pane workspace */}
@@ -159,6 +177,7 @@ export function CollageEditor() {
           onSelectImage={(id) => {
             setDrawerSelectedImageId(id);
             setIsInspectorOpen(true);
+            setIsDesktopInspectorVisible(true);
           }}
           onDeleteImage={editor.deleteImage}
           onRemoveFromCanvas={editor.removeFromCanvas}
@@ -169,6 +188,7 @@ export function CollageEditor() {
           onUploadFileList={editor.uploadFileList}
           onPlaceImageOnCanvas={(imageId) => editor.placeImageOnSelectedPage(imageId, false)}
           onReplaceSelectedImage={(imageId) => editor.placeImageOnSelectedPage(imageId, true)}
+          isDesktopVisible={isDesktopLibraryVisible}
           isOpen={isLibraryOpen}
           onClose={() => setIsLibraryOpen(false)}
         />
@@ -176,7 +196,7 @@ export function CollageEditor() {
         {/* Center: Canvas */}
         <div className="relative min-w-0 flex-1 overflow-y-auto" data-collage-scroll-root>
           <div className="pointer-events-none absolute right-0 top-0 bottom-0 z-20 w-8 bg-gradient-to-l from-[#000000]/15 via-transparent to-transparent" />
-          <div className="mx-auto w-full max-w-[min(100%,1680px)] px-4 pt-4 sm:px-6 md:px-8 lg:px-10 xl:px-12">
+          <div className="mx-auto w-full max-w-[min(100%,1920px)] px-2 pt-2 sm:px-4 sm:pt-3 md:px-5 lg:px-6 xl:px-8">
             <WorkflowStatusCard
               workflowStage={editor.workflowStage}
               hasImages={editor.images.length > 0}
@@ -308,6 +328,7 @@ export function CollageEditor() {
             setDrawerSelectedImageId(null);
             editor.clearSelection();
           }}
+          isDesktopVisible={isDesktopInspectorVisible}
           isOpen={isInspectorOpen}
           onClose={() => setIsInspectorOpen(false)}
         />
