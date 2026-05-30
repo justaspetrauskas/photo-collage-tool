@@ -195,7 +195,6 @@ export function CollageEditor() {
 
         {/* Center: Canvas */}
         <div className="relative min-w-0 flex-1 overflow-y-auto" data-collage-scroll-root>
-          <div className="pointer-events-none absolute right-0 top-0 bottom-0 z-20 w-8 bg-gradient-to-l from-[#000000]/15 via-transparent to-transparent" />
           <div className="mx-auto w-full max-w-[min(100%,1920px)] px-2 pt-2 sm:px-4 sm:pt-3 md:px-5 lg:px-6 xl:px-8">
             <WorkflowStatusCard
               workflowStage={editor.workflowStage}
